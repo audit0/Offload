@@ -44,8 +44,28 @@ final class AppModel {
     let docker = DockerModel()
 
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
+    @ObservationIgnored private var cancellers: [UUID: @Sendable () -> Void] = [:]
+    /// Сколько операций прямо сейчас копируют данные: пока они идут, выход из программы
+    /// оставил бы на диске незаконченную копию, поэтому он спрашивает подтверждение.
+    private(set) var runningOperations = 0
 
     var destination: VolumeInfo? { volumes.first { $0.id == destinationID } }
+    var isBusy: Bool { runningOperations > 0 }
+
+    func beginOperation(_ id: UUID, cancel: @escaping @Sendable () -> Void) {
+        guard cancellers[id] == nil else { return }
+        cancellers[id] = cancel
+        runningOperations += 1
+    }
+
+    func endOperation(_ id: UUID) {
+        guard cancellers.removeValue(forKey: id) != nil else { return }
+        runningOperations = max(0, runningOperations - 1)
+    }
+
+    func cancelEverything() {
+        for cancel in cancellers.values { cancel() }
+    }
 
     init() {
         refreshVolumes()

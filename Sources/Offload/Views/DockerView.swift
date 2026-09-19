@@ -114,6 +114,9 @@ struct DockerView: View {
                 .disabled(model.busy != nil)
             Button { confirmArchive = true } label: { Label("Архивировать на диск…", systemImage: "archivebox") }
                 .disabled(model.selection.isEmpty || model.busy != nil || app.destination == nil)
+                .help(app.destination == nil
+                      ? "Нужен подключённый внешний диск: выберите его внизу боковой панели"
+                      : "Упаковать выбранные тома на внешний диск и убрать их из Docker")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

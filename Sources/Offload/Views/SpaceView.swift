@@ -4,6 +4,7 @@ import SwiftUI
 struct SpaceView: View {
     @Environment(AppModel.self) private var app
     @State private var moveItem: SpaceItem?
+    @State private var moved = false
 
     var body: some View {
         let model = app.space
@@ -50,12 +51,16 @@ struct SpaceView: View {
         .task {
             if model.items.isEmpty, !model.isScanning { model.open(model.location, rules: app.rules) }
         }
+        // Пересчитывать список после закрытия окна имеет смысл только если перенос был:
+        // иначе «посмотрел размер и закрыл» стирало весь кеш и считало папку заново десятки секунд.
         .sheet(item: $moveItem, onDismiss: {
+            guard moved else { return }
+            moved = false
             app.space.invalidateAll()
             app.space.rescan(rules: app.rules)
             app.refreshVolumes()
         }) { item in
-            MoveSheet(source: item.url)
+            MoveSheet(source: item.url, onMoved: { moved = true })
         }
     }
 }
@@ -114,6 +119,7 @@ struct SpaceRow: View {
 
 struct MoveSheet: View {
     let source: URL
+    let onMoved: () -> Void
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @State private var model = MoveModel()
@@ -141,7 +147,7 @@ struct MoveSheet: View {
                     Button("Отменить") { model.cancel() }
                 case .ready(let plan):
                     Button("Закрыть") { dismiss() }
-                    Button("Перенести") { model.run(plan, rules: app.rules) }
+                    Button("Перенести") { model.run(plan, app: app) }
                         .keyboardShortcut(.defaultAction)
                         .disabled(!model.canRun(plan))
                 default:
@@ -151,7 +157,9 @@ struct MoveSheet: View {
         }
         .padding(22)
         .frame(width: 600)
-        .interactiveDismissDisabled(model.isBusy)
+        // Esc запрещаем только во время самого копирования; на этапе проверки закрывать окно можно.
+        .interactiveDismissDisabled({ if case .running = model.stage { return true } else { return false } }())
+        .onChange(of: model.didMove) { if model.didMove { onMoved() } }
         .task(id: app.destinationID) {
             if let volume = app.destination { model.prepare(source: source, volume: volume, rules: app.rules) }
         }

@@ -33,7 +33,19 @@ struct SizeBar: View {
 }
 
 struct Notice: View {
-    enum Kind { case info, success, warning, error }
+    enum Kind: Sendable { case info, success, warning, error }
+
+    /// Текст вместе с тем, как его показывать. Без этого неудача возврата выглядела
+    /// точно так же, как удача: одна и та же синяя плашка «info».
+    struct Message: Equatable, Sendable {
+        var kind: Kind
+        var text: String
+
+        init(_ kind: Kind, _ text: String) {
+            self.kind = kind
+            self.text = text
+        }
+    }
 
     let kind: Kind
     let text: String
@@ -41,6 +53,11 @@ struct Notice: View {
     init(_ kind: Kind, _ text: String) {
         self.kind = kind
         self.text = text
+    }
+
+    init(_ message: Message) {
+        self.kind = message.kind
+        self.text = message.text
     }
 
     var body: some View {

@@ -155,7 +155,10 @@ final class MoveModel {
     var stage: Stage = .idle
     var deleteOriginal = true
     var acceptCautions = false
+    /// Перенос действительно состоялся — только тогда раздел со списком стоит пересчитывать заново.
+    private(set) var didMove = false
     @ObservationIgnored private var token = CancelToken()
+    @ObservationIgnored private let operationID = UUID()
 
     var isBusy: Bool {
         switch stage {
@@ -180,17 +183,24 @@ final class MoveModel {
             let plan = await Task.detached(priority: .userInitiated) {
                 SafeMover(rules: rules).plan(source: source, volume: volume, isCancelled: { token.isCancelled })
             }.value
-            guard !token.isCancelled else { return }
+            // Без этой ветки отмена оставляла окно навсегда в состоянии «Проверяю…»:
+            // спиннер крутится, кнопка «Отменить» уже ничего не делает, закрыть нечем.
+            guard !token.isCancelled else {
+                stage = .failed("Проверка отменена. Ничего не скопировано и не удалено.")
+                return
+            }
             stage = .ready(plan)
         }
     }
 
-    func run(_ plan: MovePlan, rules: SafetyRules) {
+    func run(_ plan: MovePlan, app: AppModel) {
+        let rules = app.rules
         let token = CancelToken()
         self.token = token
         let deleteOriginal = deleteOriginal
         let acceptCautions = acceptCautions
         let throttle = Throttle()
+        app.beginOperation(operationID) { token.cancel() }
         stage = .running(MoveProgress(phase: .inspecting, bytesDone: 0, bytesTotal: plan.content.logicalBytes,
                                       item: plan.source.lastPathComponent))
         Task {
@@ -205,11 +215,13 @@ final class MoveModel {
                     }
                 }.value
                 stage = .done(record)
+                didMove = true
             } catch is CancellationError {
                 stage = .failed("Перенос отменён. Оригинал не тронут, незаконченная копия удалена.")
             } catch {
                 stage = .failed(error.localizedDescription)
             }
+            app.endOperation(operationID)
         }
     }
 
@@ -224,8 +236,12 @@ final class HistoryModel {
     private(set) var records: [MoveRecord] = []
     private(set) var busyID: UUID?
     private(set) var progress: MoveProgress?
-    var message: String?
+    var message: Notice.Message?
     @ObservationIgnored private var token = CancelToken()
+    @ObservationIgnored private let operationID = UUID()
+    /// Есть ли архив на диске — считается при перечитывании списка, а не в каждой строке:
+    /// иначе прокрутка и каждое обновление прогресса опрашивали бы внешний диск заново.
+    @ObservationIgnored private var availability: [UUID: Bool] = [:]
 
     func reload(volumes: [VolumeInfo]) {
         var byID: [UUID: MoveRecord] = [:]
@@ -234,11 +250,12 @@ final class HistoryModel {
             for record in Journal.records(on: volume) { byID[record.id] = record }
         }
         records = byID.values.sorted { $0.date > $1.date }
+        let fm = FileManager.default
+        availability = Dictionary(uniqueKeysWithValues: records.map { ($0.id, fm.fileExists(atPath: $0.archivedPath)) })
     }
 
-    func isArchiveAvailable(_ record: MoveRecord) -> Bool {
-        !record.restored && FileManager.default.fileExists(atPath: record.archivedPath)
-    }
+    func archiveExists(_ record: MoveRecord) -> Bool { availability[record.id] ?? false }
+    func isArchiveAvailable(_ record: MoveRecord) -> Bool { !record.restored && archiveExists(record) }
 
     func restore(_ record: MoveRecord, deleteArchive: Bool, app: AppModel) {
         let token = CancelToken()
@@ -248,9 +265,10 @@ final class HistoryModel {
         busyID = record.id
         progress = nil
         message = nil
+        app.beginOperation(operationID) { token.cancel() }
         Task {
             do {
-                _ = try await Task.detached(priority: .userInitiated) {
+                let outcome = try await Task.detached(priority: .userInitiated) {
                     try SafeMover(rules: rules).restore(record, deleteArchive: deleteArchive, isCancelled: { token.isCancelled }) { progress in
                         guard throttle.ready() else { return }
                         Task { @MainActor in
@@ -258,14 +276,19 @@ final class HistoryModel {
                         }
                     }
                 }.value
-                message = "«\(URL(fileURLWithPath: record.originalPath).lastPathComponent)» возвращён на место и сверен."
+                let name = URL(fileURLWithPath: record.originalPath).lastPathComponent
+                let text = "«\(name)» возвращён на место, каждый файл перечитан и сверен по SHA-256."
+                message = outcome.notes.isEmpty
+                    ? Notice.Message(.success, text)
+                    : Notice.Message(.warning, ([text] + outcome.notes).joined(separator: " "))
             } catch is CancellationError {
-                message = "Возврат отменён, незаконченная копия удалена."
+                message = Notice.Message(.info, "Возврат отменён, незаконченная копия удалена. Архив на диске не тронут.")
             } catch {
-                message = error.localizedDescription
+                message = Notice.Message(.error, "Вернуть не удалось: \(error.localizedDescription) Архив на диске не тронут.")
             }
             busyID = nil
             progress = nil
+            app.endOperation(operationID)
             app.refreshVolumes()
             app.space.invalidateAll()
             reload(volumes: app.volumes)
@@ -289,10 +312,23 @@ final class BackupModel {
     var error: String?
     @ObservationIgnored private var token = CancelToken()
 
-    private(set) var vaultMount: URL?
+    private(set) var vault: VaultState?
     private(set) var vaultBusy = false
     private(set) var vaultReport: SecretsReport?
-    var vaultMessage: String?
+    var vaultMessage: Notice.Message?
+    @ObservationIgnored private var vaultGeneration = UUID()
+    @ObservationIgnored private let operationID = UUID()
+
+    /// Снимок состояния контейнера на выбранном диске. Раньше оно определялось один раз
+    /// и потом врало: после извлечения диска раздел продолжал показывать «Контейнер открыт»,
+    /// а при переключении дисков — контейнер с прошлого.
+    struct VaultState: Sendable, Equatable {
+        var volumeID: String
+        var imageURL: URL
+        var exists: Bool
+        var isEncrypted: Bool
+        var mount: URL?
+    }
 
     /// Своя папка бэкапа на диске (например, уже существующая), иначе «Offload Backup» в корне.
     var destinationPath: String? { didSet { persist() } }
@@ -356,9 +392,10 @@ final class BackupModel {
         for url in panel.urls where !sources.contains(url) { sources.append(url) }
     }
 
-    func run(on volume: VolumeInfo) {
+    func run(on volume: VolumeInfo, app: AppModel) {
         let token = CancelToken()
         self.token = token
+        app.beginOperation(operationID) { token.cancel() }
         let sources = sources
         let excluded = excludedNames
         let destination = destination(on: volume)
@@ -389,18 +426,28 @@ final class BackupModel {
                 self.error = error.localizedDescription
             }
             isRunning = false
+            app.endOperation(operationID)
+            // Бэкап занял место на диске: без этого в боковой панели оставалась прежняя цифра.
+            app.refreshVolumes()
         }
     }
 
     func cancel() { token.cancel() }
 
-    /// Контейнер могли открыть вручную — тогда показываем его как открытый.
-    func detectVault(on volume: VolumeInfo) {
-        guard vaultMount == nil else { return }
-        let vault = SecretsVault(on: volume)
+    /// Перечитывает состояние контейнера: есть ли он, зашифрован ли, открыт ли сейчас.
+    /// Ответ от прошлого диска не должен перезаписать ответ нового, поэтому есть поколение.
+    func refreshVault(on volume: VolumeInfo) {
+        let generation = UUID()
+        vaultGeneration = generation
+        if vault?.volumeID != volume.id { vault = nil }
         Task {
-            let mount = await Task.detached(priority: .utility) { vault.currentMountPoint() }.value
-            if vaultMount == nil { vaultMount = mount }
+            let state = await Task.detached(priority: .utility) { () -> VaultState in
+                let vault = SecretsVault(on: volume)
+                return VaultState(volumeID: volume.id, imageURL: vault.imageURL, exists: vault.exists,
+                                  isEncrypted: vault.isEncrypted, mount: vault.currentMountPoint())
+            }.value
+            guard vaultGeneration == generation else { return }
+            vault = state
         }
     }
 
@@ -411,11 +458,12 @@ final class BackupModel {
         Task {
             do {
                 try await Task.detached(priority: .userInitiated) { try vault.create(password: password) }.value
-                vaultMessage = "Контейнер создан, шифрование AES-256 подтверждено. Откройте его, чтобы сложить ключи."
+                vaultMessage = Notice.Message(.success, "Контейнер создан, шифрование AES-256 подтверждено. Откройте его, чтобы сложить ключи.")
             } catch {
-                vaultMessage = error.localizedDescription
+                vaultMessage = Notice.Message(.error, error.localizedDescription)
             }
             vaultBusy = false
+            refreshVault(on: volume)
         }
     }
 
@@ -425,16 +473,18 @@ final class BackupModel {
         vaultMessage = nil
         Task {
             do {
-                vaultMount = try await Task.detached(priority: .userInitiated) { try vault.attach(password: password) }.value
+                _ = try await Task.detached(priority: .userInitiated) { try vault.attach(password: password) }.value
             } catch {
-                vaultMessage = error.localizedDescription
+                vaultMessage = Notice.Message(.error, error.localizedDescription)
             }
             vaultBusy = false
+            refreshVault(on: volume)
         }
     }
 
-    func fillVault(home: URL) {
-        guard let mount = vaultMount else { return }
+    func fillVault(on volume: VolumeInfo, app: AppModel) {
+        guard let state = vault, let mount = state.mount, state.isEncrypted else { return }
+        let home = app.rules.home
         let roots = sources
         vaultBusy = true
         vaultMessage = nil
@@ -443,23 +493,26 @@ final class BackupModel {
                 SecretsVault.fill(mount, home: home, projectRoots: roots)
             }.value
             vaultReport = report
-            vaultMessage = "Сложено файлов: \(report.copied), без изменений: \(report.unchanged)" + (report.problems.isEmpty ? "." : ", проблем: \(report.problems.count).")
+            let text = "Сложено файлов: \(report.copied), без изменений: \(report.unchanged)" + (report.problems.isEmpty ? "." : ", проблем: \(report.problems.count).")
+            vaultMessage = Notice.Message(report.problems.isEmpty ? .success : .warning, text)
             vaultBusy = false
+            app.refreshVolumes()
+            refreshVault(on: volume)
         }
     }
 
-    func closeVault() {
-        guard let mount = vaultMount else { return }
+    func closeVault(on volume: VolumeInfo) {
+        guard let mount = vault?.mount else { return }
         vaultBusy = true
         Task {
             do {
                 try await Task.detached { try SecretsVault.detach(mount) }.value
-                vaultMount = nil
-                vaultMessage = "Контейнер закрыт — данные внутри снова зашифрованы."
+                vaultMessage = Notice.Message(.success, "Контейнер закрыт — данные внутри снова зашифрованы.")
             } catch {
-                vaultMessage = error.localizedDescription
+                vaultMessage = Notice.Message(.error, "Закрыть не удалось: \(error.localizedDescription)")
             }
             vaultBusy = false
+            refreshVault(on: volume)
         }
     }
 }

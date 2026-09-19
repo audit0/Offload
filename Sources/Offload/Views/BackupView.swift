@@ -39,7 +39,7 @@ struct BackupView: View {
                         .labelsHidden()
                         .lineLimit(2...5)
                 }
-                Text("Эти папки восстанавливаются одной командой (npm install, pip install, сборка). Файлы с ключами и токенами — .env, *.pem, *.key, id_ed25519 — в открытый бэкап не попадают никогда: для них шифрованный контейнер ниже.")
+                Text("Эти папки восстанавливаются одной командой (npm install, pip install, сборка). Файлы с ключами и токенами — .env, .envrc, *.pem, *.key, *.p8, id_ed25519 — и папки .ssh, .gnupg, .aws целиком в открытый бэкап не попадают никогда: для них шифрованный контейнер ниже.")
                     .font(.caption).foregroundStyle(.secondary)
             } header: {
                 Text("Исключения")
@@ -62,7 +62,7 @@ struct BackupView: View {
                             Button("Остановить") { model.cancel() }
                         }
                     } else {
-                        Button { model.run(on: volume) } label: {
+                        Button { model.run(on: volume, app: app) } label: {
                             Label("Обновить бэкап", systemImage: "arrow.triangle.2.circlepath")
                         }
                         .disabled(model.sources.isEmpty)
@@ -93,7 +93,7 @@ struct BackupView: View {
         .formStyle(.grouped)
         .navigationTitle("Бэкап")
         .task(id: app.destinationID) {
-            if let volume = app.destination { model.detectVault(on: volume) }
+            if let volume = app.destination { model.refreshVault(on: volume) }
         }
     }
 
@@ -101,51 +101,65 @@ struct BackupView: View {
     private var vaultSection: some View {
         let model = app.backup
         if let volume = app.destination {
-            let vault = SecretsVault(on: volume)
             Text("Сюда складываются ~/.ssh, учётка GitHub CLI, дотфайлы с токенами и .env/.key/.pem из папок бэкапа. Шифрование AES-256. Пароль Offload не хранит: если его забыть, данные не восстановить.")
                 .font(.caption).foregroundStyle(.secondary)
-            if let mount = model.vaultMount {
-                Label("Контейнер открыт: \(mount.path)", systemImage: "lock.open.fill").foregroundStyle(.orange)
-                HStack {
-                    Button { model.fillVault(home: app.rules.home) } label: { Label("Сложить секреты", systemImage: "tray.and.arrow.down") }
-                    Button { model.closeVault() } label: { Label("Закрыть контейнер", systemImage: "lock.fill") }
-                }
-                .disabled(model.vaultBusy)
-            } else if vault.exists {
-                LabeledContent("Контейнер") {
-                    HStack(spacing: 8) {
-                        Text(vault.imageURL.lastPathComponent).lineLimit(1).truncationMode(.middle)
-                        Label(vault.isEncrypted ? "зашифрован" : "НЕ зашифрован",
-                              systemImage: vault.isEncrypted ? "lock.fill" : "exclamationmark.triangle.fill")
-                            .foregroundStyle(vault.isEncrypted ? Color.green : Color.red)
+            if let state = model.vault, state.volumeID == volume.id {
+                if let mount = state.mount {
+                    Label("Контейнер открыт: \(mount.path)", systemImage: "lock.open.fill").foregroundStyle(.orange)
+                    Text("Пока контейнер открыт, файлы внутри не защищены. Закройте его после работы.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    HStack {
+                        Button { model.fillVault(on: volume, app: app) } label: { Label("Сложить секреты", systemImage: "tray.and.arrow.down") }
+                            .disabled(!state.isEncrypted)
+                            .help(state.isEncrypted ? "Скопировать ключи и токены в контейнер" : "Этот образ не зашифрован — складывать в него ключи нельзя")
+                        Button { model.closeVault(on: volume) } label: { Label("Закрыть контейнер", systemImage: "lock.fill") }
                     }
+                    .disabled(model.vaultBusy)
+                } else if state.exists {
+                    LabeledContent("Контейнер") {
+                        HStack(spacing: 8) {
+                            Text(state.imageURL.lastPathComponent).lineLimit(1).truncationMode(.middle)
+                            Label(state.isEncrypted ? "зашифрован" : "НЕ зашифрован",
+                                  systemImage: state.isEncrypted ? "lock.fill" : "exclamationmark.triangle.fill")
+                                .foregroundStyle(state.isEncrypted ? Color.green : Color.red)
+                        }
+                    }
+                    if state.isEncrypted {
+                        SecureField("Пароль", text: $password)
+                        Button("Открыть") {
+                            model.openVault(on: volume, password: password)
+                            password = ""
+                        }
+                        .disabled(password.isEmpty || model.vaultBusy)
+                    } else {
+                        Notice(.error, "«\(state.imageURL.lastPathComponent)» — обычный образ без шифрования: пароль к нему подойдёт любой. Offload в него ничего не положит. Уберите его с диска или переименуйте, чтобы создать зашифрованный контейнер.")
+                    }
+                } else {
+                    SecureField("Пароль (не короче \(SecretsVault.minimumPasswordLength) символов)", text: $password)
+                    SecureField("Повторите пароль", text: $confirmation)
+                    if !confirmation.isEmpty, confirmation != password {
+                        Text("Пароли не совпадают").font(.caption).foregroundStyle(.red)
+                    }
+                    Button("Создать контейнер") {
+                        model.createVault(on: volume, password: password)
+                        password = ""
+                        confirmation = ""
+                    }
+                    .disabled(password.count < SecretsVault.minimumPasswordLength || password != confirmation || model.vaultBusy)
                 }
-                SecureField("Пароль", text: $password)
-                Button("Открыть") {
-                    model.openVault(on: volume, password: password)
-                    password = ""
-                }
-                .disabled(password.isEmpty || model.vaultBusy)
             } else {
-                SecureField("Пароль (не короче \(SecretsVault.minimumPasswordLength) символов)", text: $password)
-                SecureField("Повторите пароль", text: $confirmation)
-                if !confirmation.isEmpty, confirmation != password {
-                    Text("Пароли не совпадают").font(.caption).foregroundStyle(.red)
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Смотрю, есть ли контейнер на диске «\(volume.name)»…").foregroundStyle(.secondary)
                 }
-                Button("Создать контейнер") {
-                    model.createVault(on: volume, password: password)
-                    password = ""
-                    confirmation = ""
-                }
-                .disabled(password.count < SecretsVault.minimumPasswordLength || password != confirmation || model.vaultBusy)
             }
             if model.vaultBusy { ProgressView().controlSize(.small) }
-            if let message = model.vaultMessage { Notice(.info, message) }
+            if let message = model.vaultMessage { Notice(message) }
             if let report = model.vaultReport, let key = report.unprotectedKeys.first {
                 Notice(.warning, "Ключи без парольной фразы: \(report.unprotectedKeys.joined(separator: ", ")). Если такой ключ утечёт с Mac, им воспользуются сразу. Задайте пароль командой: ssh-keygen -p -f ~/.ssh/\(key)")
             }
         } else {
-            Notice(.warning, "Подключите внешний диск.")
+            Notice(.warning, "Подключите внешний диск и выберите его внизу боковой панели.")
         }
     }
 }

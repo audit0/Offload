@@ -59,15 +59,19 @@ struct HistoryView: View {
                 Divider()
             }
             if let message = model.message {
-                Notice(.info, message).padding(12)
+                Notice(message).padding(12)
             }
             if model.records.isEmpty {
                 ContentUnavailableView {
                     Label("Пока ничего не перенесено", systemImage: "tray")
                 } description: {
-                    Text("Перенесённые на внешний диск папки и файлы появятся здесь. Вернуть их можно, пока диск подключён. То, что вы перенесли раньше без Offload, можно добавить вручную.")
+                    Text(app.destination == nil
+                         ? "Перенесённые на внешний диск папки и файлы появятся здесь. Подключите диск и выберите его внизу боковой панели — тогда можно будет добавить в журнал и то, что вы перенесли раньше без Offload."
+                         : "Перенесённые на внешний диск папки и файлы появятся здесь. Вернуть их можно, пока диск подключён. То, что вы перенесли раньше без Offload, можно добавить вручную.")
                 } actions: {
-                    Button("Добавить вручную…") { showImport = true }.disabled(app.destination == nil)
+                    Button("Добавить вручную…") { showImport = true }
+                        .disabled(app.destination == nil)
+                        .help(app.destination == nil ? "Нужен подключённый внешний диск" : "")
                 }
             } else {
                 summary(model.records)
@@ -78,12 +82,14 @@ struct HistoryView: View {
                             if group.isSingle {
                                 // Отступ под шеврон групп: значки всех строк стоят в одну колонку.
                                 HistoryRow(record: group.first, home: app.rules.home, available: model.isArchiveAvailable(group.first),
+                                           archiveExists: model.archiveExists(group.first),
                                            busy: model.busyID != nil, onRestore: { pendingRestore = group.first })
                                     .padding(.leading, 40)
                                     .padding(.trailing, 16)
                             } else {
                                 HistoryGroupRow(group: group, home: app.rules.home, busy: model.busyID != nil,
-                                                isAvailable: { model.isArchiveAvailable($0) }, onRestore: { pendingRestore = $0 })
+                                                isAvailable: { model.isArchiveAvailable($0) },
+                                                archiveExists: { model.archiveExists($0) }, onRestore: { pendingRestore = $0 })
                             }
                             Divider().padding(.leading, 16)
                         }
@@ -95,7 +101,9 @@ struct HistoryView: View {
         .toolbar {
             Button { showImport = true } label: { Label("Добавить вручную…", systemImage: "plus") }
                 .disabled(app.destination == nil)
-                .help("Зарегистрировать папку или файл, уже перенесённые на внешний диск без Offload")
+                .help(app.destination == nil
+                      ? "Нужен подключённый внешний диск: выберите его внизу боковой панели"
+                      : "Зарегистрировать папку или файл, уже перенесённые на внешний диск без Offload")
         }
         .sheet(isPresented: $showImport) { ImportSheet() }
         .task(id: app.volumes.map(\.id)) { model.reload(volumes: app.volumes) }
@@ -106,7 +114,7 @@ struct HistoryView: View {
             Button("Вернуть и удалить с диска", role: .destructive) { model.restore(record, deleteArchive: true, app: app) }
             Button("Отмена", role: .cancel) {}
         } message: { record in
-            Text("«\(relativeToHome(record.originalPath, home: app.rules.home))» будет скопирован обратно и сверен по SHA-256. На Mac понадобится \(Format.bytes(record.bytes)).")
+            Text("«\(relativeToHome(record.originalPath, home: app.rules.home))» будет скопирован обратно: каждый файл перечитывается с диска и сверяется по SHA-256 со списком, записанным при переносе. На Mac понадобится \(Format.bytes(record.bytes)).")
         }
     }
 
@@ -140,6 +148,7 @@ struct HistoryGroupRow: View {
     let home: URL
     let busy: Bool
     let isAvailable: (MoveRecord) -> Bool
+    let archiveExists: (MoveRecord) -> Bool
     let onRestore: (MoveRecord) -> Void
     @State private var expanded = false
 
@@ -181,7 +190,8 @@ struct HistoryGroupRow: View {
             .buttonStyle(.plain)
             if expanded {
                 ForEach(group.records) { record in
-                    HistoryRow(record: record, home: home, available: isAvailable(record), busy: busy, onRestore: { onRestore(record) })
+                    HistoryRow(record: record, home: home, available: isAvailable(record),
+                               archiveExists: archiveExists(record), busy: busy, onRestore: { onRestore(record) })
                         .padding(.leading, 64)
                         .padding(.trailing, 16)
                 }
@@ -194,6 +204,9 @@ struct HistoryRow: View {
     let record: MoveRecord
     let home: URL
     let available: Bool
+    /// Считается один раз при перечитывании списка: опрос внешнего диска из тела строки
+    /// будил бы уснувший диск при каждой перерисовке.
+    let archiveExists: Bool
     let busy: Bool
     let onRestore: () -> Void
 
@@ -213,7 +226,7 @@ struct HistoryRow: View {
                 }
             }
             Spacer()
-            if FileManager.default.fileExists(atPath: record.archivedPath) {
+            if archiveExists {
                 Button { revealInFinder(URL(fileURLWithPath: record.archivedPath)) } label: { Image(systemName: "magnifyingglass") }
                     .help("Показать на диске")
             }

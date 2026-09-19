@@ -59,6 +59,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    /// Пока идёт копирование, выход (Cmd+Q, закрытие окна) убил бы фоновую работу на полпути,
+    /// и рядом с папкой осталась бы скрытая недокопия «.offload-partial-…» в полный размер.
+    /// Поэтому сначала спрашиваем, потом отменяем по-человечески и ждём, пока уберётся мусор.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let model, model.isBusy else { return .terminateNow }
+        let alert = NSAlert()
+        alert.messageText = "Сейчас идёт копирование"
+        alert.informativeText = "Если выйти, копирование прервётся. Данные не пострадают: оригинал не удаляется, пока копия не сверена, а незаконченная копия будет убрана."
+        alert.addButton(withTitle: "Прервать и выйти")
+        alert.addButton(withTitle: "Не выходить")
+        guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
+        model.cancelEverything()
+        Task { @MainActor in
+            // Отмена проверяется между файлами, поэтому ждём настоящего конца работы,
+            // но не бесконечно: через полминуты выходим в любом случае.
+            let deadline = Date().addingTimeInterval(30)
+            while model.isBusy, Date() < deadline {
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
 }
 
 /// Режим для разработки: `OFFLOAD_SNAPSHOT_DIR=папка Offload.app/Contents/MacOS/Offload`

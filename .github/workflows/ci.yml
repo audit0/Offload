@@ -25,5 +25,20 @@ jobs:
           OFFLOAD_SKIP_DOCKER: "1"
         run: swift run -c release OffloadChecks
 
-      - name: Сборка Offload.app
+      # Universal и упаковка — ровно то, что делает release.yml на теге.
+      # Иначе первая же проверка этих шагов случалась бы на настоящем релизе.
+      - name: Сборка Offload.app (universal)
+        env:
+          OFFLOAD_UNIVERSAL: "1"
         run: scripts/build-app.sh 0.0.0-ci
+
+      - name: Упаковка zip и dmg
+        run: scripts/make-release.sh
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: Offload-ci
+          path: |
+            dist/Offload.zip
+            dist/Offload.dmg
+          retention-days: 7
