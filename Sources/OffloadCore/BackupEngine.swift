@@ -31,10 +31,14 @@ public enum BackupEngine {
         ".turbo", ".cache", ".parcel-cache", "DerivedData", "Pods", ".gradle", ".DS_Store",
     ]
 
-    static let secretExtensions: Set<String> = ["pem", "key", "p12", "pfx", "keystore", "jks", "kdbx", "ppk"]
+    static let secretExtensions: Set<String> = ["pem", "key", "p12", "pfx", "keystore", "jks", "kdbx", "ppk", "p8", "asc", "gpg", "ovpn"]
     static let secretNames: Set<String> = [
-        ".npmrc", ".pypirc", ".netrc", ".git-credentials", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519",
+        ".npmrc", ".pypirc", ".netrc", ".git-credentials", ".envrc", ".pgpass", ".my.cnf",
+        "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "id_ed25519_sk", "credentials",
     ]
+    /// Каталоги, которые целиком состоят из ключей и учёток. Проверять только имена файлов мало:
+    /// в ~/.aws лежит credentials без расширения, в .gnupg — связка ключей.
+    static let secretFolders: Set<String> = [".ssh", ".gnupg", ".aws", ".kube", ".azure", ".gcloud"]
     static let templateSuffixes = [".example", ".sample", ".template", ".dist"]
 
     /// Файлы с ключами и токенами: в открытый бэкап не попадают, только в шифрованный контейнер.
@@ -45,6 +49,29 @@ public enum BackupEngine {
         }
         if secretNames.contains(lower) { return true }
         return secretExtensions.contains((lower as NSString).pathExtension)
+    }
+
+    public static func isSecretFolder(_ name: String) -> Bool { secretFolders.contains(name.lowercased()) }
+
+    /// Секрет ли объект по пути относительно корня бэкапа: по каталогу, по имени,
+    /// а у файлов без расширения — по первым байтам («-----BEGIN … PRIVATE KEY»).
+    /// Ключ с именем вроде `deploy_key` иначе уехал бы в открытый бэкап.
+    public static func isSecretPath(_ relative: String, in root: URL) -> Bool {
+        let parts = relative.split(separator: "/").map(String.init)
+        if parts.dropLast().contains(where: isSecretFolder) { return true }
+        guard let name = parts.last else { return false }
+        if isSecret(name) { return true }
+        guard (name as NSString).pathExtension.isEmpty, !name.hasPrefix(".") else { return false }
+        return looksLikePrivateKey(root.appendingPathComponent(relative))
+    }
+
+    static func looksLikePrivateKey(_ url: URL) -> Bool {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              ((attributes[.size] as? NSNumber)?.int64Value ?? .max) < 64 * 1024,
+              let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        guard let data = (try? handle.read(upToCount: 128)) ?? nil else { return false }
+        return String(decoding: data, as: UTF8.self).contains("PRIVATE KEY")
     }
 
     public static func run(sources: [URL], destination: URL, excludedNames: Set<String> = defaultExcludedNames,
@@ -72,7 +99,12 @@ public enum BackupEngine {
             let walk = try TreeWalker.walk(source, strict: false, exclude: { relative, isDirectory in
                 let name = (relative as NSString).lastPathComponent
                 if excludedNames.contains(name) { return true }
-                if !isDirectory, isSecret(name) {
+                if isDirectory {
+                    guard isSecretFolder(name) else { return false }
+                    report.secretsSkipped.append(rootName + "/" + relative + "/")
+                    return true
+                }
+                if isSecretPath(relative, in: source) {
                     report.secretsSkipped.append(rootName + "/" + relative)
                     return true
                 }

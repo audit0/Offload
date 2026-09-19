@@ -1,4 +1,37 @@
+import Darwin
 import Foundation
+
+/// Разворачивание символических ссылок в пути, которого ещё может не быть.
+///
+/// `URL.resolvingSymlinksInPath()` на такой путь отвечает им же: Foundation разворачивает
+/// ссылки, только если путь существует целиком. А возврат из журнала пишет ровно туда,
+/// где файла ещё нет, — и проверки пути смотрели бы на ссылку, а не на то, куда она ведёт.
+public enum Paths {
+    public static func resolve(_ url: URL) -> URL {
+        var tail: [String] = []
+        var current = url.standardizedFileURL
+        while true {
+            if let real = real(current.path) {
+                // realpath и Foundation расходятся на firmlink’ах macOS: для одного и того же
+                // места realpath отвечает «/var/…», а resolvingSymlinksInPath — «/private/var/…».
+                // Приводим к виду Foundation, иначе путь и домашняя папка перестанут совпадать.
+                var result = URL(fileURLWithPath: real).resolvingSymlinksInPath()
+                for part in tail.reversed() { result.appendPathComponent(part) }
+                return result.standardizedFileURL
+            }
+            let parent = current.deletingLastPathComponent().standardizedFileURL
+            guard parent.path != current.path, current.path != "/" else { return url.standardizedFileURL }
+            tail.append(current.lastPathComponent)
+            current = parent
+        }
+    }
+
+    static func real(_ path: String) -> String? {
+        guard let buffer = realpath(path, nil) else { return nil }
+        defer { free(buffer) }
+        return String(cString: buffer)
+    }
+}
 
 /// Можно ли трогать объект.
 public enum Verdict: Hashable, Sendable {
@@ -27,7 +60,9 @@ public struct SafetyRules: Sendable {
     public var activeWithin: TimeInterval
 
     public init(home: URL = FileManager.default.homeDirectoryForCurrentUser, activeDays: Double = 7) {
-        self.home = home.resolvingSymlinksInPath().standardizedFileURL
+        // Домашняя папка и проверяемый путь разворачиваются одинаково, иначе обычный путь
+        // выглядел бы лежащим вне дома.
+        self.home = Paths.resolve(home)
         self.activeWithin = activeDays * 86_400
     }
 
@@ -55,7 +90,7 @@ public struct SafetyRules: Sendable {
 
     /// Быстрая проверка только по пути, без чтения содержимого.
     public func pathVerdict(for url: URL) -> Verdict {
-        let path = url.resolvingSymlinksInPath().standardizedFileURL.path
+        let path = Paths.resolve(url).path
         let homePath = home.path
         let parts: [String]
         if path.hasPrefix(homePath + "/") {
@@ -185,16 +220,22 @@ extension SafetyRules {
         if let limit = volume.maxFileSize, content.largestFile > limit {
             check.blockers.append("\(volume.fsDisplayName) не принимает файлы больше 4 ГБ, а самый большой здесь — \(Format.bytes(content.largestFile)).")
         }
-        let data = volume.keepsSparseFiles ? content.allocatedBytes : content.logicalBytes
-        // На exFAT каждый файл округляется до кластера, и на время переноса рядом лежит ._-файл.
+        // Копия пишется обычным чтением и записью, дыры в разрежённых файлах не переносятся:
+        // на приёмнике даже APFS займёт полный размер, поэтому место считается по логическому.
         let overhead = volume.createsAppleDouble ? Int64(content.files + content.directories) * volume.blockSize * 2 : 0
         let margin: Int64 = 512 * 1024 * 1024
-        check.requiredBytes = data + overhead + margin
+        check.requiredBytes = content.logicalBytes + overhead + margin
         if volume.availableBytes < check.requiredBytes {
             check.blockers.append("На «\(volume.name)» свободно \(Format.bytes(volume.availableBytes)), а нужно около \(Format.bytes(check.requiredBytes)).")
         }
-        if content.sparseFiles > 0, !volume.keepsSparseFiles {
-            check.notes.append("Разрежённые или сжатые файлы (\(content.sparseFiles)) займут на \(volume.fsDisplayName) полный размер: \(Format.bytes(content.logicalBytes)) вместо \(Format.bytes(content.allocatedBytes)).")
+        if content.sparseFiles > 0 {
+            check.notes.append("Разрежённые или сжатые файлы (\(content.sparseFiles)) займут на диске полный размер: \(Format.bytes(content.logicalBytes)) вместо \(Format.bytes(content.allocatedBytes)).")
+        }
+        if content.hardLinkedFiles > 0 {
+            check.notes.append("Файлов, на которые ведёт несколько имён (жёсткие ссылки): \(content.hardLinkedFiles). В копии каждое имя станет отдельным файлом: места займёт больше, а правка одного больше не будет видна в остальных.")
+        }
+        if content.taggedFiles > 0 {
+            check.notes.append("У \(content.taggedFiles) объектов есть метки Finder, комментарии или другие расширенные атрибуты. Данные и права копируются, а эти пометки — нет: после возврата их не будет.")
         }
         if volume.createsAppleDouble {
             check.notes.append("macOS создаст рядом служебные файлы ._* — Offload удалит их после сверки.")

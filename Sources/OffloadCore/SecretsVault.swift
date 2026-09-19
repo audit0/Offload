@@ -54,14 +54,26 @@ public struct SecretsVault: Sendable {
     public static func existingEncryptedBundle(in root: URL) -> URL? {
         let fm = FileManager.default
         let items = (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
-        return items.filter { $0.pathExtension == "sparsebundle" && fm.fileExists(atPath: $0.appendingPathComponent("token").path) }
+        return items.filter { $0.pathExtension == "sparsebundle" && hasEncryptionHeader($0) }
             .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
             .first
     }
 
     public var exists: Bool { FileManager.default.fileExists(atPath: imageURL.path) }
-    /// У зашифрованного sparsebundle внутри есть файл token с ключевым материалом, у обычного — нет.
-    public var isEncrypted: Bool { FileManager.default.fileExists(atPath: imageURL.appendingPathComponent("token").path) }
+    public var isEncrypted: Bool { Self.hasEncryptionHeader(imageURL) }
+
+    /// У зашифрованного sparsebundle внутри лежит token — заголовок CDSA с ключевым материалом,
+    /// он начинается с «encrcdsa». Одного имени файла мало: пустой `token`, подложенный в обычный
+    /// образ, раньше выдавал его за зашифрованный, а подходил к такому образу любой пароль —
+    /// и ключи легли бы на диск открытым текстом.
+    ///
+    /// `hdiutil imageinfo` для этой проверки не годится: на зашифрованном образе он спрашивает
+    /// пароль прямо у терминала и висит, даже когда stdin закрыт.
+    public static func hasEncryptionHeader(_ image: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: image.appendingPathComponent("token")) else { return false }
+        defer { try? handle.close() }
+        return ((try? handle.read(upToCount: 8)) ?? nil) == Data("encrcdsa".utf8)
+    }
 
     public func create(password: String, sizeGB: Int = 4) throws {
         guard password.count >= Self.minimumPasswordLength else { throw VaultError.weakPassword }
@@ -73,6 +85,8 @@ public struct SecretsVault: Sendable {
     }
 
     public func attach(password: String) throws -> URL {
+        // Открывать незашифрованный образ как хранилище ключей нельзя: он примет любой пароль.
+        guard isEncrypted else { throw VaultError.notEncrypted }
         let result = try Runner.run("hdiutil", ["attach", "-stdinpass", "-nobrowse", "-owners", "on", "-plist", imageURL.path],
                                     stdin: Data(password.utf8), timeout: 180)
         guard result.succeeded else {
@@ -171,7 +185,7 @@ public struct SecretsVault: Sendable {
                 isDirectory && BackupEngine.defaultExcludedNames.contains((relative as NSString).lastPathComponent)
             }, isCancelled: isCancelled) else { continue }
             var secrets: [TreeEntry] = []
-            for entry in walk.entries where entry.isFile && BackupEngine.isSecret((entry.relativePath as NSString).lastPathComponent) {
+            for entry in walk.entries where entry.isFile && BackupEngine.isSecretPath(entry.relativePath, in: root) {
                 if let owner = claimed[entry.relativePath], owner != root.path {
                     report.problems.append("\(root.lastPathComponent)/\(entry.relativePath): такой же путь уже есть в «\((owner as NSString).lastPathComponent)» — пропущен, чтобы не затереть")
                     continue

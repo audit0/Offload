@@ -221,6 +221,50 @@ section("Копирование со сверкой") {
 
     let list = VerifiedCopy.checksumList(["": "ab", "x\ny": "cd"], rootName: "item")
     check(list.contains("ab  item\n") && list.contains("\\cd  item/x\\ny"), "имена с переводом строки экранируются для shasum")
+
+    let sample = ["": String(repeating: "a", count: 64), "dir/f.txt": String(repeating: "b", count: 64),
+                  "x\ny": String(repeating: "c", count: 64)]
+    let parsed = VerifiedCopy.parseChecksumList(VerifiedCopy.checksumList(sample, rootName: "item"), rootName: "item")
+    check(parsed == sample, "список контрольных сумм читается обратно, включая имя с переводом строки")
+    check(VerifiedCopy.parseChecksumList("мусор\n", rootName: "item") == nil, "чужой файл вместо списка сумм не разбирается")
+}
+
+section("Финдер не срывает перенос") {
+    let source = scratch.appendingPathComponent("ds-src", isDirectory: true)
+    try write("data", to: source.appendingPathComponent("sub/file.txt"))
+    let entries = try TreeWalker.walk(source, strict: true).entries
+    // Finder пишет .DS_Store, когда человек просто открывает папку и меняет вид окна.
+    try write("", to: source.appendingPathComponent("sub/.DS_Store"))
+    check({ () -> Bool in
+        do { try VerifiedCopy.assertUnchanged(entries, at: source); return true } catch { return false }
+    }(), "появление .DS_Store не считается изменением источника")
+    try write("new", to: source.appendingPathComponent("sub/other.txt"))
+    expectError("настоящий новый файл в папке по-прежнему останавливает перенос",
+                { try VerifiedCopy.assertUnchanged(entries, at: source) },
+                matching: { if case CopyError.changedDuringCopy = $0 { return true }; return false })
+}
+
+section("Журнал") {
+    let manifestVolume = VolumeInfo(mountPoint: scratch.appendingPathComponent("journal-disk", isDirectory: true), name: "J",
+                                    fsType: "apfs", totalBytes: 1, availableBytes: 1, blockSize: 4096,
+                                    isReadOnly: false, isInternal: false)
+    let manifest = Journal.manifestURL(on: manifestVolume)
+    let archived = manifestVolume.mountPoint.appendingPathComponent("Offload/Downloads/one").path
+    let first = MoveRecord(originalPath: scratch.appendingPathComponent("j-home/Downloads/one").path,
+                           archivedPath: archived, volumeName: "J", files: 1, bytes: 10)
+    try Journal.save(first, volume: manifestVolume)
+    check(Journal.records(on: manifestVolume).count == 1, "запись попала в журнал на диске")
+
+    try write("{это не журнал", to: manifest)
+    let second = MoveRecord(originalPath: scratch.appendingPathComponent("j-home/Downloads/two").path,
+                            archivedPath: manifestVolume.mountPoint.appendingPathComponent("Offload/Downloads/two").path,
+                            volumeName: "J", files: 1, bytes: 10)
+    try Journal.save(second, volume: manifestVolume)
+    let afterBreak = Journal.records(on: manifestVolume)
+    check(afterBreak.count == 2, "испорченный журнал восстановлен из второй копии, а не начат с нуля (\(afterBreak.count))")
+    let brokenCopies = ((try? fm.contentsOfDirectory(atPath: manifest.deletingLastPathComponent().path)) ?? [])
+        .filter { $0.hasPrefix("manifest.json.broken-") }
+    check(brokenCopies.count == 1, "испорченный файл отложен рядом, а не затёрт (\(brokenCopies))")
 }
 
 section("Размеры папок") {
@@ -242,16 +286,31 @@ section("Бэкап") {
     check(BackupEngine.isSecret("id_ed25519") && BackupEngine.isSecret("server.KEY") && BackupEngine.isSecret("vault.kdbx"),
           "ключи и базы паролей — секреты")
     check(!BackupEngine.isSecret("id_ed25519.pub") && !BackupEngine.isSecret("README.md"), "публичный ключ и обычные файлы — не секреты")
+    check(BackupEngine.isSecret(".envrc") && BackupEngine.isSecret("key.p8") && BackupEngine.isSecret("credentials"),
+          ".envrc, ключ Apple .p8 и файл credentials — секреты")
+    check(BackupEngine.isSecretFolder(".ssh") && BackupEngine.isSecretFolder(".gnupg") && BackupEngine.isSecretFolder(".aws"),
+          "каталоги с ключами распознаются целиком")
+
+    let keyProbe = scratch.appendingPathComponent("key-probe", isDirectory: true)
+    try write("-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n", to: keyProbe.appendingPathComponent("deploy_key"))
+    try write("just text\n", to: keyProbe.appendingPathComponent("NOTES"))
+    check(BackupEngine.isSecretPath("deploy_key", in: keyProbe), "ключ без расширения узнаётся по первым байтам")
+    check(!BackupEngine.isSecretPath("NOTES", in: keyProbe), "обычный файл без расширения секретом не считается")
+    check(BackupEngine.isSecretPath(".ssh/config", in: keyProbe), "файл внутри .ssh — секрет по каталогу")
 
     let project = scratch.appendingPathComponent("proj", isDirectory: true)
     try write("code", to: project.appendingPathComponent("main.swift"))
     try write("TOKEN=1", to: project.appendingPathComponent(".env"))
     try write("dep", to: project.appendingPathComponent("node_modules/lib/index.js"))
+    try write("export AWS_SECRET_ACCESS_KEY=1", to: project.appendingPathComponent(".envrc"))
+    try write("key", to: project.appendingPathComponent(".ssh/id_work"))
     let backup = scratch.appendingPathComponent("backup", isDirectory: true)
     let first = try BackupEngine.run(sources: [project], destination: backup)
     check(fm.fileExists(atPath: backup.appendingPathComponent("proj/main.swift").path), "код попал в бэкап")
     check(!fm.fileExists(atPath: backup.appendingPathComponent("proj/.env").path), ".env не попал в открытый бэкап")
-    check(first.secretsSkipped == ["proj/.env"], "пропущенный секрет отмечен в отчёте")
+    check(!fm.fileExists(atPath: backup.appendingPathComponent("proj/.envrc").path), ".envrc не попал в открытый бэкап")
+    check(!fm.fileExists(atPath: backup.appendingPathComponent("proj/.ssh").path), "папка .ssh внутри проекта не попала в открытый бэкап")
+    check(Set(first.secretsSkipped) == ["proj/.env", "proj/.envrc", "proj/.ssh/"], "пропущенные секреты отмечены в отчёте (\(first.secretsSkipped))")
     check(!fm.fileExists(atPath: backup.appendingPathComponent("proj/node_modules").path), "node_modules исключены")
     let second = try BackupEngine.run(sources: [project], destination: backup)
     check(second.copied == 0 && second.unchanged >= 1, "повторный бэкап ничего не копирует заново")
@@ -259,6 +318,30 @@ section("Бэкап") {
     check(try BackupEngine.run(sources: [project], destination: backup).copied == 1, "изменённый файл копируется")
     expectError("бэкап внутрь копируемой папки запрещён",
                 { _ = try BackupEngine.run(sources: [project], destination: project.appendingPathComponent("backup")) })
+}
+
+section("Место на диске назначения") {
+    var content = ContentReport()
+    content.files = 1
+    content.directories = 1
+    content.logicalBytes = 200 << 30
+    content.allocatedBytes = 20 << 30
+    content.sparseFiles = 1
+    let apfs = VolumeInfo(mountPoint: URL(fileURLWithPath: "/Volumes/Probe"), name: "Probe", fsType: "apfs",
+                          totalBytes: 500 << 30, availableBytes: 60 << 30, blockSize: 4096, isReadOnly: false, isInternal: false)
+    let sparse = SafetyRules.checkDestination(apfs, sourceVolume: nil, content: content)
+    // Копия пишется обычной записью, дыры не переносятся: на приёмнике будет полный размер.
+    check(!sparse.isOK, "разрежённый файл на 200 ГБ не пускают на диск, где свободно 60 ГБ")
+    check(sparse.notes.contains { $0.contains("полный размер") }, "про разрежённые файлы сказано и на APFS")
+
+    var tagged = ContentReport()
+    tagged.files = 2
+    tagged.logicalBytes = 1 << 20
+    tagged.taggedFiles = 2
+    tagged.hardLinkedFiles = 3
+    let notes = SafetyRules.checkDestination(apfs, sourceVolume: nil, content: tagged).notes.joined(separator: " ")
+    check(notes.contains("метки Finder"), "о потере меток Finder предупреждают заранее")
+    check(notes.contains("жёсткие ссылки"), "о разрыве жёстких ссылок предупреждают заранее")
 }
 
 section("Docker: имена и размеры") {
@@ -340,6 +423,16 @@ if env["OFFLOAD_SKIP_INTEGRATION"] != "1" {
         let shasum = try Runner.run("shasum", ["-a", "256", "-c", target.lastPathComponent + ".sha256"],
                                     currentDirectory: target.deletingLastPathComponent())
         check(shasum.succeeded, "архив проходит shasum -c: \(shasum.stderr)")
+
+        // Архив испортился на диске между переносом и возвратом.
+        let archivedFile = target.appendingPathComponent("data/big.txt")
+        let goodContent = try String(contentsOf: archivedFile, encoding: .utf8)
+        try write(String(repeating: "y", count: goodContent.count), to: archivedFile)
+        expectError("испорченный архив не возвращается молча", { _ = try mover.restore(record, deleteArchive: true) },
+                    matching: { if case MoveError.contentMismatch = $0 { return true }; return false })
+        check(fm.fileExists(atPath: target.path), "после отказа архив остался на диске")
+        check(!fm.fileExists(atPath: source.path), "после отказа на месте оригинала ничего не создано")
+        try write(goodContent, to: archivedFile)
         check(Journal.records(on: volume).contains { $0.id == record.id }, "перенос записан в журнал на диске")
 
         expectError("журнал с путём наружу отклоняется", {
@@ -357,6 +450,20 @@ if env["OFFLOAD_SKIP_INTEGRATION"] != "1" {
             bad.originalPath = rules.home.appendingPathComponent("Library/Containers/com.docker.docker/x").path
             _ = try mover.validate(bad)
         })
+        // Путь возврата ведёт в несуществующее место, и Foundation ссылки в нём не разворачивает:
+        // без своей проверки такая запись из журнала записала бы файл в автозапуск.
+        try fm.createDirectory(at: rules.home.appendingPathComponent("Library/LaunchAgents"), withIntermediateDirectories: true)
+        let trapParent = rules.home.appendingPathComponent("Documents/Фото", isDirectory: true)
+        try fm.createDirectory(at: trapParent, withIntermediateDirectories: true)
+        try fm.createSymbolicLink(atPath: trapParent.appendingPathComponent("old").path,
+                                  withDestinationPath: rules.home.appendingPathComponent("Library").path)
+        expectError("возврат через подложенную ссылку в ~/Library отклоняется", {
+            var bad = record
+            bad.originalPath = trapParent.appendingPathComponent("old/LaunchAgents/com.evil.plist").path
+            _ = try mover.validate(bad)
+        })
+        check(!fm.fileExists(atPath: rules.home.appendingPathComponent("Library/LaunchAgents/com.evil.plist").path),
+              "в ~/Library/LaunchAgents ничего не появилось")
 
         // Подделанный архив: ссылка наружу и запись в .modes.json через неё.
         let victim = scratch.appendingPathComponent("victim-dir", isDirectory: true)
@@ -378,15 +485,21 @@ if env["OFFLOAD_SKIP_INTEGRATION"] != "1" {
         // Перенос, сделанный без Offload: папка уже лежит на диске в произвольном месте.
         let manual = mount.appendingPathComponent("Archive-2026/old-stuff", isDirectory: true)
         try write("manual", to: manual.appendingPathComponent("file.txt"))
+        try write("#!/bin/sh\necho hi\n", to: manual.appendingPathComponent("tool.sh"))
         let imported = try mover.importRecord(archived: manual, original: rules.home.appendingPathComponent("Downloads/old-stuff"),
                                               originalRemoved: true, note: "вручную")
         check(imported.files >= 1 && imported.volumeName == volume.name && imported.note == "вручную", "ручная запись посчитана и привязана к диску")
         check(Journal.records(on: volume).contains { $0.id == imported.id }, "ручная запись сохранена в журнал на диске")
         let emptyPlace = rules.home.appendingPathComponent("Downloads/old-stuff", isDirectory: true)
         try write("", to: emptyPlace.appendingPathComponent(".DS_Store"))
-        let back = try mover.restore(imported, deleteArchive: false)
+        let back = try mover.restore(imported, deleteArchive: false).record
         check(back.restored && (try? String(contentsOf: rules.home.appendingPathComponent("Downloads/old-stuff/file.txt"), encoding: .utf8)) == "manual",
               "ручная запись возвращается на место пустой папки со сверкой")
+        // У ручного переноса нет списка прав, а exFAT их не хранит: без своей ветки всё вернулось бы с 600.
+        check(mode(rules.home.appendingPathComponent("Downloads/old-stuff/tool.sh")) == 0o755,
+              "скрипт из ручного переноса вернулся исполняемым (\(mode(rules.home.appendingPathComponent("Downloads/old-stuff/tool.sh")) ?? -1))")
+        check(mode(rules.home.appendingPathComponent("Downloads/old-stuff/file.txt")) == 0o644,
+              "обычный файл из ручного переноса вернулся с обычными правами")
         let busyPlace = rules.home.appendingPathComponent("Downloads/busy", isDirectory: true)
         try write("keep me", to: busyPlace.appendingPathComponent("own.txt"))
         let clashing = try mover.importRecord(archived: manual, original: busyPlace, originalRemoved: true)
@@ -400,7 +513,7 @@ if env["OFFLOAD_SKIP_INTEGRATION"] != "1" {
             _ = try mover.importRecord(archived: mount.appendingPathComponent("nope"), original: rules.home.appendingPathComponent("Downloads/nope"), originalRemoved: true)
         })
 
-        let restored = try mover.restore(record, deleteArchive: true)
+        let restored = try mover.restore(record, deleteArchive: true).record
         check(mode(victim.appendingPathComponent("victim.txt")) == 0o600, "подделанный архив не изменил права файла вне папки")
         check(restored.restored, "возврат отмечен")
         check(try String(contentsOf: source.appendingPathComponent("data/big.txt"), encoding: .utf8).count == 300_000, "данные вернулись")
@@ -423,10 +536,24 @@ if env["OFFLOAD_SKIP_INTEGRATION"] != "1" {
         check(vault.currentMountPoint()?.path == mount.path, "открытый контейнер находится по точке монтирования")
         let manualVault = scratch.appendingPathComponent("disk-root/Secrets.sparsebundle", isDirectory: true)
         try fm.createDirectory(at: manualVault.appendingPathComponent("bands"), withIntermediateDirectories: true)
-        try write("x", to: manualVault.appendingPathComponent("token"))
+        // Заголовок настоящего зашифрованного образа начинается с «encrcdsa».
+        try write("encrcdsa\u{0}\u{0}", to: manualVault.appendingPathComponent("token"))
         try fm.createDirectory(at: scratch.appendingPathComponent("disk-root/Plain.sparsebundle"), withIntermediateDirectories: true)
         check(SecretsVault.existingEncryptedBundle(in: scratch.appendingPathComponent("disk-root"))?.standardizedFileURL.path == manualVault.standardizedFileURL.path,
               "созданный вручную зашифрованный контейнер находится, незашифрованный — нет")
+
+        // Пустой файл token, подложенный в обычный образ: раньше он выдавал образ за зашифрованный,
+        // а пароль к такому образу подходит любой — ключи легли бы на диск открытым текстом.
+        let disguised = scratch.appendingPathComponent("disk-root/Archive.sparsebundle", isDirectory: true)
+        try fm.createDirectory(at: disguised, withIntermediateDirectories: true)
+        try write("", to: disguised.appendingPathComponent("token"))
+        let disguisedVault = SecretsVault(imageURL: disguised)
+        check(!disguisedVault.isEncrypted, "пустой token не выдаёт обычный образ за зашифрованный")
+        expectError("незашифрованный образ не открывается как контейнер",
+                    { _ = try disguisedVault.attach(password: "any-password-12345") },
+                    matching: { ($0 as? VaultError) == .notEncrypted })
+        check(SecretsVault.existingEncryptedBundle(in: scratch.appendingPathComponent("disk-root"))?.lastPathComponent == "Secrets.sparsebundle",
+              "подделка не выбирается как контейнер диска, хотя стоит раньше по алфавиту")
 
         let home = scratch.appendingPathComponent("home-vault", isDirectory: true)
         try fm.createDirectory(at: home.appendingPathComponent(".ssh"), withIntermediateDirectories: true)
@@ -438,6 +565,8 @@ if env["OFFLOAD_SKIP_INTEGRATION"] != "1" {
         try write("KEY", to: app.appendingPathComponent("config/server.key"))
         try write("API_KEY=", to: app.appendingPathComponent(".env.example"))
         try write("x", to: app.appendingPathComponent("node_modules/pkg/.env"))
+        try write("export AWS_SECRET_ACCESS_KEY=1", to: app.appendingPathComponent(".envrc"))
+        try write("-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n", to: app.appendingPathComponent("deploy_key"))
 
         try write("моя заметка", to: mount.appendingPathComponent("КАК-ВОССТАНОВИТЬ.txt"))
         try write("kdbx", to: home.appendingPathComponent("Downloads/base.kdbx"))
@@ -450,6 +579,8 @@ if env["OFFLOAD_SKIP_INTEGRATION"] != "1" {
         check(fm.fileExists(atPath: mount.appendingPathComponent("project-secrets/app/config/server.key").path), "ключ из подпапки на месте")
         check(!fm.fileExists(atPath: mount.appendingPathComponent("project-secrets/app/.env.example").path), "шаблон .env.example не считается секретом")
         check(!fm.fileExists(atPath: mount.appendingPathComponent("project-secrets/app/node_modules").path), "node_modules пропущены")
+        check(fm.fileExists(atPath: mount.appendingPathComponent("project-secrets/app/.envrc").path), ".envrc проекта попал в контейнер")
+        check(fm.fileExists(atPath: mount.appendingPathComponent("project-secrets/app/deploy_key").path), "ключ без расширения попал в контейнер")
         check(report.unprotectedKeys == ["id_check"], "найден ключ без парольной фразы \(report.unprotectedKeys)")
         check(fm.fileExists(atPath: mount.appendingPathComponent("keepass/base.kdbx").path), "база KeePass из Загрузок на месте")
         check((try? String(contentsOf: mount.appendingPathComponent("КАК-ВОССТАНОВИТЬ.txt"), encoding: .utf8)) == "моя заметка",

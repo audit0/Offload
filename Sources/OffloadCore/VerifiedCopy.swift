@@ -247,9 +247,20 @@ public enum VerifiedCopy {
     }
 
     /// Проверяет, что источник не менялся с момента обхода: размеры и даты файлов,
-    /// а у каталогов дата изменения (она меняется, когда внутри что-то добавили или удалили).
-    public static func assertUnchanged(_ entries: [TreeEntry], at source: URL) throws {
+    /// а у каталогов — их состав.
+    ///
+    /// Дату каталога сверять нельзя: Finder меняет её, просто записав рядом свой `.DS_Store`
+    /// (достаточно открыть папку и поменять вид окна). Раньше такой пустяк обрывал
+    /// многочасовой перенос и выбрасывал уже проверенную копию, поэтому у каталога
+    /// при изменившейся дате перечитывается список имён — важно только это.
+    /// - Parameter ignoring: имена, появление и исчезновение которых изменением не считается.
+    public static func assertUnchanged(_ entries: [TreeEntry], at source: URL, ignoring: Set<String> = [".DS_Store"]) throws {
         let fm = FileManager.default
+        var children: [String: Set<String>] = [:]
+        for entry in entries where !entry.relativePath.isEmpty {
+            let parent = (entry.relativePath as NSString).deletingLastPathComponent
+            children[parent, default: []].insert((entry.relativePath as NSString).lastPathComponent)
+        }
         for entry in entries {
             let name = displayName(source, entry)
             guard let attributes = try? fm.attributesOfItem(atPath: url(source, entry).path) else {
@@ -261,7 +272,12 @@ public enum VerifiedCopy {
             case .file:
                 if size != entry.size || modified != entry.modified { throw CopyError.changedDuringCopy(name) }
             case .directory:
-                if modified != entry.modified { throw CopyError.changedDuringCopy(name) }
+                if modified != entry.modified {
+                    guard let names = try? TreeWalker.listDirectory(url(source, entry).path),
+                          Set(names).subtracting(ignoring) == (children[entry.relativePath] ?? []).subtracting(ignoring) else {
+                        throw CopyError.changedDuringCopy(name)
+                    }
+                }
             case .symlink(let target):
                 if (try? fm.destinationOfSymbolicLink(atPath: url(source, entry).path)) != target { throw CopyError.changedDuringCopy(name) }
             }
@@ -285,6 +301,42 @@ public enum VerifiedCopy {
                   ((attributes[.size] as? NSNumber)?.int64Value ?? .max) < 1 << 20 else { continue }
             try? fm.removeItem(at: sidecar)
         }
+    }
+
+    /// Разбирает список, записанный `checksumList`. `nil` — файл не в том формате.
+    public static func parseChecksumList(_ text: String, rootName: String) -> [String: String]? {
+        var hashes: [String: String] = [:]
+        for line in text.split(separator: "\n") {
+            var body = Substring(line)
+            let escaped = body.hasPrefix("\\")
+            if escaped { body = body.dropFirst() }
+            guard let separator = body.range(of: "  ") else { return nil }
+            let hash = String(body[body.startIndex..<separator.lowerBound])
+            guard hash.count == 64, hash.allSatisfy(\.isHexDigit) else { return nil }
+            var path = String(body[separator.upperBound...])
+            if escaped { path = unescape(path) }
+            if path == rootName {
+                hashes[""] = hash
+            } else if path.hasPrefix(rootName + "/") {
+                hashes[String(path.dropFirst(rootName.count + 1))] = hash
+            } else {
+                return nil
+            }
+        }
+        return hashes
+    }
+
+    private static func unescape(_ text: String) -> String {
+        var result = ""
+        var iterator = text.makeIterator()
+        while let character = iterator.next() {
+            guard character == "\\", let next = iterator.next() else {
+                result.append(character)
+                continue
+            }
+            result.append(next == "n" ? "\n" : next)
+        }
+        return result
     }
 
     /// Список в формате `shasum -a 256 -c`: пути относительно папки, где лежит перенесённый объект.

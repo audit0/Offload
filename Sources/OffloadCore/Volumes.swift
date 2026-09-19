@@ -31,6 +31,8 @@ public struct VolumeInfo: Hashable, Sendable, Identifiable {
     /// Такие ссылки работают на Mac, но другие системы могут увидеть вместо них обычные файлы.
     public var emulatesSymlinks: Bool { ["exfat", "msdos"].contains(fsType) }
     public var keepsSparseFiles: Bool { fsType == "apfs" }
+    /// exFAT, FAT и NTFS прав доступа не хранят и показывают всем объектам одинаковые.
+    public var keepsPermissions: Bool { ["apfs", "hfs"].contains(fsType) }
     /// FAT32 не принимает файлы больше 4 ГБ.
     public var maxFileSize: Int64? { fsType == "msdos" ? 4 * 1024 * 1024 * 1024 - 1 : nil }
     /// Там, где нет расширенных атрибутов, macOS создаёт рядом файлы ._*.

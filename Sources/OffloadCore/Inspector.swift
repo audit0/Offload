@@ -11,6 +11,10 @@ public struct ContentReport: Sendable, Equatable {
     public var symlinkExamples: [String] = []
     /// Разрежённые или сжатые файлы: на диске занимают меньше, чем весят.
     public var sparseFiles = 0
+    /// Файлы, на которые ведёт больше одного имени (жёсткие ссылки): копия сделает из них независимые файлы.
+    public var hardLinkedFiles = 0
+    /// Объекты с расширенными атрибутами, кроме служебных: метки Finder, комментарии, теги.
+    public var taggedFiles = 0
     public var largestFile: Int64 = 0
     public var newestModification: Date?
     /// Первый найденный пакет, зарегистрированный в приложении (виртуалка UTM и т. п.).
@@ -26,6 +30,34 @@ public struct ContentReport: Sendable, Equatable {
 }
 
 public enum Inspector {
+    /// Атрибуты, которые macOS ставит сама и о потере которых человеку говорить незачем.
+    static let routineXattrs: Set<String> = [
+        "com.apple.quarantine", "com.apple.provenance", "com.apple.macl",
+        "com.apple.lastuseddate#PS", "com.apple.metadata:kMDLabel_", "com.apple.TextEncoding",
+    ]
+
+    /// Есть ли у объекта расширенные атрибуты, которые человек заметит: метки, комментарии,
+    /// ресурсная вилка. Один вызов listxattr, содержимое атрибутов не читается.
+    static func hasNotableXattrs(_ path: String) -> Bool {
+        var buffer = [CChar](repeating: 0, count: 4096)
+        let length = listxattr(path, &buffer, buffer.count, XATTR_NOFOLLOW)
+        if length < 0 { return errno == ERANGE }
+        guard length > 0 else { return false }
+        var names: [String] = []
+        var current: [CChar] = []
+        for index in 0..<Int(length) {
+            if buffer[index] == 0 {
+                if !current.isEmpty { names.append(String(decoding: current.map { UInt8(bitPattern: $0) }, as: UTF8.self)) }
+                current = []
+            } else {
+                current.append(buffer[index])
+            }
+        }
+        return names.contains { name in
+            !routineXattrs.contains(name) && !routineXattrs.contains(where: { name.hasPrefix($0) })
+        }
+    }
+
     /// Считает содержимое через fts. Это намеренно другой механизм, чем в TreeWalker (readdir):
     /// перед удалением оригинала их результаты сверяются, и ошибка одного не пройдёт незамеченной.
     /// FileManager.enumerator здесь не годится — он молча скрывает файлы с именами на «._».
@@ -86,6 +118,7 @@ public enum Inspector {
                 if name == ".git" { report.containsGitRepo = true }
                 noteRegistered(name, path)
                 noteDate(entry.pointee.fts_statp)
+                if Self.hasNotableXattrs(path) { report.taggedFiles += 1 }
             case FTS_F, FTS_DEFAULT:
                 report.files += 1
                 noteRegistered(name, path)
@@ -96,8 +129,10 @@ public enum Inspector {
                     report.allocatedBytes += allocated
                     report.largestFile = max(report.largestFile, logical)
                     if logical > 16 << 20, allocated + (1 << 20) < logical { report.sparseFiles += 1 }
+                    if status.pointee.st_nlink > 1 { report.hardLinkedFiles += 1 }
                 }
                 noteDate(entry.pointee.fts_statp)
+                if Self.hasNotableXattrs(path) { report.taggedFiles += 1 }
             case FTS_SL, FTS_SLNONE:
                 report.symlinkCount += 1
                 if report.symlinkExamples.count < 5 { report.symlinkExamples.append(relative(path)) }

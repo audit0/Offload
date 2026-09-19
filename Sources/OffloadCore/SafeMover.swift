@@ -83,6 +83,17 @@ public struct MovePlan: Sendable {
     public var canProceed: Bool { !verdict.isBlocked && check.isOK }
 }
 
+/// Итог возврата: сама запись и оговорки, о которых стоит сказать человеку.
+public struct RestoreOutcome: Sendable {
+    public var record: MoveRecord
+    public var notes: [String]
+
+    public init(record: MoveRecord, notes: [String] = []) {
+        self.record = record
+        self.notes = notes
+    }
+}
+
 /// Перенос на внешний диск: копия → сверка SHA-256 → проверка, что оригинал не менялся → удаление оригинала.
 public struct SafeMover: Sendable {
     public static let folderName = "Offload"
@@ -160,12 +171,21 @@ public struct SafeMover: Sendable {
         let fm = FileManager.default
         let source = plan.source
         progress(MoveProgress(phase: .inspecting, bytesDone: 0, bytesTotal: 0, item: source.lastPathComponent))
-        let entries = try TreeWalker.walk(source, strict: true, isCancelled: isCancelled).entries
-        try Self.assertMatches(entries, plan.content)
+        // .DS_Store — память Finder о виде окна. Возврат его и так не везёт обратно,
+        // а в переносе он только мешал: Finder переписывает его в любой момент,
+        // и сверка «не менялось ли» валила уже сделанную копию.
+        var skippedFiles = 0
+        let entries = try TreeWalker.walk(source, strict: true, exclude: { relative, isDirectory in
+            guard !isDirectory, (relative as NSString).lastPathComponent == ".DS_Store" else { return false }
+            skippedFiles += 1
+            return true
+        }, isCancelled: isCancelled).entries
+        try Self.assertMatches(entries, plan.content, skippedFiles: skippedFiles)
         let total = entries.reduce(Int64(0)) { $0 + $1.size }
 
         let parent = plan.target.deletingLastPathComponent()
         try fm.createDirectory(at: parent, withIntermediateDirectories: true)
+        Self.removeStalePartials(in: parent)
         // Копия пишется под временным именем: при сбое удаляется только она, чужие файлы не трогаются.
         let partial = parent.appendingPathComponent(".offload-partial-\(UUID().uuidString)")
         let hashes: [String: String]
@@ -255,15 +275,35 @@ public struct SafeMover: Sendable {
         guard archived.resolvingSymlinksInPath().path == archived.path else {
             throw MoveError.unsafeRecord("путь к архиву проходит через символическую ссылку")
         }
+        // pathVerdict разворачивает ссылки и в пути, которого ещё нет: без этого подложенная
+        // в журнал запись вида «Documents/Фото/old/LaunchAgents/…», где old — ссылка на
+        // ~/Library, прошла бы все проверки и записала бы файл в автозапуск.
         if case .blocked(let reason) = rules.pathVerdict(for: original) {
             throw MoveError.unsafeRecord(reason)
         }
         return (archived, original)
     }
 
+    /// Остатки прерванных операций: если во время копирования выйти из программы или
+    /// выдернуть диск, папка `.offload-partial-…` остаётся лежать рядом и место не возвращается.
+    /// Свежие не трогаем — рядом может работать второй экземпляр Offload.
+    static func removeStalePartials(in parent: URL, olderThan age: TimeInterval = 86_400) {
+        let fm = FileManager.default
+        guard let names = try? TreeWalker.listDirectory(parent.path) else { return }
+        for name in names where name.hasPrefix(".offload-partial-") {
+            let url = parent.appendingPathComponent(name)
+            guard let attributes = try? fm.attributesOfItem(atPath: url.path),
+                  attributes[.type] as? FileAttributeType == .typeDirectory,
+                  let modified = attributes[.modificationDate] as? Date,
+                  Date().timeIntervalSince(modified) > age else { continue }
+            try? fm.removeItem(at: url)
+        }
+    }
+
+    @discardableResult
     public func restore(_ record: MoveRecord, deleteArchive: Bool,
                         isCancelled: () -> Bool = { false },
-                        progress: (MoveProgress) -> Void = { _ in }) throws -> MoveRecord {
+                        progress: (MoveProgress) -> Void = { _ in }) throws -> RestoreOutcome {
         let (archived, original) = try validate(record)
         // Приложение могло оставить на старом месте пустую папку (так делает LM Studio с папкой моделей) — её можно заменить.
         if Self.exists(original), !Self.isEmptyDirectory(original) { throw MoveError.alreadyExists(original.path) }
@@ -290,21 +330,33 @@ public struct SafeMover: Sendable {
 
         let parent = original.deletingLastPathComponent()
         try fm.createDirectory(at: parent, withIntermediateDirectories: true)
+        Self.removeStalePartials(in: parent)
         let partial = parent.appendingPathComponent(".offload-partial-\(UUID().uuidString)")
+        var notes: [String] = []
         do {
             var copied: Int64 = 0
-            let hashes = try VerifiedCopy.copyTree(entries, from: archived, to: partial, keepPermissions: volume.fsType == "apfs",
+            let hashes = try VerifiedCopy.copyTree(entries, from: archived, to: partial, keepPermissions: volume.keepsPermissions,
                                                    isCancelled: isCancelled) { name, bytes in
                 copied += Int64(bytes)
                 progress(MoveProgress(phase: .copying, bytesDone: copied, bytesTotal: total, item: name))
             }
+            // Сверка с тем, что было записано при переносе. Без неё возврат сравнивал бы
+            // копию с хешами, посчитанными по уже испорченным байтам архива, и молча
+            // рапортовал бы «сверено».
+            notes += try Self.checkStoredChecksums(hashes, archive: archived)
             var verified: Int64 = 0
             try VerifiedCopy.verify(entries, hashes: hashes, at: partial, isCancelled: isCancelled) { name, bytes in
                 verified += Int64(bytes)
                 progress(MoveProgress(phase: .verifying, bytesDone: verified, bytesTotal: total, item: name))
             }
             let restoredPaths = Set(entries.filter { if case .symlink = $0.kind { return false } else { return true } }.map(\.relativePath))
-            Self.applyModes(from: Self.modesURL(for: archived), to: partial, allowed: restoredPaths)
+            let applied = Self.applyModes(from: Self.modesURL(for: archived), to: partial, allowed: restoredPaths)
+            if !applied, !volume.keepsPermissions {
+                // Файлы созданы с 0600. Оставить так нельзя: вернувшиеся скрипты,
+                // git-хуки и программы внутри .app перестали бы запускаться.
+                Self.normalizeModes(entries, at: partial)
+                notes.append("Диск «\(volume.name)» (\(volume.fsDisplayName)) не хранит права доступа, а списка прав рядом с архивом нет. Права выставлены обычные: папки 755, файлы 644, исполняемые 755.")
+            }
             if Self.exists(original) {
                 guard Self.isEmptyDirectory(original) else { throw MoveError.alreadyExists(original.path) }
                 try Self.removeEmptyDirectory(original)
@@ -322,7 +374,67 @@ public struct SafeMover: Sendable {
             try? fm.removeItem(at: Self.modesURL(for: archived))
         }
         try? Journal.save(updated, volume: volume)
-        return updated
+        return RestoreOutcome(record: updated, notes: notes)
+    }
+
+    /// Сверяет посчитанное при чтении архива с файлом `<архив>.sha256`, записанным при переносе.
+    /// Возвращает оговорки; расхождение — ошибка, после которой архив не удаляется.
+    static func checkStoredChecksums(_ hashes: [String: String], archive: URL) throws -> [String] {
+        let url = checksumURL(for: archive)
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else {
+            return ["Рядом с архивом нет списка контрольных сумм, записанного при переносе, — сверить архив с его прежним состоянием не с чем. Возвращённое сверено с тем, что лежит на диске сейчас."]
+        }
+        guard ((attributes[.size] as? NSNumber)?.int64Value ?? .max) < 200 * 1024 * 1024,
+              let text = try? String(contentsOf: url, encoding: .utf8),
+              let stored = VerifiedCopy.parseChecksumList(text, rootName: archive.lastPathComponent) else {
+            return ["Список контрольных сумм рядом с архивом не читается — сверить архив с его прежним состоянием не с чем."]
+        }
+        var changed: [String] = []
+        for (path, hash) in hashes.sorted(by: { $0.key < $1.key }) {
+            guard let expected = stored[path] else { continue }
+            if expected != hash { changed.append(path.isEmpty ? archive.lastPathComponent : path) }
+        }
+        guard changed.isEmpty else {
+            let list = changed.prefix(5).joined(separator: ", ")
+            throw MoveError.contentMismatch("архив изменился с момента переноса, не совпало файлов \(changed.count) (\(list)). Архив не тронут")
+        }
+        let missing = Set(stored.keys).subtracting(hashes.keys).filter {
+            let name = ($0 as NSString).lastPathComponent
+            return name != ".DS_Store" && !name.hasPrefix("._")
+        }
+        if !missing.isEmpty {
+            return ["В архиве не хватает \(missing.count) файлов из списка, записанного при переносе (\(missing.sorted().prefix(3).joined(separator: ", "))). Остальное сверено и возвращено."]
+        }
+        return []
+    }
+
+    /// Права, когда взять настоящие неоткуда: exFAT их не хранит, а `.modes.json`
+    /// пишет только сам Offload — у переносов, добавленных вручную, его нет.
+    static func normalizeModes(_ entries: [TreeEntry], at root: URL) {
+        let fm = FileManager.default
+        for entry in entries {
+            let target = entry.relativePath.isEmpty ? root : root.appendingPathComponent(entry.relativePath)
+            switch entry.kind {
+            case .symlink:
+                continue
+            case .directory:
+                try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: target.path)
+            case .file:
+                let executable = Self.looksExecutable(target)
+                try? fm.setAttributes([.posixPermissions: executable ? 0o755 : 0o644], ofItemAtPath: target.path)
+            }
+        }
+    }
+
+    /// Скрипт с «#!» или программа Mach-O. Бит выполнения с exFAT не приходит,
+    /// поэтому исполняемые файлы узнаются по первым байтам.
+    static func looksExecutable(_ url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        guard let data = (try? handle.read(upToCount: 4)) ?? nil, data.count == 4 else { return false }
+        if data[0] == 0x23, data[1] == 0x21 { return true }
+        let magic = data.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }
+        return [0xfeed_face, 0xfeed_facf, 0xcafe_babe, 0xcffa_edfe, 0xcefa_edfe, 0xbeba_feca].contains(magic)
     }
 
     // MARK: - Служебное
@@ -393,11 +505,13 @@ public struct SafeMover: Sendable {
         try data.write(to: modesURL(for: item), options: .withoutOverwriting)
     }
 
-    static func applyModes(from url: URL, to root: URL, allowed: Set<String>) {
+    /// `false` — списка прав рядом с архивом нет или он не читается.
+    @discardableResult
+    static func applyModes(from url: URL, to root: URL, allowed: Set<String>) -> Bool {
         guard let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber,
               size.intValue < 200 * 1024 * 1024,
               let data = try? Data(contentsOf: url),
-              let modes = try? JSONDecoder().decode([String: Int].self, from: data) else { return }
+              let modes = try? JSONDecoder().decode([String: Int].self, from: data) else { return false }
         // Сначала файлы, потом каталоги — от глубоких к корню.
         for (relative, mode) in modes.sorted(by: { $0.key.count > $1.key.count }) {
             // Только объекты, которые обход действительно восстановил: путь через подложенную
@@ -409,6 +523,7 @@ public struct SafeMover: Sendable {
             // setuid/setgid из непроверенного файла не восстанавливаем.
             try? FileManager.default.setAttributes([.posixPermissions: mode & 0o1777], ofItemAtPath: target.path)
         }
+        return true
     }
 
     static func removeSidecar(of url: URL) {

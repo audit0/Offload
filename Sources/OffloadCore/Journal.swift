@@ -20,19 +20,65 @@ public enum Journal {
             .appendingPathComponent("history.json")
     }
 
+    /// Что лежит по пути журнала: файла нет, записи прочитаны или файл есть, но не читается.
+    public enum State: Sendable {
+        case missing
+        case records([MoveRecord])
+        case broken
+    }
+
+    public static func state(of url: URL) -> State {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else { return .missing }
+        guard ((attributes[.size] as? NSNumber)?.intValue ?? .max) <= maxManifestBytes,
+              let data = try? Data(contentsOf: url),
+              let records = try? decoder.decode([MoveRecord].self, from: data) else { return .broken }
+        return .records(records)
+    }
+
     public static func load(_ url: URL) -> [MoveRecord] {
-        guard let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber,
-              size.intValue <= maxManifestBytes,
-              let data = try? Data(contentsOf: url) else { return [] }
-        return (try? decoder.decode([MoveRecord].self, from: data)) ?? []
+        if case .records(let records) = state(of: url) { return records }
+        return []
     }
 
     public static func records(on volume: VolumeInfo) -> [MoveRecord] { load(manifestURL(on: volume)) }
     public static func localRecords() -> [MoveRecord] { load(localURL) }
 
+    /// Испорченный журнал переименовывается, а не переписывается: иначе одна неудачная
+    /// запись (выдернули диск, правили файл руками) молча стёрла бы всю историю переносов.
+    static func setAside(_ url: URL) {
+        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let backup = url.deletingLastPathComponent().appendingPathComponent(url.lastPathComponent + ".broken-" + stamp)
+        try? FileManager.default.moveItem(at: url, to: backup)
+    }
+
     public static func save(_ record: MoveRecord, volume: VolumeInfo) throws {
-        for url in [manifestURL(on: volume), localURL] {
-            var records = load(url)
+        let manifest = manifestURL(on: volume)
+        let urls = [manifest, localURL]
+        var known: [URL: [MoveRecord]] = [:]
+        var broken: Set<URL> = []
+        for url in urls {
+            switch state(of: url) {
+            case .missing: known[url] = []
+            case .records(let records): known[url] = records
+            case .broken:
+                broken.insert(url)
+                known[url] = []
+                setAside(url)
+            }
+        }
+        // Журнал ведётся в двух копиях. Если одна испорчена, она восстанавливается из уцелевшей,
+        // иначе запасная копия молча перестала бы быть запасной.
+        let rescue = urls.flatMap { known[$0] ?? [] }
+        for url in urls {
+            var records = known[url] ?? []
+            if broken.contains(url) {
+                let mountPrefix = volume.mountPoint.path + "/"
+                var seen = Set<UUID>()
+                records = rescue.filter { candidate in
+                    guard url != manifest || candidate.archivedPath.hasPrefix(mountPrefix) else { return false }
+                    return seen.insert(candidate.id).inserted
+                }
+            }
             if let index = records.firstIndex(where: { $0.id == record.id }) {
                 records[index] = record
             } else {
