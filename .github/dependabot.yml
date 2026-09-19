@@ -1,0 +1,7 @@
+version: 2
+updates:
+  # Действия закреплены по хешу коммита; Dependabot будет предлагать обновления.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

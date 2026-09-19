@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      # Имя тега передаётся через env, а не подставляется в скрипт: так его нельзя использовать для внедрения команд.
+      - name: Проверка тега
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Некорректный тег: $TAG"; exit 1; }
+          [[ "${TAG#v}" == "$(cat VERSION)" ]] || { echo "Тег $TAG не совпадает с VERSION $(cat VERSION)"; exit 1; }
+
+      - name: Проверки
+        env:
+          OFFLOAD_SKIP_DOCKER: "1"
+        run: swift run -c release OffloadChecks
+
+      - name: Сборка universal
+        env:
+          OFFLOAD_UNIVERSAL: "1"
+        run: scripts/build-app.sh
+
+      - name: Упаковка
+        run: scripts/make-release.sh
+
+      - name: Публикация релиза
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" \
+            dist/Offload.zip dist/Offload.zip.sha256 \
+            dist/Offload.dmg dist/Offload.dmg.sha256 \
+            --title "Offload $TAG" --generate-notes --verify-tag

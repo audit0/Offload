@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Сборка
+        run: swift build -c release
+
+      - name: Проверки
+        env:
+          OFFLOAD_SKIP_DOCKER: "1"
+        run: swift run -c release OffloadChecks
+
+      - name: Сборка Offload.app
+        run: scripts/build-app.sh 0.0.0-ci

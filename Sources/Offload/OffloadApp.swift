@@ -1,0 +1,141 @@
+import AppKit
+import SwiftUI
+
+@main
+struct OffloadApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+    @State private var model = AppModel()
+
+    static let repositoryURL = URL(string: "https://github.com/audit0/Offload")!
+
+    var body: some Scene {
+        WindowGroup("Offload") {
+            ContentView()
+                .environment(model)
+                .frame(minWidth: 960, minHeight: 620)
+                .onAppear { delegate.model = model }
+        }
+        .defaultSize(width: 1180, height: 760)
+        .windowResizability(.contentMinSize)
+        .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("О программе Offload") { AboutPanel.show() }
+            }
+            CommandGroup(replacing: .help) {
+                Link("Offload на GitHub", destination: Self.repositoryURL)
+                Link("Сообщить о проблеме", destination: Self.repositoryURL.appendingPathComponent("issues"))
+            }
+        }
+    }
+}
+
+enum AboutPanel {
+    static func show() {
+        let info = Bundle.main.infoDictionary ?? [:]
+        let version = info["CFBundleShortVersionString"] as? String ?? "разработка"
+        let credits = NSMutableAttributedString(string: "Разгрузка диска Mac без риска потерять данные.\nОригинал удаляется только после проверенной копии.\n\n")
+        credits.append(NSAttributedString(string: "github.com/audit0/Offload", attributes: [.link: OffloadApp.repositoryURL]))
+        credits.addAttribute(.font, value: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize), range: NSRange(location: 0, length: credits.length))
+        NSApp.orderFrontStandardAboutPanel(options: [
+            .applicationName: "Offload",
+            .applicationVersion: version,
+            .version: "",
+            .credits: credits,
+        ])
+    }
+}
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    var model: AppModel?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Нужно при запуске через `swift run`, без пакета .app.
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate()
+        if let directory = ProcessInfo.processInfo.environment["OFFLOAD_SNAPSHOT_DIR"], !directory.isEmpty {
+            Task { await Snapshots.run(into: URL(fileURLWithPath: directory, isDirectory: true), delegate: self) }
+        }
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+}
+
+/// Режим для разработки: `OFFLOAD_SNAPSHOT_DIR=папка Offload.app/Contents/MacOS/Offload`
+/// проходит по всем разделам, сохраняет их снимки в PNG и завершает приложение.
+/// Снимки делаются средствами самого окна, разрешение «Запись экрана» не нужно.
+@MainActor
+enum Snapshots {
+    static func run(into directory: URL, delegate: AppDelegate) async {
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? await Task.sleep(for: .seconds(1))
+        for candidate in NSApp.windows {
+            let f = candidate.frame
+            FileHandle.standardError.write(Data("окно #\(candidate.windowNumber) «\(candidate.title)» \(Int(f.width))×\(Int(f.height)) видимо=\(candidate.isVisible) класс=\(type(of: candidate))\n".utf8))
+        }
+        guard let window = NSApp.windows.first(where: { $0.isVisible && $0.styleMask.contains(.titled) }), let model = delegate.model else {
+            NSApp.terminate(nil)
+            return
+        }
+        window.setContentSize(NSSize(width: 1180, height: 760))
+        window.makeKeyAndOrderFront(nil)
+        // Первое программное переключение раздела до окончания начальной раскладки боковой панели теряется.
+        try? await Task.sleep(for: .seconds(2))
+        let started = Date()
+        func log(_ text: String) { FileHandle.standardError.write(Data("[\(Int(Date().timeIntervalSince(started))) с] \(text)\n".utf8)) }
+        let wanted = ProcessInfo.processInfo.environment["OFFLOAD_SNAPSHOT_SECTIONS"]?
+            .split(separator: ",").compactMap { SidebarSection(rawValue: String($0)) }
+        for section in wanted?.isEmpty == false ? wanted! : SidebarSection.allCases {
+            log("раздел \(section.rawValue)")
+            model.section = section
+            try? await Task.sleep(for: .seconds(3))
+            await focus(window, model: model, section: section)
+            save(window, to: directory.appendingPathComponent("\(section.rawValue)-3s.png"))
+            // Разделы с данными (размеры папок, Docker) наполняются десятки секунд.
+            let extra = section == .space ? 22 : section == .docker ? 17 : 0
+            if extra > 0 {
+                try? await Task.sleep(for: .seconds(extra))
+                await focus(window, model: model, section: section)
+                save(window, to: directory.appendingPathComponent("\(section.rawValue).png"))
+            }
+            log("снимок \(section.rawValue)")
+        }
+        NSApp.terminate(nil)
+    }
+
+    /// Снимок собственного окна: composited-кадр из Window Server. Для окон своего процесса
+    /// разрешение «Запись экрана» не требуется. Функция берётся через dlsym, потому что
+    /// формально помечена устаревшей, а её замена (ScreenCaptureKit) требует разрешения.
+    /// Пока окно неактивно, боковой список не принимает программную смену раздела, а при активации
+    /// возвращает в модель свой прежний выбор. Перед кадром окно активируется, раздел выставляется заново.
+    static func focus(_ window: NSWindow, model: AppModel, section: SidebarSection) async {
+        guard model.section != section else { return }
+        model.section = section
+        try? await Task.sleep(for: .milliseconds(700))
+    }
+
+    /// OFFLOAD_SNAPSHOT_DEBUG=1 — вместе со снимком выгрузить в stderr иерархию AppKit-вью с координатами.
+    static func dump(_ view: NSView, depth: Int = 0, limit: Int = 7) {
+        guard depth <= limit else { return }
+        let name = String(describing: type(of: view)).prefix(60)
+        let f = view.frame
+        let flags = (view.isHidden ? " hidden" : "") + (view.alphaValue < 1 ? " alpha=\(view.alphaValue)" : "")
+        FileHandle.standardError.write(Data("\(String(repeating: "  ", count: depth))\(name) [\(Int(f.origin.x)),\(Int(f.origin.y)) \(Int(f.width))×\(Int(f.height))]\(flags)\n".utf8))
+        for child in view.subviews { dump(child, depth: depth + 1, limit: limit) }
+    }
+
+    static func save(_ window: NSWindow, to url: URL) {
+        if ProcessInfo.processInfo.environment["OFFLOAD_SNAPSHOT_DEBUG"] == "1", let root = window.contentView {
+            FileHandle.standardError.write(Data("--- иерархия вью для \(url.lastPathComponent) ---\n".utf8))
+            dump(root)
+        }
+        typealias CreateImage = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
+        guard let handle = dlopen(nil, RTLD_NOW), let symbol = dlsym(handle, "CGWindowListCreateImage") else { return }
+        let create = unsafeBitCast(symbol, to: CreateImage.self)
+        let options = CGWindowImageOption.boundsIgnoreFraming.rawValue | CGWindowImageOption.bestResolution.rawValue
+        guard let image = create(.null, CGWindowListOption.optionIncludingWindow.rawValue, UInt32(window.windowNumber), options)?
+            .takeRetainedValue() else { return }
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        try? bitmap.representation(using: .png, properties: [:])?.write(to: url)
+    }
+}
