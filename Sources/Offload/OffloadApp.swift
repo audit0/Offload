@@ -124,17 +124,37 @@ enum Snapshots {
         for child in view.subviews { dump(child, depth: depth + 1, limit: limit) }
     }
 
+    /// Снимок содержимого окна без разрешения «Запись экрана»: слой окна рисуется в собственный
+    /// контекст. `CGWindowListCreateImage` для этого не годится — без разрешения он отдаёт пустой
+    /// кадр, а разрешение привязано к подписи и слетает при каждой пересборке приложения.
+    /// Подложку приходится заливать цветом окна: слой рисует только содержимое, прозрачный фон
+    /// в PNG стал бы белым, и светлый текст тёмной темы пропал бы на нём целиком.
     static func save(_ window: NSWindow, to url: URL) {
         if ProcessInfo.processInfo.environment["OFFLOAD_SNAPSHOT_DEBUG"] == "1", let root = window.contentView {
             FileHandle.standardError.write(Data("--- иерархия вью для \(url.lastPathComponent) ---\n".utf8))
             dump(root)
         }
-        typealias CreateImage = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
-        guard let handle = dlopen(nil, RTLD_NOW), let symbol = dlsym(handle, "CGWindowListCreateImage") else { return }
-        let create = unsafeBitCast(symbol, to: CreateImage.self)
-        let options = CGWindowImageOption.boundsIgnoreFraming.rawValue | CGWindowImageOption.bestResolution.rawValue
-        guard let image = create(.null, CGWindowListOption.optionIncludingWindow.rawValue, UInt32(window.windowNumber), options)?
-            .takeRetainedValue() else { return }
+        guard let root = window.contentView, let layer = root.layer else { return }
+        root.displayIfNeeded()
+        let scale = window.backingScaleFactor
+        let width = Int((root.bounds.width * scale).rounded())
+        let height = Int((root.bounds.height * scale).rounded())
+        let space = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        guard width > 0, height > 0,
+              let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                                      bytesPerRow: 0, space: space,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue) else { return }
+        var background = NSColor.windowBackgroundColor
+        window.effectiveAppearance.performAsCurrentDrawingAppearance {
+            background = NSColor.windowBackgroundColor.usingColorSpace(.sRGB) ?? background
+        }
+        context.setFillColor(background.cgColor)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        // Слой считает начало координат сверху, контекст рисования — снизу.
+        context.translateBy(x: 0, y: CGFloat(height))
+        context.scaleBy(x: scale, y: -scale)
+        layer.render(in: context)
+        guard let image = context.makeImage() else { return }
         let bitmap = NSBitmapImageRep(cgImage: image)
         try? bitmap.representation(using: .png, properties: [:])?.write(to: url)
     }
