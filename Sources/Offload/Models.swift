@@ -157,8 +157,9 @@ final class MoveModel {
     var acceptCautions = false
     /// Перенос действительно состоялся — только тогда раздел со списком стоит пересчитывать заново.
     private(set) var didMove = false
-    @ObservationIgnored private var token = CancelToken()
-    @ObservationIgnored private let operationID = UUID()
+    /// Токен на каждый запуск, а не один на модель: общий терялся при следующем запуске —
+    /// ссылка на ещё идущую проверку или копирование пропадала, и отменить их было нечем.
+    @ObservationIgnored private var tokens: [UUID: CancelToken] = [:]
 
     var isBusy: Bool {
         switch stage {
@@ -173,16 +174,26 @@ final class MoveModel {
         return true
     }
 
+    /// Какая проверка сейчас последняя: ответы прежних отбрасываются.
+    private var preparing: UUID?
+
     func prepare(source: URL, volume: VolumeInfo, rules: SafetyRules) {
-        token.cancel()
+        cancel()
+        let id = UUID()
         let token = CancelToken()
-        self.token = token
+        tokens[id] = token
         stage = .inspecting
         acceptCautions = false
+        preparing = id
         Task {
             let plan = await Task.detached(priority: .userInitiated) {
                 SafeMover(rules: rules).plan(source: source, volume: volume, isCancelled: { token.isCancelled })
             }.value
+            tokens.removeValue(forKey: id)
+            // Ответ прежней проверки не должен трогать окно: пока она обходила дерево,
+            // человек мог сменить диск и запустить новую, и «Проверка отменена»
+            // затёрла бы уже готовый план.
+            guard preparing == id else { return }
             // Без этой ветки отмена оставляла окно навсегда в состоянии «Проверяю…»:
             // спиннер крутится, кнопка «Отменить» уже ничего не делает, закрыть нечем.
             guard !token.isCancelled else {
@@ -196,11 +207,11 @@ final class MoveModel {
     func run(_ plan: MovePlan, app: AppModel) {
         let rules = app.rules
         let token = CancelToken()
-        self.token = token
         let deleteOriginal = deleteOriginal
         let acceptCautions = acceptCautions
         let throttle = Throttle()
-        app.beginOperation(operationID) { token.cancel() }
+        let operationID = app.beginOperation { token.cancel() }
+        tokens[operationID] = token
         stage = .running(MoveProgress(phase: .inspecting, bytesDone: 0, bytesTotal: plan.content.logicalBytes,
                                       item: plan.source.lastPathComponent))
         Task {
@@ -221,11 +232,12 @@ final class MoveModel {
             } catch {
                 stage = .failed(error.localizedDescription)
             }
+            tokens.removeValue(forKey: operationID)
             app.endOperation(operationID)
         }
     }
 
-    func cancel() { token.cancel() }
+    func cancel() { for token in tokens.values { token.cancel() } }
 }
 
 // MARK: - Перенесённое
@@ -237,8 +249,9 @@ final class HistoryModel {
     private(set) var busyID: UUID?
     private(set) var progress: MoveProgress?
     var message: Notice.Message?
-    @ObservationIgnored private var token = CancelToken()
-    @ObservationIgnored private let operationID = UUID()
+    /// Токен на каждый возврат: один на модель отменял бы не тот запуск, а его перезапись
+    /// теряла бы ссылку на ещё идущий.
+    @ObservationIgnored private var tokens: [UUID: CancelToken] = [:]
     /// Есть ли архив на диске — считается при перечитывании списка, а не в каждой строке:
     /// иначе прокрутка и каждое обновление прогресса опрашивали бы внешний диск заново.
     @ObservationIgnored private var availability: [UUID: Bool] = [:]
@@ -259,13 +272,13 @@ final class HistoryModel {
 
     func restore(_ record: MoveRecord, deleteArchive: Bool, app: AppModel) {
         let token = CancelToken()
-        self.token = token
         let rules = app.rules
         let throttle = Throttle()
         busyID = record.id
         progress = nil
         message = nil
-        app.beginOperation(operationID) { token.cancel() }
+        let operationID = app.beginOperation { token.cancel() }
+        tokens[operationID] = token
         Task {
             do {
                 let outcome = try await Task.detached(priority: .userInitiated) {
@@ -277,17 +290,26 @@ final class HistoryModel {
                     }
                 }.value
                 let name = URL(fileURLWithPath: record.originalPath).lastPathComponent
-                let text = "«\(name)» возвращён на место, каждый файл перечитан и сверен по SHA-256."
-                message = outcome.notes.isEmpty
-                    ? Notice.Message(.success, text)
-                    : Notice.Message(.warning, ([text] + outcome.notes).joined(separator: " "))
+                // Оговорки ядра — о том, что сверено не всё, что права выставлены обычные,
+                // что архив не удалось удалить. Человек должен их увидеть: молчаливый
+                // зелёный «всё сверено» после такого возврата был бы неправдой.
+                // По одному наличию оговорок судить нельзя: строчка «сверено столько-то из стольких-то»
+                // приходит всегда, и чистый возврат выглядел бы бедой.
+                message = outcome.needsAttention
+                    ? Notice.Message(.warning, "«\(name)» возвращён на место, но с оговорками:", details: outcome.notes)
+                    : Notice.Message(.success, "«\(name)» возвращён на место, каждый файл перечитан и сверен по SHA-256.",
+                                     details: outcome.notes)
             } catch is CancellationError {
                 message = Notice.Message(.info, "Возврат отменён, незаконченная копия удалена. Архив на диске не тронут.")
             } catch {
-                message = Notice.Message(.error, "Вернуть не удалось: \(error.localizedDescription) Архив на диске не тронут.")
+                // Без приписок про архив: удаление архива идёт последним шагом, и сорваться
+                // могло именно оно — данные уже вернулись бы, а «архив не тронут» оказалось
+                // бы ложью. Что на самом деле случилось, знает только ядро.
+                message = Notice.Message(.error, "Вернуть не удалось: \(error.localizedDescription)")
             }
             busyID = nil
             progress = nil
+            tokens.removeValue(forKey: operationID)
             app.endOperation(operationID)
             app.refreshVolumes()
             app.space.invalidateAll()
@@ -295,7 +317,7 @@ final class HistoryModel {
         }
     }
 
-    func cancel() { token.cancel() }
+    func cancel() { for token in tokens.values { token.cancel() } }
 }
 
 // MARK: - Бэкап
@@ -310,14 +332,14 @@ final class BackupModel {
     private(set) var copiedBytes: Int64 = 0
     private(set) var report: BackupReport?
     var error: String?
-    @ObservationIgnored private var token = CancelToken()
+    /// Токен на каждый запуск бэкапа: один на модель терялся при повторном запуске.
+    @ObservationIgnored private var tokens: [UUID: CancelToken] = [:]
 
     private(set) var vault: VaultState?
     private(set) var vaultBusy = false
     private(set) var vaultReport: SecretsReport?
     var vaultMessage: Notice.Message?
     @ObservationIgnored private var vaultGeneration = UUID()
-    @ObservationIgnored private let operationID = UUID()
 
     /// Снимок состояния контейнера на выбранном диске. Раньше оно определялось один раз
     /// и потом врало: после извлечения диска раздел продолжал показывать «Контейнер открыт»,
@@ -394,8 +416,8 @@ final class BackupModel {
 
     func run(on volume: VolumeInfo, app: AppModel) {
         let token = CancelToken()
-        self.token = token
-        app.beginOperation(operationID) { token.cancel() }
+        let operationID = app.beginOperation { token.cancel() }
+        tokens[operationID] = token
         let sources = sources
         let excluded = excludedNames
         let destination = destination(on: volume)
@@ -426,17 +448,22 @@ final class BackupModel {
                 self.error = error.localizedDescription
             }
             isRunning = false
+            tokens.removeValue(forKey: operationID)
             app.endOperation(operationID)
             // Бэкап занял место на диске: без этого в боковой панели оставалась прежняя цифра.
             app.refreshVolumes()
         }
     }
 
-    func cancel() { token.cancel() }
+    func cancel() { for token in tokens.values { token.cancel() } }
 
     /// Перечитывает состояние контейнера: есть ли он, зашифрован ли, открыт ли сейчас.
-    /// Ответ от прошлого диска не должен перезаписать ответ нового, поэтому есть поколение.
-    func refreshVault(on volume: VolumeInfo) {
+    /// Ответ привязан к диску, а не только к поколению: запрос про прежний диск посылает,
+    /// например, закончившаяся работа с контейнером, и приходит он последним — состояние
+    /// обнулялось, а приходило про диск, который уже не выбран, и раздел навсегда оставался
+    /// со спиннером «смотрю, есть ли контейнер».
+    func refreshVault(on volume: VolumeInfo, app: AppModel) {
+        guard app.destinationID == volume.id else { return }
         let generation = UUID()
         vaultGeneration = generation
         if vault?.volumeID != volume.id { vault = nil }
@@ -446,12 +473,12 @@ final class BackupModel {
                 return VaultState(volumeID: volume.id, imageURL: vault.imageURL, exists: vault.exists,
                                   isEncrypted: vault.isEncrypted, mount: vault.currentMountPoint())
             }.value
-            guard vaultGeneration == generation else { return }
+            guard vaultGeneration == generation, app.destinationID == state.volumeID else { return }
             vault = state
         }
     }
 
-    func createVault(on volume: VolumeInfo, password: String) {
+    func createVault(on volume: VolumeInfo, password: String, app: AppModel) {
         let vault = SecretsVault(on: volume)
         vaultBusy = true
         vaultMessage = nil
@@ -463,11 +490,11 @@ final class BackupModel {
                 vaultMessage = Notice.Message(.error, error.localizedDescription)
             }
             vaultBusy = false
-            refreshVault(on: volume)
+            refreshVault(on: volume, app: app)
         }
     }
 
-    func openVault(on volume: VolumeInfo, password: String) {
+    func openVault(on volume: VolumeInfo, password: String, app: AppModel) {
         let vault = SecretsVault(on: volume)
         vaultBusy = true
         vaultMessage = nil
@@ -478,7 +505,7 @@ final class BackupModel {
                 vaultMessage = Notice.Message(.error, error.localizedDescription)
             }
             vaultBusy = false
-            refreshVault(on: volume)
+            refreshVault(on: volume, app: app)
         }
     }
 
@@ -497,11 +524,11 @@ final class BackupModel {
             vaultMessage = Notice.Message(report.problems.isEmpty ? .success : .warning, text)
             vaultBusy = false
             app.refreshVolumes()
-            refreshVault(on: volume)
+            refreshVault(on: volume, app: app)
         }
     }
 
-    func closeVault(on volume: VolumeInfo) {
+    func closeVault(on volume: VolumeInfo, app: AppModel) {
         guard let mount = vault?.mount else { return }
         vaultBusy = true
         Task {
@@ -512,7 +539,7 @@ final class BackupModel {
                 vaultMessage = Notice.Message(.error, "Закрыть не удалось: \(error.localizedDescription)")
             }
             vaultBusy = false
-            refreshVault(on: volume)
+            refreshVault(on: volume, app: app)
         }
     }
 }
@@ -537,7 +564,9 @@ final class DockerModel {
     private(set) var archives: [URL] = []
     private(set) var busy: String?
     private(set) var messages: [String] = []
-    @ObservationIgnored private var token = CancelToken()
+    /// Токен на каждую упаковку и распаковку: общий на модель отменял бы только последнюю,
+    /// а начатая раньше продолжала бы работать без кнопки «Отменить».
+    @ObservationIgnored private var tokens: [UUID: CancelToken] = [:]
     @ObservationIgnored private var reloadGeneration = UUID()
     @ObservationIgnored private let service = DockerService()
 
@@ -594,7 +623,10 @@ final class DockerModel {
         let names = volumes.filter { selection.contains($0.name) }.map(\.name)
         guard !names.isEmpty else { return }
         let token = CancelToken()
-        self.token = token
+        // Упаковка и возврат тома — та же долгая работа, что перенос: выход во время неё
+        // должен спросить и довести отмену до конца, а не оборвать docker на полпути.
+        let id = app.beginOperation { token.cancel() }
+        tokens[id] = token
         let folder = Self.archiveFolder(on: volume)
         let service = service
         messages = []
@@ -621,6 +653,8 @@ final class DockerModel {
                 }
             }
             busy = nil
+            tokens.removeValue(forKey: id)
+            app.endOperation(id)
             selection = []
             app.refreshVolumes()
             reload(destination: app.destination)
@@ -629,7 +663,10 @@ final class DockerModel {
 
     func restore(_ archive: URL, name: String, app: AppModel) {
         let token = CancelToken()
-        self.token = token
+        // Упаковка и возврат тома — та же долгая работа, что перенос: выход во время неё
+        // должен спросить и довести отмену до конца, а не оборвать docker на полпути.
+        let id = app.beginOperation { token.cancel() }
+        tokens[id] = token
         let service = service
         busy = "«\(name)»: подготовка"
         messages = []
@@ -649,10 +686,12 @@ final class DockerModel {
                 messages.append("✗ «\(name)»: \(error.localizedDescription)")
             }
             busy = nil
+            tokens.removeValue(forKey: id)
+            app.endOperation(id)
             app.refreshVolumes()
             reload(destination: app.destination)
         }
     }
 
-    func cancel() { token.cancel() }
+    func cancel() { for token in tokens.values { token.cancel() } }
 }

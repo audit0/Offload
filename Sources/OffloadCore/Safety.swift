@@ -220,11 +220,17 @@ extension SafetyRules {
         if let limit = volume.maxFileSize, content.largestFile > limit {
             check.blockers.append("\(volume.fsDisplayName) не принимает файлы больше 4 ГБ, а самый большой здесь — \(Format.bytes(content.largestFile)).")
         }
-        // Копия пишется обычным чтением и записью, дыры в разрежённых файлах не переносятся:
-        // на приёмнике даже APFS займёт полный размер, поэтому место считается по логическому.
+        // Ни одной из двух мер по отдельности верить нельзя, поэтому берём большую.
+        // Логический размер мал для дерева из тысяч мелких файлов: каждый занимает на диске
+        // целое число блоков, и файл в 100 байт съедает блок целиком — сумма занятого
+        // заметно больше суммы весов. Занятое на диске, наоборот, мало для разрежённых
+        // файлов: копия пишется обычным чтением и записью, дыры не переносятся, и на
+        // приёмнике даже APFS займёт полный логический размер.
+        // Недооценка здесь стоит дорого: проверка пропустит перенос, а он упадёт посередине,
+        // когда место кончится, — и данные останутся разложенными по двум дискам.
         let overhead = volume.createsAppleDouble ? Int64(content.files + content.directories) * volume.blockSize * 2 : 0
         let margin: Int64 = 512 * 1024 * 1024
-        check.requiredBytes = content.logicalBytes + overhead + margin
+        check.requiredBytes = max(content.logicalBytes, content.allocatedBytes) + overhead + margin
         if volume.availableBytes < check.requiredBytes {
             check.blockers.append("На «\(volume.name)» свободно \(Format.bytes(volume.availableBytes)), а нужно около \(Format.bytes(check.requiredBytes)).")
         }

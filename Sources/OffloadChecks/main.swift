@@ -424,14 +424,18 @@ if env["OFFLOAD_SKIP_INTEGRATION"] != "1" {
                                     currentDirectory: target.deletingLastPathComponent())
         check(shasum.succeeded, "архив проходит shasum -c: \(shasum.stderr)")
 
-        // Архив испортился на диске между переносом и возвратом.
+        // Архивом пользовались: человек работал с файлами прямо на внешнем диске, и они изменились.
+        // Возврат обязан состояться — иначе к данным уже не подступиться, — но сказать об этом надо.
         let archivedFile = target.appendingPathComponent("data/big.txt")
         let goodContent = try String(contentsOf: archivedFile, encoding: .utf8)
         try write(String(repeating: "y", count: goodContent.count), to: archivedFile)
-        expectError("испорченный архив не возвращается молча", { _ = try mover.restore(record, deleteArchive: true) },
-                    matching: { if case MoveError.contentMismatch = $0 { return true }; return false })
-        check(fm.fileExists(atPath: target.path), "после отказа архив остался на диске")
-        check(!fm.fileExists(atPath: source.path), "после отказа на месте оригинала ничего не создано")
+        let usedArchive = try mover.restore(record, deleteArchive: false)
+        check(usedArchive.notes.contains { $0.contains("изменилось файлов: 1") },
+              "изменённый архив вернулся с оговоркой: \(usedArchive.notes)")
+        check((try? String(contentsOf: source.appendingPathComponent("data/big.txt"), encoding: .utf8))?.hasPrefix("y") == true,
+              "вернулось то, что лежит в архиве сейчас")
+        check(fm.fileExists(atPath: target.path), "архив на месте — удалять его не просили")
+        try fm.removeItem(at: source)
         try write(goodContent, to: archivedFile)
         check(Journal.records(on: volume).contains { $0.id == record.id }, "перенос записан в журнал на диске")
 
@@ -495,11 +499,12 @@ if env["OFFLOAD_SKIP_INTEGRATION"] != "1" {
         let back = try mover.restore(imported, deleteArchive: false).record
         check(back.restored && (try? String(contentsOf: rules.home.appendingPathComponent("Downloads/old-stuff/file.txt"), encoding: .utf8)) == "manual",
               "ручная запись возвращается на место пустой папки со сверкой")
-        // У ручного переноса нет списка прав, а exFAT их не хранит: без своей ветки всё вернулось бы с 600.
-        check(mode(rules.home.appendingPathComponent("Downloads/old-stuff/tool.sh")) == 0o755,
+        // У ручного переноса нет списка прав, а exFAT их не хранит: без своей ветки скрипт вернулся бы
+        // неисполняемым, а с прежними 644/755 — читаемым всем на машине.
+        check(mode(rules.home.appendingPathComponent("Downloads/old-stuff/tool.sh")) == 0o700,
               "скрипт из ручного переноса вернулся исполняемым (\(mode(rules.home.appendingPathComponent("Downloads/old-stuff/tool.sh")) ?? -1))")
-        check(mode(rules.home.appendingPathComponent("Downloads/old-stuff/file.txt")) == 0o644,
-              "обычный файл из ручного переноса вернулся с обычными правами")
+        check(mode(rules.home.appendingPathComponent("Downloads/old-stuff/file.txt")) == 0o600,
+              "обычный файл из ручного переноса вернулся правами только для владельца")
         let busyPlace = rules.home.appendingPathComponent("Downloads/busy", isDirectory: true)
         try write("keep me", to: busyPlace.appendingPathComponent("own.txt"))
         let clashing = try mover.importRecord(archived: manual, original: busyPlace, originalRemoved: true)
@@ -622,6 +627,10 @@ if env["OFFLOAD_SKIP_DOCKER"] != "1", (try? DockerService().ensureRunning()) != 
 } else {
     print("▸ Docker: пропущено (не запущен или OFFLOAD_SKIP_DOCKER=1)")
 }
+
+checksRestore()
+checksContainer()
+checksInterface()
 
 try? fm.removeItem(at: scratch)
 print("")

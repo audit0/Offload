@@ -87,11 +87,23 @@ public struct MovePlan: Sendable {
 public struct RestoreOutcome: Sendable {
     public var record: MoveRecord
     public var notes: [String]
+    /// Есть ли среди оговорок настоящее расхождение, а не только строчка «сверено столько-то
+    /// из стольких-то», которая бывает всегда. По одному факту наличия оговорок красить
+    /// сообщение в предупреждение нельзя: чистый возврат выглядел бы как беда.
+    public var needsAttention: Bool
 
-    public init(record: MoveRecord, notes: [String] = []) {
+    public init(record: MoveRecord, notes: [String] = [], needsAttention: Bool = false) {
         self.record = record
         self.notes = notes
+        self.needsAttention = needsAttention
     }
+}
+
+/// Что дала сверка архива со списком сумм, записанным при переносе.
+struct StoredChecksumReport {
+    var notes: [String] = []
+    /// Архив отличается от того, каким его унесли, или сверить его не с чем.
+    var hasDifferences = false
 }
 
 /// Перенос на внешний диск: копия → сверка SHA-256 → проверка, что оригинал не менялся → удаление оригинала.
@@ -171,31 +183,30 @@ public struct SafeMover: Sendable {
         let fm = FileManager.default
         let source = plan.source
         progress(MoveProgress(phase: .inspecting, bytesDone: 0, bytesTotal: 0, item: source.lastPathComponent))
-        // .DS_Store — память Finder о виде окна. Возврат его и так не везёт обратно,
-        // а в переносе он только мешал: Finder переписывает его в любой момент,
-        // и сверка «не менялось ли» валила уже сделанную копию.
-        var skippedFiles = 0
-        let entries = try TreeWalker.walk(source, strict: true, exclude: { relative, isDirectory in
-            guard !isDirectory, (relative as NSString).lastPathComponent == ".DS_Store" else { return false }
-            skippedFiles += 1
-            return true
-        }, isCancelled: isCancelled).entries
-        try Self.assertMatches(entries, plan.content, skippedFiles: skippedFiles)
+        // .DS_Store едет в копию вместе со всем остальным: это разложенные человеком вид окна
+        // и положение иконок, а оригинал после переноса удаляется — не скопировав, мы их теряем.
+        // От срыва переносов защищают сверки: assertMatches вычитает .DS_Store с обеих сторон,
+        // assertUnchanged их не сравнивает.
+        let entries = try TreeWalker.walk(source, strict: true, isCancelled: isCancelled).entries
+        try Self.assertMatches(entries, plan.content)
         let total = entries.reduce(Int64(0)) { $0 + $1.size }
 
         let parent = plan.target.deletingLastPathComponent()
         try fm.createDirectory(at: parent, withIntermediateDirectories: true)
-        Self.removeStalePartials(in: parent)
         // Копия пишется под временным именем: при сбое удаляется только она, чужие файлы не трогаются.
         let partial = parent.appendingPathComponent(".offload-partial-\(UUID().uuidString)")
+        Self.removeStalePartials(in: parent, keeping: partial)
         let hashes: [String: String]
         var wroteModes = false
         do {
             var copied: Int64 = 0
-            hashes = try VerifiedCopy.copyTree(entries, from: source, to: partial, keepPermissions: true, isCancelled: isCancelled) { name, bytes in
+            let marker = PartialMarker(partial: partial)
+            hashes = try VerifiedCopy.copyTree(entries, from: source, to: partial, keepPermissions: true, isCancelled: isCancelled,
+                                               progress: { name, bytes in
                 copied += Int64(bytes)
+                marker.touch(whileCopying: name)
                 progress(MoveProgress(phase: .copying, bytesDone: copied, bytesTotal: total, item: name))
-            }
+            }, didCreateRoot: { _ in marker.write() })
             var verified: Int64 = 0
             try VerifiedCopy.verify(entries, hashes: hashes, at: partial, isCancelled: isCancelled) { name, bytes in
                 verified += Int64(bytes)
@@ -204,6 +215,8 @@ public struct SafeMover: Sendable {
             try VerifiedCopy.assertUnchanged(entries, at: source)
             try Self.writeModes(entries, next: plan.target)
             wroteModes = true
+            // Метка снимается до переименования: в архив она попасть не должна.
+            marker.remove(restoring: entries.first)
             try Self.renameExclusive(partial, to: plan.target)
         } catch {
             try? fm.removeItem(at: partial)
@@ -284,18 +297,125 @@ public struct SafeMover: Sendable {
         return (archived, original)
     }
 
+    /// Имя метки внутри `.offload-partial-…`: по ней видно, что копирование идёт прямо сейчас.
+    static let partialLockName = ".offload-lock"
+
+    /// Метка «здесь работает Offload», которую кладут внутрь своей partial-папки.
+    ///
+    /// Раньше «свежесть» остатка определялась по дате самой папки, и это обманывало: пока
+    /// копирование идёт в подпапках, дата корня не меняется, а copyTree в конце и вовсе ставит
+    /// корню дату оригинала. Соседний экземпляр Offload мог принять идущее копирование за мусор
+    /// и стереть его вместе с уже скопированными данными. Класс, а не структура: на него смотрят
+    /// сразу два замыкания copyTree.
+    final class PartialMarker {
+        private let partial: URL
+        /// Имя верхнего уровня, на котором метку обновляли в прошлый раз: одного обновления
+        /// на объект верхнего уровня достаточно, чтобы метка не выглядела заброшенной.
+        private var lastTop: String?
+        private var lastWrite = Date.distantPast
+
+        init(partial: URL) { self.partial = partial }
+
+        private var url: URL { partial.appendingPathComponent(SafeMover.partialLockName) }
+
+        func write() {
+            lastWrite = Date()
+            try? SafeMover.partialLockText(at: lastWrite).write(to: url, atomically: false, encoding: .utf8)
+        }
+
+        /// Один огромный файл может копироваться сутками, и тогда смены имени верхнего уровня
+        /// не случится ни разу — поэтому ещё и по времени: метка, которую не трогали сутки,
+        /// точно ничья.
+        func touch(whileCopying relativePath: String) {
+            let top = relativePath.split(separator: "/", maxSplits: 1).first.map(String.init) ?? relativePath
+            guard top != lastTop || Date().timeIntervalSince(lastWrite) > 300 else { return }
+            lastTop = top
+            write()
+        }
+
+        /// Снимает метку перед переименованием копии на место. Удаление файла сбивает дату корня,
+        /// а права корня к этому моменту уже выставлены по оригиналу и могут запрещать запись,
+        /// поэтому и то и другое восстанавливается.
+        func remove(restoring root: TreeEntry?) {
+            let fm = FileManager.default
+            do {
+                try fm.removeItem(at: url)
+            } catch {
+                guard SafeMover.exists(url) else { return }
+                try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: partial.path)
+                try? fm.removeItem(at: url)
+                if let permissions = root?.permissions {
+                    try? fm.setAttributes([.posixPermissions: permissions], ofItemAtPath: partial.path)
+                }
+            }
+            if let modified = root?.modified {
+                try? fm.setAttributes([.modificationDate: modified], ofItemAtPath: partial.path)
+            }
+        }
+    }
+
+    /// Кто копирует и когда в последний раз подавал признаки жизни. Имя машины нужно потому,
+    /// что внешний диск носят между компьютерами: чужой pid на этом Mac может оказаться и свободным,
+    /// и занятым посторонней программой — верить ему нельзя.
+    struct PartialLock {
+        var pid: pid_t
+        var date: Date
+        var host: String
+    }
+
+    static let hostIdentifier = ProcessInfo.processInfo.hostName
+
+    static func partialLockText(at date: Date) -> String {
+        "\(getpid()) \(date.timeIntervalSince1970) \(hostIdentifier)\n"
+    }
+
+    /// Метка внутри остатка; `nil` — метки нет или она не читается.
+    static func readPartialLock(in partial: URL) -> PartialLock? {
+        let url = partial.appendingPathComponent(partialLockName)
+        guard let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber,
+              size.intValue < 4096, let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        let fields = text.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ", maxSplits: 2)
+        guard fields.count >= 2, let pid = pid_t(fields[0]), pid > 0, let seconds = TimeInterval(fields[1]) else { return nil }
+        return PartialLock(pid: pid, date: Date(timeIntervalSince1970: seconds),
+                           host: fields.count > 2 ? String(fields[2]) : "")
+    }
+
+    /// Процесса с таким номером больше нет. EPERM (процесс чужого пользователя) — он жив,
+    /// и трогать его работу нельзя.
+    static func processIsGone(_ pid: pid_t) -> Bool {
+        if kill(pid, 0) == 0 { return false }
+        return errno == ESRCH
+    }
+
+    /// За остатком точно никто не стоит.
+    ///
+    /// Метку наш Offload обновляет по ходу работы, поэтому «её не трогали сутки» означает, что
+    /// копирования нет, кем бы ни был записанный там процесс: так убираются и остатки после
+    /// перезагрузки, где номер процесса достался кому-то другому. Свежая метка чужой машины
+    /// бережётся до тех же суток: там прямо сейчас может идти копирование.
+    static func partialIsAbandoned(_ url: URL, attributes: [FileAttributeKey: Any], age: TimeInterval) -> Bool {
+        guard let lock = readPartialLock(in: url) else {
+            // Остаток прежней версии Offload, которая меток не ставила: судим по дате, как раньше.
+            guard let modified = attributes[.modificationDate] as? Date else { return false }
+            return Date().timeIntervalSince(modified) > age
+        }
+        if Date().timeIntervalSince(lock.date) > age { return true }
+        guard lock.host == hostIdentifier else { return false }
+        return processIsGone(lock.pid)
+    }
+
     /// Остатки прерванных операций: если во время копирования выйти из программы или
     /// выдернуть диск, папка `.offload-partial-…` остаётся лежать рядом и место не возвращается.
-    /// Свежие не трогаем — рядом может работать второй экземпляр Offload.
-    static func removeStalePartials(in parent: URL, olderThan age: TimeInterval = 86_400) {
+    /// Свою папку не трогаем никогда — она передаётся в `keeping`.
+    static func removeStalePartials(in parent: URL, keeping own: URL? = nil, olderThan age: TimeInterval = 86_400) {
         let fm = FileManager.default
         guard let names = try? TreeWalker.listDirectory(parent.path) else { return }
         for name in names where name.hasPrefix(".offload-partial-") {
+            if own?.lastPathComponent == name { continue }
             let url = parent.appendingPathComponent(name)
             guard let attributes = try? fm.attributesOfItem(atPath: url.path),
                   attributes[.type] as? FileAttributeType == .typeDirectory,
-                  let modified = attributes[.modificationDate] as? Date,
-                  Date().timeIntervalSince(modified) > age else { continue }
+                  partialIsAbandoned(url, attributes: attributes, age: age) else { continue }
             try? fm.removeItem(at: url)
         }
     }
@@ -311,14 +431,14 @@ public struct SafeMover: Sendable {
             throw MoveError.unsafeRecord("архив не найден — подключите диск «\(record.volumeName)»")
         }
         let fm = FileManager.default
-        // Служебные файлы Finder на внешнем диске обратно не везём.
+        // Служебные ._-двойники, которые macOS сама наплодила рядом с файлами на внешнем диске,
+        // обратно не везём. А .DS_Store везём: при переносе он уехал в архив вместе с папкой,
+        // в нём лежит разложенный человеком вид окна, и возврат должен вернуть папку как была.
+        // Сверкам он не мешает: assertUnchanged его игнорирует, а сверка чисел вычитает
+        // .DS_Store с обеих сторон.
         var skippedFiles = 0
         let entries = try TreeWalker.walk(archived, strict: true, exclude: { relative, isDirectory in
             let name = (relative as NSString).lastPathComponent
-            if !isDirectory, name == ".DS_Store" {
-                skippedFiles += 1
-                return true
-            }
             guard !isDirectory, name.hasPrefix("._") else { return false }
             let sibling = ((relative as NSString).deletingLastPathComponent as NSString).appendingPathComponent(String(name.dropFirst(2)))
             guard Self.exists(archived.appendingPathComponent(sibling)) else { return false }
@@ -330,20 +450,26 @@ public struct SafeMover: Sendable {
 
         let parent = original.deletingLastPathComponent()
         try fm.createDirectory(at: parent, withIntermediateDirectories: true)
-        Self.removeStalePartials(in: parent)
         let partial = parent.appendingPathComponent(".offload-partial-\(UUID().uuidString)")
+        Self.removeStalePartials(in: parent, keeping: partial)
         var notes: [String] = []
+        var needsAttention = false
         do {
             var copied: Int64 = 0
+            let marker = PartialMarker(partial: partial)
             let hashes = try VerifiedCopy.copyTree(entries, from: archived, to: partial, keepPermissions: volume.keepsPermissions,
-                                                   isCancelled: isCancelled) { name, bytes in
+                                                   isCancelled: isCancelled, progress: { name, bytes in
                 copied += Int64(bytes)
+                marker.touch(whileCopying: name)
                 progress(MoveProgress(phase: .copying, bytesDone: copied, bytesTotal: total, item: name))
-            }
-            // Сверка с тем, что было записано при переносе. Без неё возврат сравнивал бы
-            // копию с хешами, посчитанными по уже испорченным байтам архива, и молча
-            // рапортовал бы «сверено».
-            notes += try Self.checkStoredChecksums(hashes, archive: archived)
+            }, didCreateRoot: { _ in marker.write() })
+            // Сверка с тем, что было записано при переносе, — только чтобы рассказать человеку,
+            // что в архиве изменилось. Отказывать из-за этого нельзя: архив на внешнем диске
+            // живёт своей жизнью (с папкой моделей LM Studio так и задумано), и отказ вернуть
+            // данные — это потеря доступа к ним.
+            let stored = Self.checkStoredChecksums(hashes, archive: archived)
+            notes += stored.notes
+            needsAttention = needsAttention || stored.hasDifferences
             var verified: Int64 = 0
             try VerifiedCopy.verify(entries, hashes: hashes, at: partial, isCancelled: isCancelled) { name, bytes in
                 verified += Int64(bytes)
@@ -352,11 +478,13 @@ public struct SafeMover: Sendable {
             let restoredPaths = Set(entries.filter { if case .symlink = $0.kind { return false } else { return true } }.map(\.relativePath))
             let applied = Self.applyModes(from: Self.modesURL(for: archived), to: partial, allowed: restoredPaths)
             if !applied, !volume.keepsPermissions {
-                // Файлы созданы с 0600. Оставить так нельзя: вернувшиеся скрипты,
-                // git-хуки и программы внутри .app перестали бы запускаться.
+                // Настоящих прав взять неоткуда. Ставим самые узкие, при которых всё работает:
+                // приватные ключи, .env и базы паролей не должны вернуться читаемыми всем на машине.
                 Self.normalizeModes(entries, at: partial)
-                notes.append("Диск «\(volume.name)» (\(volume.fsDisplayName)) не хранит права доступа, а списка прав рядом с архивом нет. Права выставлены обычные: папки 755, файлы 644, исполняемые 755.")
+                notes.append("Диск «\(volume.name)» (\(volume.fsDisplayName)) не хранит права доступа, а списка прав рядом с архивом нет. Права выставлены только для вас: папки 700, файлы 600, исполняемые 700.")
+                needsAttention = true
             }
+            marker.remove(restoring: entries.first)
             if Self.exists(original) {
                 guard Self.isEmptyDirectory(original) else { throw MoveError.alreadyExists(original.path) }
                 try Self.removeEmptyDirectory(original)
@@ -369,47 +497,82 @@ public struct SafeMover: Sendable {
         var updated = record
         updated.restored = true
         if deleteArchive {
-            try fm.removeItem(at: archived)
-            try? fm.removeItem(at: Self.checksumURL(for: archived))
-            try? fm.removeItem(at: Self.modesURL(for: archived))
+            // Данные уже на Mac и сверены. Неудача с удалением архива — повод сказать об этом,
+            // а не объявить весь возврат провалившимся.
+            do {
+                try fm.removeItem(at: archived)
+                try? fm.removeItem(at: Self.checksumURL(for: archived))
+                try? fm.removeItem(at: Self.modesURL(for: archived))
+            } catch {
+                notes.append("Данные вернулись на Mac и сверены, а архив удалить не удалось: \(error.localizedDescription) Он остался в «\(archived.path)» — удалите его сами, когда будет удобно.")
+                needsAttention = true
+            }
         }
         try? Journal.save(updated, volume: volume)
-        return RestoreOutcome(record: updated, notes: notes)
+        return RestoreOutcome(record: updated, notes: notes, needsAttention: needsAttention)
     }
 
-    /// Сверяет посчитанное при чтении архива с файлом `<архив>.sha256`, записанным при переносе.
-    /// Возвращает оговорки; расхождение — ошибка, после которой архив не удаляется.
-    static func checkStoredChecksums(_ hashes: [String: String], archive: URL) throws -> [String] {
+    /// Сверяет посчитанное при чтении архива с файлом `<архив>.sha256`, записанным при переносе,
+    /// и рассказывает человеку, чем архив отличается от того, каким его унесли.
+    ///
+    /// Только оговорки, никаких отказов. Программа сама советует переносить то, чему можно указать
+    /// новый путь (папка моделей LM Studio), человек продолжает работать с файлами прямо на внешнем
+    /// диске — и они законно меняются. Отказ вернуть такой перенос означал бы, что данные к человеку
+    /// уже не вернутся никогда. Возвращаемая копия сверена побайтово с тем, что лежит в архиве
+    /// сейчас (VerifiedCopy.verify), поэтому потери данных здесь нет.
+    ///
+    /// Сверка идёт по множествам путей в обе стороны: одного прохода по посчитанным хешам мало —
+    /// подложенный в архив файл в списке не значится, и раньше он молча объявлялся «сверенным».
+    static func checkStoredChecksums(_ hashes: [String: String], archive: URL) -> StoredChecksumReport {
+        func isFinderJunk(_ path: String) -> Bool {
+            let name = (path as NSString).lastPathComponent
+            return name == ".DS_Store" || name.hasPrefix("._")
+        }
+        func name(_ path: String) -> String { path.isEmpty ? archive.lastPathComponent : path }
+        func listing(_ paths: [String], _ limit: Int) -> String { paths.prefix(limit).map(name).joined(separator: ", ") }
+
+        let present = Set(hashes.keys).filter { !isFinderJunk($0) }
         let url = checksumURL(for: archive)
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else {
-            return ["Рядом с архивом нет списка контрольных сумм, записанного при переносе, — сверить архив с его прежним состоянием не с чем. Возвращённое сверено с тем, что лежит на диске сейчас."]
+            return StoredChecksumReport(notes: ["Рядом с архивом нет списка контрольных сумм, записанного при переносе, — сверить архив с его прежним состоянием не с чем. Все \(present.count) файлов сверены с тем, что лежит на диске сейчас, и вернулись такими."],
+                                        hasDifferences: true)
         }
         guard ((attributes[.size] as? NSNumber)?.int64Value ?? .max) < 200 * 1024 * 1024,
               let text = try? String(contentsOf: url, encoding: .utf8),
               let stored = VerifiedCopy.parseChecksumList(text, rootName: archive.lastPathComponent) else {
-            return ["Список контрольных сумм рядом с архивом не читается — сверить архив с его прежним состоянием не с чем."]
+            return StoredChecksumReport(notes: ["Список контрольных сумм рядом с архивом не читается — сверить архив с его прежним состоянием не с чем. Все \(present.count) файлов сверены с тем, что лежит на диске сейчас, и вернулись такими."],
+                                        hasDifferences: true)
         }
-        var changed: [String] = []
-        for (path, hash) in hashes.sorted(by: { $0.key < $1.key }) {
-            guard let expected = stored[path] else { continue }
-            if expected != hash { changed.append(path.isEmpty ? archive.lastPathComponent : path) }
+        let expected = Set(stored.keys).filter { !isFinderJunk($0) }
+        let common = present.intersection(expected)
+        let changed = common.filter { stored[$0] != hashes[$0] }.sorted()
+        let extra = present.subtracting(expected).sorted()
+        let missing = expected.subtracting(present).sorted()
+
+        var report = StoredChecksumReport()
+        // Первым делом — главное: сверено со списком переноса столько-то из стольких-то.
+        // Иначе интерфейс скажет «каждый файл сверен» и про изменившиеся файлы там, где это неправда.
+        report.notes.append("Со списком, записанным при переносе, сверено \(common.count - changed.count) файлов из \(present.count) в архиве.")
+        if !changed.isEmpty {
+            report.notes.append("С момента переноса на диске изменилось файлов: \(changed.count) (\(listing(changed, 5))). Вернулось то, что лежит в архиве сейчас, — оно сверено побайтово.")
         }
-        guard changed.isEmpty else {
-            let list = changed.prefix(5).joined(separator: ", ")
-            throw MoveError.contentMismatch("архив изменился с момента переноса, не совпало файлов \(changed.count) (\(list)). Архив не тронут")
-        }
-        let missing = Set(stored.keys).subtracting(hashes.keys).filter {
-            let name = ($0 as NSString).lastPathComponent
-            return name != ".DS_Store" && !name.hasPrefix("._")
+        if !extra.isEmpty {
+            report.notes.append("В архиве появилось \(extra.count) файлов, которых при переносе не было (\(listing(extra, 5))). Они тоже вернулись, но сверить их не с чем — откуда они, программа не знает.")
         }
         if !missing.isEmpty {
-            return ["В архиве не хватает \(missing.count) файлов из списка, записанного при переносе (\(missing.sorted().prefix(3).joined(separator: ", "))). Остальное сверено и возвращено."]
+            report.notes.append("В архиве не хватает \(missing.count) файлов из списка, записанного при переносе (\(listing(missing, 3))). Остальное сверено и возвращено.")
         }
-        return []
+        report.hasDifferences = !changed.isEmpty || !extra.isEmpty || !missing.isEmpty
+        return report
     }
 
     /// Права, когда взять настоящие неоткуда: exFAT их не хранит, а `.modes.json`
     /// пишет только сам Offload — у переносов, добавленных вручную, его нет.
+    ///
+    /// Права только для владельца. 0644 и 0755 вернули бы приватные ключи, .env и базы паролей
+    /// читаемыми всем на машине, а угадать чужие права нельзя — можно только не расширять свои.
+    /// Бит выполнения ставится не всем подряд (от этого ломались скрипты и программы внутри .app,
+    /// когда всё возвращалось с 0600), а тем, кого удаётся распознать по первым байтам.
     static func normalizeModes(_ entries: [TreeEntry], at root: URL) {
         let fm = FileManager.default
         for entry in entries {
@@ -418,10 +581,10 @@ public struct SafeMover: Sendable {
             case .symlink:
                 continue
             case .directory:
-                try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: target.path)
+                try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: target.path)
             case .file:
                 let executable = Self.looksExecutable(target)
-                try? fm.setAttributes([.posixPermissions: executable ? 0o755 : 0o644], ofItemAtPath: target.path)
+                try? fm.setAttributes([.posixPermissions: executable ? 0o700 : 0o600], ofItemAtPath: target.path)
             }
         }
     }
@@ -442,12 +605,18 @@ public struct SafeMover: Sendable {
     /// Независимая сверка двух обходов — TreeWalker и Inspector написаны по-разному.
     /// Если они разошлись, содержимое изменилось с момента проверки или один из обходов что-то пропустил;
     /// удалять оригинал в такой ситуации нельзя.
+    ///
+    /// .DS_Store вычитается с обеих сторон: Finder заводит и стирает их, пока человек просто смотрит
+    /// в папку, и такой пустяк не должен обрывать перенос. Всё остальное, что появилось между
+    /// проверкой и обходом, по-прежнему его останавливает.
     static func assertMatches(_ entries: [TreeEntry], _ content: ContentReport, skippedFiles: Int = 0) throws {
-        let files = entries.filter(\.isFile).count + skippedFiles
+        let walkedStores = entries.filter { $0.isFile && ($0.relativePath as NSString).lastPathComponent == ".DS_Store" }.count
+        let files = entries.filter(\.isFile).count - walkedStores + skippedFiles
+        let expectedFiles = content.files - content.dsStoreFiles
         let directories = entries.filter(\.isDirectory).count
         let symlinks = entries.filter { if case .symlink = $0.kind { return true } else { return false } }.count
-        guard files == content.files, directories == content.directories, symlinks == content.symlinkCount else {
-            throw MoveError.contentMismatch("проверка насчитала файлов \(content.files), папок \(content.directories), ссылок \(content.symlinkCount), а обход — \(files), \(directories) и \(symlinks)")
+        guard files == expectedFiles, directories == content.directories, symlinks == content.symlinkCount else {
+            throw MoveError.contentMismatch("проверка насчитала файлов \(expectedFiles), папок \(content.directories), ссылок \(content.symlinkCount), а обход — \(files), \(directories) и \(symlinks)")
         }
     }
 

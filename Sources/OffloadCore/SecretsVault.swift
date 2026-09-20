@@ -11,7 +11,9 @@ public enum VaultError: LocalizedError, Equatable {
         switch self {
         case .weakPassword: return "Пароль должен быть не короче \(SecretsVault.minimumPasswordLength) символов."
         case .alreadyExists: return "Контейнер уже существует."
-        case .notEncrypted: return "Контейнер создан без шифрования — пользоваться им нельзя."
+        // Говорим именно «не подтверждено»: снаружи случай «образ без шифрования» и случай
+        // «подделанный заголовок, подсистема образов шифрования не видит» выглядят одинаково.
+        case .notEncrypted: return "Шифрование образа не подтверждено — складывать в него ключи нельзя."
         case .wrongPassword: return "Неверный пароль."
         case .mountFailed(let message): return "Не удалось открыть контейнер: \(message)"
         }
@@ -54,25 +56,85 @@ public struct SecretsVault: Sendable {
     public static func existingEncryptedBundle(in root: URL) -> URL? {
         let fm = FileManager.default
         let items = (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
+        // Сортируем до отсева и берём первый подошедший: на обычном диске это один запрос
+        // к diskutil вместо запроса на каждый образ, а он не бесплатный (см. isKnownUnencrypted).
         return items.filter { $0.pathExtension == "sparsebundle" && hasEncryptionHeader($0) }
             .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-            .first
+            .first { !isKnownUnencrypted($0) }
     }
 
     public var exists: Bool { FileManager.default.fileExists(atPath: imageURL.path) }
     public var isEncrypted: Bool { Self.hasEncryptionHeader(imageURL) }
 
-    /// У зашифрованного sparsebundle внутри лежит token — заголовок CDSA с ключевым материалом,
-    /// он начинается с «encrcdsa». Одного имени файла мало: пустой `token`, подложенный в обычный
-    /// образ, раньше выдавал его за зашифрованный, а подходил к такому образу любой пароль —
-    /// и ключи легли бы на диск открытым текстом.
+    /// Первый, самый дешёвый отсев: у зашифрованного sparsebundle внутри лежит token —
+    /// заголовок CDSA с ключевым материалом, он начинается с «encrcdsa». Обычный образ
+    /// hdiutil создаёт с файлом token РАЗМЕРОМ 0 байт, так что бытовой случай («это просто
+    /// не тот образ») ловится чтением восьми байт, без запуска внешних программ.
     ///
-    /// `hdiutil imageinfo` для этой проверки не годится: на зашифрованном образе он спрашивает
-    /// пароль прямо у терминала и висит, даже когда stdin закрыт.
+    /// Но доказательством шифрования это не является, и одного такого отсева мало.
+    /// token — обычный файл внутри папки .sparsebundle, и любой, у кого есть запись в корень
+    /// внешнего диска, может положить туда незашифрованный образ, вписав в token «encrcdsa».
+    /// К такому образу `hdiutil attach -stdinpass` подходит с ЛЮБЫМ паролем и возвращает 0 —
+    /// то есть проверка «пароль принят» ничего не подтверждает, и ключи, ssh и токены легли бы
+    /// на диск открытым текстом. Поэтому решение принимает не этот метод, а подсистема образов:
+    /// см. `attachedImageIsEncrypted` и `isKnownUnencrypted`.
+    ///
+    /// `hdiutil imageinfo` (и `diskutil image info` без -plist) для проверки не годятся:
+    /// на зашифрованном образе они спрашивают пароль у /dev/tty и висят, даже когда stdin закрыт.
     public static func hasEncryptionHeader(_ image: URL) -> Bool {
         guard let handle = try? FileHandle(forReadingFrom: image.appendingPathComponent("token")) else { return false }
         defer { try? handle.close() }
         return ((try? handle.read(upToCount: 8)) ?? nil) == Data("encrcdsa".utf8)
+    }
+
+    /// Точно ли образ НЕ зашифрован — вопрос про образ, который ещё не подключён.
+    ///
+    /// `diskutil image info -plist` на незашифрованном образе отвечает мгновенно и честно
+    /// («Encryption Info» → «Is Encrypted» = 0), а на зашифрованном — уходит спрашивать пароль
+    /// и не возвращается. Поэтому «да, не зашифрован» здесь значит только одно: программа
+    /// успела ответить и ответила именно так. Молчание по таймауту — признак того, что у образа
+    /// просят пароль, то есть скорее шифрования; такой образ не отсеиваем, иначе настоящий
+    /// контейнер человека перестал бы находиться и он остался бы без своих ключей.
+    ///
+    /// Таймаут короткий нарочно. Незашифрованный образ отвечает меньше чем за секунду, а вот
+    /// на зашифрованном мы всегда упираемся в таймаут целиком — и происходит это при выборе
+    /// контейнера, то есть в ответ на нажатие в окне. Долгое ожидание здесь выглядело бы
+    /// зависанием программы. Рисковать таким сокращением можно: подделку окончательно ловит
+    /// не этот отсев, а проверка уже подключённого тома в `attach`.
+    static func isKnownUnencrypted(_ image: URL) -> Bool {
+        guard let result = try? Runner.run("diskutil", ["image", "info", "-plist", image.path], timeout: 3),
+              result.succeeded,
+              let plist = try? PropertyListSerialization.propertyList(from: result.stdout, format: nil) as? [String: Any],
+              let info = plist["Encryption Info"] as? [String: Any],
+              let encrypted = info["Is Encrypted"] as? NSNumber else { return false }
+        return !encrypted.boolValue
+    }
+
+    /// Зашифрован ли образ за УЖЕ подключённым томом.
+    ///
+    /// Единственная проверка, которую нельзя обойти подложенным файлом: `hdiutil info -plist`
+    /// отвечает про то, что подсистема образов уже открыла, поэтому ключ `image-encrypted`
+    /// приходит от неё самой, а не из файла на диске. Пароля она при этом не просит и не виснет.
+    ///
+    /// Нет ответа — считаем «не подтверждено»: том, про который мы не можем доказать шифрование,
+    /// не должен получить ключи, ssh и токены. Данные при этом не теряются — образ остаётся
+    /// на месте и открывается вручную, — а вот выложенные открытым текстом ключи не отозвать.
+    static func attachedImageIsEncrypted(mountPoint: URL, image: URL) -> Bool {
+        guard let result = try? Runner.run("hdiutil", ["info", "-plist"], timeout: 30), result.succeeded,
+              let plist = try? PropertyListSerialization.propertyList(from: result.stdout, format: nil) as? [String: Any],
+              let images = plist["images"] as? [[String: Any]] else { return false }
+        let mount = mountPoint.standardizedFileURL.path
+        // Путь образа hdiutil отдаёт уже развёрнутым (/tmp → /private/tmp), поэтому
+        // обе стороны сравнения разворачиваем одинаково, иначе свой же образ не найдётся.
+        let target = Paths.resolve(image).path
+        for entry in images {
+            let entities = (entry["system-entities"] as? [[String: Any]]) ?? []
+            let mounts = entities.compactMap { $0["mount-point"] as? String }
+            let samePath = (entry["image-path"] as? String).map { Paths.resolve(URL(fileURLWithPath: $0)).path == target } ?? false
+            guard mounts.contains(mount) || samePath else { continue }
+            return (entry["image-encrypted"] as? NSNumber)?.boolValue == true
+        }
+        return false
     }
 
     public func create(password: String, sizeGB: Int = 4) throws {
@@ -85,7 +147,7 @@ public struct SecretsVault: Sendable {
     }
 
     public func attach(password: String) throws -> URL {
-        // Открывать незашифрованный образ как хранилище ключей нельзя: он примет любой пароль.
+        // Дешёвый отсев до запуска hdiutil: обычный образ примет любой пароль.
         guard isEncrypted else { throw VaultError.notEncrypted }
         let result = try Runner.run("hdiutil", ["attach", "-stdinpass", "-nobrowse", "-owners", "on", "-plist", imageURL.path],
                                     stdin: Data(password.utf8), timeout: 180)
@@ -102,7 +164,16 @@ public struct SecretsVault: Sendable {
               let mount = entities.compactMap({ $0["mount-point"] as? String }).first else {
             throw VaultError.mountFailed("hdiutil не сообщил точку монтирования")
         }
-        return URL(fileURLWithPath: mount, isDirectory: true)
+        let mountPoint = URL(fileURLWithPath: mount, isDirectory: true)
+        // Код возврата hdiutil здесь ничего не доказывает: к подделанному образу (token
+        // с «encrcdsa», а шифрования нет) он подходит с любым паролем и отвечает 0.
+        // Спрашиваем подсистему образов про уже подключённый том — и если она говорит, что
+        // шифрования нет, отсоединяем немедленно, не записав внутрь ни байта.
+        guard Self.attachedImageIsEncrypted(mountPoint: mountPoint, image: imageURL) else {
+            Self.detachIgnoringErrors(mountPoint)
+            throw VaultError.notEncrypted
+        }
+        return mountPoint
     }
 
     /// Точка монтирования, если контейнер уже открыт — например, вручную через hdiutil.
@@ -123,6 +194,14 @@ public struct SecretsVault: Sendable {
 
     public static func detach(_ mountPoint: URL) throws {
         try Runner.check("hdiutil", ["detach", mountPoint.path], timeout: 120)
+    }
+
+    /// Закрыть том во что бы то ни стало и молча. Нужно там, где мы сами его только что
+    /// открыли и уже решили, что пользоваться им нельзя: оставить чужой образ подключённым
+    /// хуже, чем не суметь красиво сообщить об ошибке отсоединения.
+    public static func detachIgnoringErrors(_ mountPoint: URL) {
+        if (try? detach(mountPoint)) != nil { return }
+        _ = try? Runner.run("hdiutil", ["detach", "-force", mountPoint.path], timeout: 120)
     }
 
     /// Складывает в открытый контейнер: ~/.ssh с правами, дотфайлы, учётку GitHub CLI

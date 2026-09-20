@@ -160,6 +160,9 @@ struct MoveSheet: View {
         // Esc запрещаем только во время самого копирования; на этапе проверки закрывать окно можно.
         .interactiveDismissDisabled({ if case .running = model.stage { return true } else { return false } }())
         .onChange(of: model.didMove) { if model.didMove { onMoved() } }
+        // Esc на этапе проверки закрывает окно, но обход дерева шёл бы дальше: на большой папке
+        // это десятки секунд впустую, и остановить их было бы уже нечем — окна нет.
+        .onDisappear { model.cancel() }
         .task(id: app.destinationID) {
             if let volume = app.destination { model.prepare(source: source, volume: volume, rules: app.rules) }
         }

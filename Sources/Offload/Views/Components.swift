@@ -40,29 +40,43 @@ struct Notice: View {
     struct Message: Equatable, Sendable {
         var kind: Kind
         var text: String
+        /// Оговорки: каждая отдельной строкой под заголовком. Слитые в одно предложение,
+        /// они читались как сплошной текст, и было не видно, сколько их и о чём каждая.
+        var details: [String]
 
-        init(_ kind: Kind, _ text: String) {
+        init(_ kind: Kind, _ text: String, details: [String] = []) {
             self.kind = kind
             self.text = text
+            self.details = details
         }
     }
 
     let kind: Kind
     let text: String
+    let details: [String]
 
-    init(_ kind: Kind, _ text: String) {
+    init(_ kind: Kind, _ text: String, details: [String] = []) {
         self.kind = kind
         self.text = text
+        self.details = details
     }
 
     init(_ message: Message) {
         self.kind = message.kind
         self.text = message.text
+        self.details = message.details
     }
 
     var body: some View {
         Label {
-            Text(text).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(text).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                ForEach(details, id: \.self) { detail in
+                    Text("— " + detail)
+                        .font(.callout).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                }
+            }
         } icon: {
             Image(systemName: symbol).foregroundStyle(color)
         }

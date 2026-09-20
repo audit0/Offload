@@ -6,6 +6,10 @@ public struct ContentReport: Sendable, Equatable {
     public var allocatedBytes: Int64 = 0
     public var logicalBytes: Int64 = 0
     public var files = 0
+    /// Сколько из `files` — это .DS_Store. Finder пишет и стирает их в любой момент, в том числе
+    /// между планом и переносом, поэтому сверка двух обходов считает файлы, вычтя эти с обеих сторон:
+    /// иначе открытая человеком папка срывала бы уже начатый перенос.
+    public var dsStoreFiles = 0
     public var directories = 0
     public var symlinkCount = 0
     public var symlinkExamples: [String] = []
@@ -31,9 +35,17 @@ public struct ContentReport: Sendable, Equatable {
 
 public enum Inspector {
     /// Атрибуты, которые macOS ставит сама и о потере которых человеку говорить незачем.
+    /// Сюда же весь префикс «com.apple.metadata:» — служебные пометки Spotlight. Среди них
+    /// kMDItemWhereFroms, который macOS ставит каждому скачанному файлу: пока он считался
+    /// заметным, оговорка про метки Finder загоралась почти на любой папке и значить перестала.
     static let routineXattrs: Set<String> = [
         "com.apple.quarantine", "com.apple.provenance", "com.apple.macl",
-        "com.apple.lastuseddate#PS", "com.apple.metadata:kMDLabel_", "com.apple.TextEncoding",
+        "com.apple.lastuseddate#PS", "com.apple.metadata:", "com.apple.TextEncoding",
+    ]
+
+    /// Исключения из предыдущего списка: эти пометки человек ставит руками и потерю заметит.
+    static let notableXattrs: Set<String> = [
+        "com.apple.metadata:_kMDItemUserTags", "com.apple.metadata:kMDItemFinderComment",
     ]
 
     /// Есть ли у объекта расширенные атрибуты, которые человек заметит: метки, комментарии,
@@ -54,7 +66,9 @@ public enum Inspector {
             }
         }
         return names.contains { name in
-            !routineXattrs.contains(name) && !routineXattrs.contains(where: { name.hasPrefix($0) })
+            if notableXattrs.contains(name) { return true }
+            if routineXattrs.contains(name) { return false }
+            return !routineXattrs.contains(where: { name.hasPrefix($0) })
         }
     }
 
@@ -121,6 +135,7 @@ public enum Inspector {
                 if Self.hasNotableXattrs(path) { report.taggedFiles += 1 }
             case FTS_F, FTS_DEFAULT:
                 report.files += 1
+                if name == ".DS_Store" { report.dsStoreFiles += 1 }
                 noteRegistered(name, path)
                 if let status = entry.pointee.fts_statp {
                     let logical = Int64(status.pointee.st_size)

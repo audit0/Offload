@@ -93,7 +93,7 @@ struct BackupView: View {
         .formStyle(.grouped)
         .navigationTitle("Бэкап")
         .task(id: app.destinationID) {
-            if let volume = app.destination { model.refreshVault(on: volume) }
+            if let volume = app.destination { model.refreshVault(on: volume, app: app) }
         }
     }
 
@@ -112,7 +112,7 @@ struct BackupView: View {
                         Button { model.fillVault(on: volume, app: app) } label: { Label("Сложить секреты", systemImage: "tray.and.arrow.down") }
                             .disabled(!state.isEncrypted)
                             .help(state.isEncrypted ? "Скопировать ключи и токены в контейнер" : "Этот образ не зашифрован — складывать в него ключи нельзя")
-                        Button { model.closeVault(on: volume) } label: { Label("Закрыть контейнер", systemImage: "lock.fill") }
+                        Button { model.closeVault(on: volume, app: app) } label: { Label("Закрыть контейнер", systemImage: "lock.fill") }
                     }
                     .disabled(model.vaultBusy)
                 } else if state.exists {
@@ -127,7 +127,7 @@ struct BackupView: View {
                     if state.isEncrypted {
                         SecureField("Пароль", text: $password)
                         Button("Открыть") {
-                            model.openVault(on: volume, password: password)
+                            model.openVault(on: volume, password: password, app: app)
                             password = ""
                         }
                         .disabled(password.isEmpty || model.vaultBusy)
@@ -141,7 +141,7 @@ struct BackupView: View {
                         Text("Пароли не совпадают").font(.caption).foregroundStyle(.red)
                     }
                     Button("Создать контейнер") {
-                        model.createVault(on: volume, password: password)
+                        model.createVault(on: volume, password: password, app: app)
                         password = ""
                         confirmation = ""
                     }

@@ -184,10 +184,15 @@ public enum VerifiedCopy {
 
     /// Создаёт копию дерева в `destination` (его ещё не должно существовать).
     /// Возвращает SHA-256 исходных байтов каждого файла.
+    /// - Parameter didCreateRoot: вызывается сразу после создания корневой папки копии и до того,
+    ///   как в неё что-то записано. Через него кладётся метка «здесь идёт копирование»: без неё
+    ///   соседний экземпляр Offload видит только имя `.offload-partial-…` и дату, которая по ходу
+    ///   работы не меняется.
     public static func copyTree(_ entries: [TreeEntry], from source: URL, to destination: URL,
                                 keepPermissions: Bool,
                                 isCancelled: () -> Bool = { false },
-                                progress: (String, Int) -> Void = { _, _ in }) throws -> [String: String] {
+                                progress: (String, Int) -> Void = { _, _ in },
+                                didCreateRoot: (URL) -> Void = { _ in }) throws -> [String: String] {
         let fm = FileManager.default
         var hashes: [String: String] = [:]
         for entry in entries {
@@ -198,6 +203,7 @@ public enum VerifiedCopy {
                 do { try fm.createDirectory(at: target, withIntermediateDirectories: false) } catch {
                     throw CopyError.writeFailed(target.path, error.localizedDescription)
                 }
+                if entry.relativePath.isEmpty { didCreateRoot(destination) }
             case .file:
                 hashes[entry.relativePath] = try copyFile(from: url(source, entry), to: target, isCancelled: isCancelled,
                                                           progress: { progress(entry.relativePath, $0) })
@@ -253,7 +259,7 @@ public enum VerifiedCopy {
     /// (достаточно открыть папку и поменять вид окна). Раньше такой пустяк обрывал
     /// многочасовой перенос и выбрасывал уже проверенную копию, поэтому у каталога
     /// при изменившейся дате перечитывается список имён — важно только это.
-    /// - Parameter ignoring: имена, появление и исчезновение которых изменением не считается.
+    /// - Parameter ignoring: имена, появление, исчезновение и изменение которых изменением не считается.
     public static func assertUnchanged(_ entries: [TreeEntry], at source: URL, ignoring: Set<String> = [".DS_Store"]) throws {
         let fm = FileManager.default
         var children: [String: Set<String>] = [:]
@@ -262,6 +268,10 @@ public enum VerifiedCopy {
             children[parent, default: []].insert((entry.relativePath as NSString).lastPathComponent)
         }
         for entry in entries {
+            // Сам .DS_Store теперь едет в копию, но сверять его нельзя: Finder переписывает его,
+            // стоит человеку изменить вид окна, и многочасовой перенос обрывался бы ради того,
+            // чтобы вместе с данными доехало точное положение иконок.
+            if !entry.relativePath.isEmpty, ignoring.contains((entry.relativePath as NSString).lastPathComponent) { continue }
             let name = displayName(source, entry)
             guard let attributes = try? fm.attributesOfItem(atPath: url(source, entry).path) else {
                 throw CopyError.changedDuringCopy(name)

@@ -52,10 +52,14 @@ final class AppModel {
     var destination: VolumeInfo? { volumes.first { $0.id == destinationID } }
     var isBusy: Bool { runningOperations > 0 }
 
-    func beginOperation(_ id: UUID, cancel: @escaping @Sendable () -> Void) {
-        guard cancellers[id] == nil else { return }
+    /// Идентификатор заводится здесь, на каждый запуск свой. Один общий на модель приводил
+    /// к тому, что второй запуск не регистрировался вовсе, а конец первого снимал учёт обоих:
+    /// счётчик обнулялся посреди копирования, и выход из программы переставал спрашивать.
+    func beginOperation(cancel: @escaping @Sendable () -> Void) -> UUID {
+        let id = UUID()
         cancellers[id] = cancel
         runningOperations += 1
+        return id
     }
 
     func endOperation(_ id: UUID) {

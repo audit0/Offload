@@ -8,3 +8,4 @@ dist/
 ._*
 xcuserdata/
 DerivedData/
+.claude/worktrees/
