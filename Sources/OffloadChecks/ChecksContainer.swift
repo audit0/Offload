@@ -61,16 +61,19 @@ func checksContainer() {
         // Так выглядит атака: запись в корень внешнего диска есть у кого угодно.
         try Runner.check("hdiutil", ["create", "-size", "20m", "-type", "SPARSEBUNDLE", "-fs", "APFS",
                                      "-volname", "ПодделкаOffload", "-quiet", forged.path], timeout: 180)
+        // Ленивая подделка — одна сигнатура «encrcdsa» в token. Именно она и опасна:
+        // такой образ hdiutil открывает с ЛЮБЫМ паролем. Дешёвый признак её отсекает,
+        // потому что настоящий заголовок весит десятки килобайт, а не восемь байт.
         try Data("encrcdsa".utf8).write(to: forged.appendingPathComponent("token"))
-
-        let forgedVault = SecretsVault(imageURL: forged)
-        check(forgedVault.isEncrypted, "дешёвая проверка заголовка на подделку ловится — значит, она не последняя")
-        expectError("подделанный образ не открывается как контейнер",
-                    { _ = try forgedVault.attach(password: "какой-угодно-пароль-123") },
+        let lazyForgery = SecretsVault(imageURL: forged)
+        check(!lazyForgery.isEncrypted, "подделка из восьми байт не считается контейнером")
+        expectError("подделка из восьми байт не открывается как контейнер",
+                    { _ = try lazyForgery.attach(password: "какой-угодно-пароль-123") },
                     matching: { ($0 as? VaultError) == .notEncrypted })
-        check(forgedVault.currentMountPoint() == nil, "после отказа подделка не осталась подключённой")
+        check(lazyForgery.currentMountPoint() == nil, "после отказа подделка не осталась подключённой")
 
-        // В подделку не должно попасть ничего: открываем её сами и смотрим, пусто ли внутри.
+        // В подделку не должно попасть ничего: открываем её сами (hdiutil это позволяет —
+        // в том и была дыра) и смотрим, пусто ли внутри.
         let peek = try Runner.check("hdiutil", ["attach", "-nobrowse", "-plist", forged.path], timeout: 120)
         if let mount = mountPoint(fromAttachPlist: peek.stdout) {
             defer { _ = try? Runner.run("hdiutil", ["detach", "-force", mount.path], timeout: 60) }
@@ -80,6 +83,16 @@ func checksContainer() {
         } else {
             check(false, "не удалось открыть подделку для осмотра")
         }
+
+        // Подделка убедительная: сигнатура и правдоподобный размер заголовка. Дешёвый признак
+        // её пропускает, и это нормально — такой образ подсистема образов не открывает вовсе,
+        // а если бы открыла, её остановила бы проверка уже подключённого тома.
+        try (Data("encrcdsa".utf8) + Data(count: 64 << 10)).write(to: forged.appendingPathComponent("token"))
+        let forgedVault = SecretsVault(imageURL: forged)
+        check(forgedVault.isEncrypted, "убедительная подделка проходит дешёвый признак — значит, он не последний")
+        expectError("убедительная подделка не открывается как контейнер",
+                    { _ = try forgedVault.attach(password: "какой-угодно-пароль-123") })
+        check(forgedVault.currentMountPoint() == nil, "убедительная подделка не осталась подключённой")
 
         // Настоящий зашифрованный контейнер должен открываться по паролю как раньше:
         // отказ вернуть человеку его ключи — это тоже потеря.
@@ -96,7 +109,8 @@ func checksContainer() {
         SecretsVault.detachIgnoringErrors(mount)
         opened = false
 
-        // Выбор контейнера на диске: подделка стоит первой по алфавиту, но взять должны настоящий.
+        // Выбор контейнера на диске: подделка стоит первой по алфавиту, но у настоящего
+        // заголовок весомее, и предложить человеку должны именно его.
         let chosen = SecretsVault.existingEncryptedBundle(in: root)
         check(chosen?.lastPathComponent == "ZZZ-Настоящий.sparsebundle",
               "подделка не выбирается автоматически, выбран \(chosen?.lastPathComponent ?? "ничего")")

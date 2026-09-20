@@ -541,8 +541,9 @@ if env["OFFLOAD_SKIP_INTEGRATION"] != "1" {
         check(vault.currentMountPoint()?.path == mount.path, "открытый контейнер находится по точке монтирования")
         let manualVault = scratch.appendingPathComponent("disk-root/Secrets.sparsebundle", isDirectory: true)
         try fm.createDirectory(at: manualVault.appendingPathComponent("bands"), withIntermediateDirectories: true)
-        // Заголовок настоящего зашифрованного образа начинается с «encrcdsa».
-        try write("encrcdsa\u{0}\u{0}", to: manualVault.appendingPathComponent("token"))
+        // Заголовок настоящего зашифрованного образа начинается с «encrcdsa» и весит
+        // десятки килобайт: в нём лежит ключевой материал. Подделка короче порога не считается.
+        try (Data("encrcdsa".utf8) + Data(count: 2048)).write(to: manualVault.appendingPathComponent("token"))
         try fm.createDirectory(at: scratch.appendingPathComponent("disk-root/Plain.sparsebundle"), withIntermediateDirectories: true)
         check(SecretsVault.existingEncryptedBundle(in: scratch.appendingPathComponent("disk-root"))?.standardizedFileURL.path == manualVault.standardizedFileURL.path,
               "созданный вручную зашифрованный контейнер находится, незашифрованный — нет")
@@ -631,6 +632,8 @@ if env["OFFLOAD_SKIP_DOCKER"] != "1", (try? DockerService().ensureRunning()) != 
 checksRestore()
 checksContainer()
 checksInterface()
+checksHardenLocal()
+checksHardenRestore()
 
 try? fm.removeItem(at: scratch)
 print("")

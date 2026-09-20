@@ -56,11 +56,17 @@ public struct SecretsVault: Sendable {
     public static func existingEncryptedBundle(in root: URL) -> URL? {
         let fm = FileManager.default
         let items = (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
-        // Сортируем до отсева и берём первый подошедший: на обычном диске это один запрос
-        // к diskutil вместо запроса на каждый образ, а он не бесплатный (см. isKnownUnencrypted).
+        // Если образов несколько, берём тот, чей token больше похож на настоящий заголовок
+        // с ключевым материалом. Подделку это не исключает — её ловит проверка уже
+        // подключённого тома, — но не даёт пустышке с подходящим именем встать поперёд
+        // настоящего контейнера человека.
         return items.filter { $0.pathExtension == "sparsebundle" && hasEncryptionHeader($0) }
-            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-            .first { !isKnownUnencrypted($0) }
+            .sorted {
+                let (left, right) = (tokenSize($0), tokenSize($1))
+                if left != right { return left > right }
+                return $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
+            }
+            .first
     }
 
     public var exists: Bool { FileManager.default.fileExists(atPath: imageURL.path) }
@@ -77,37 +83,32 @@ public struct SecretsVault: Sendable {
     /// К такому образу `hdiutil attach -stdinpass` подходит с ЛЮБЫМ паролем и возвращает 0 —
     /// то есть проверка «пароль принят» ничего не подтверждает, и ключи, ssh и токены легли бы
     /// на диск открытым текстом. Поэтому решение принимает не этот метод, а подсистема образов:
-    /// см. `attachedImageIsEncrypted` и `isKnownUnencrypted`.
+    /// см. `attachedImageIsEncrypted`.
     ///
-    /// `hdiutil imageinfo` (и `diskutil image info` без -plist) для проверки не годятся:
-    /// на зашифрованном образе они спрашивают пароль у /dev/tty и висят, даже когда stdin закрыт.
-    public static func hasEncryptionHeader(_ image: URL) -> Bool {
-        guard let handle = try? FileHandle(forReadingFrom: image.appendingPathComponent("token")) else { return false }
-        defer { try? handle.close() }
-        return ((try? handle.read(upToCount: 8)) ?? nil) == Data("encrcdsa".utf8)
+    /// Спросить про ещё не подключённый образ нельзя вообще ничем: и `hdiutil imageinfo`,
+    /// и `diskutil image info` на зашифрованном образе идут за паролем, а в графическом
+    /// сеансе macOS показывает на каждый такой запрос своё системное окно «Enter password
+    /// to access…». Раздел «Бэкап» перечитывает состояние после каждой операции, и это
+    /// засыпало бы человека ворохом окон — такое уже случилось на проверках.
+    ///
+    /// Поэтому второй признак тоже читается из самого файла: у настоящего контейнера token —
+    /// это заголовок CDSA с ключевым материалом, он в сотню килобайт, а подделка обычно
+    /// ограничивается восемью байтами сигнатуры. Это по-прежнему не доказательство, а способ
+    /// не выбрать заведомую пустышку, когда рядом лежит настоящий контейнер человека.
+    static func tokenSize(_ image: URL) -> Int {
+        let token = image.appendingPathComponent("token")
+        return ((try? FileManager.default.attributesOfItem(atPath: token.path))?[.size] as? NSNumber)?.intValue ?? 0
     }
 
-    /// Точно ли образ НЕ зашифрован — вопрос про образ, который ещё не подключён.
-    ///
-    /// `diskutil image info -plist` на незашифрованном образе отвечает мгновенно и честно
-    /// («Encryption Info» → «Is Encrypted» = 0), а на зашифрованном — уходит спрашивать пароль
-    /// и не возвращается. Поэтому «да, не зашифрован» здесь значит только одно: программа
-    /// успела ответить и ответила именно так. Молчание по таймауту — признак того, что у образа
-    /// просят пароль, то есть скорее шифрования; такой образ не отсеиваем, иначе настоящий
-    /// контейнер человека перестал бы находиться и он остался бы без своих ключей.
-    ///
-    /// Таймаут короткий нарочно. Незашифрованный образ отвечает меньше чем за секунду, а вот
-    /// на зашифрованном мы всегда упираемся в таймаут целиком — и происходит это при выборе
-    /// контейнера, то есть в ответ на нажатие в окне. Долгое ожидание здесь выглядело бы
-    /// зависанием программы. Рисковать таким сокращением можно: подделку окончательно ловит
-    /// не этот отсев, а проверка уже подключённого тома в `attach`.
-    static func isKnownUnencrypted(_ image: URL) -> Bool {
-        guard let result = try? Runner.run("diskutil", ["image", "info", "-plist", image.path], timeout: 3),
-              result.succeeded,
-              let plist = try? PropertyListSerialization.propertyList(from: result.stdout, format: nil) as? [String: Any],
-              let info = plist["Encryption Info"] as? [String: Any],
-              let encrypted = info["Is Encrypted"] as? NSNumber else { return false }
-        return !encrypted.boolValue
+    static let minimumTokenBytes = 1024
+
+    public static func hasEncryptionHeader(_ image: URL) -> Bool {
+        let token = image.appendingPathComponent("token")
+        guard let size = (try? FileManager.default.attributesOfItem(atPath: token.path))?[.size] as? NSNumber,
+              size.intValue >= minimumTokenBytes,
+              let handle = try? FileHandle(forReadingFrom: token) else { return false }
+        defer { try? handle.close() }
+        return ((try? handle.read(upToCount: 8)) ?? nil) == Data("encrcdsa".utf8)
     }
 
     /// Зашифрован ли образ за УЖЕ подключённым томом.
@@ -127,12 +128,22 @@ public struct SecretsVault: Sendable {
         // Путь образа hdiutil отдаёт уже развёрнутым (/tmp → /private/tmp), поэтому
         // обе стороны сравнения разворачиваем одинаково, иначе свой же образ не найдётся.
         let target = Paths.resolve(image).path
+        func encrypted(_ entry: [String: Any]) -> Bool {
+            (entry["image-encrypted"] as? NSNumber)?.boolValue == true
+        }
+        // Сначала ищем строго по точке монтирования: это тот самый том, который мы
+        // только что получили от attach, и подменить его в ответе нечем. Путь образа —
+        // только запасной признак: записей с одним и тем же путём может оказаться
+        // несколько (образ подключали раньше, а содержимое папки-образа с тех пор
+        // подменили), и чужая запись ответила бы за наш том.
         for entry in images {
             let entities = (entry["system-entities"] as? [[String: Any]]) ?? []
-            let mounts = entities.compactMap { $0["mount-point"] as? String }
-            let samePath = (entry["image-path"] as? String).map { Paths.resolve(URL(fileURLWithPath: $0)).path == target } ?? false
-            guard mounts.contains(mount) || samePath else { continue }
-            return (entry["image-encrypted"] as? NSNumber)?.boolValue == true
+            guard entities.compactMap({ $0["mount-point"] as? String }).contains(mount) else { continue }
+            return encrypted(entry)
+        }
+        for entry in images {
+            guard let path = entry["image-path"] as? String, Paths.resolve(URL(fileURLWithPath: path)).path == target else { continue }
+            return encrypted(entry)
         }
         return false
     }

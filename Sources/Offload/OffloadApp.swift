@@ -115,8 +115,9 @@ enum Snapshots {
             try? await Task.sleep(for: .seconds(3))
             await focus(window, model: model, section: section)
             save(window, to: directory.appendingPathComponent("\(section.rawValue)-3s.png"))
-            // Разделы с данными (размеры папок, Docker) наполняются десятки секунд.
-            let extra = section == .space ? 22 : section == .docker ? 17 : 0
+            // Разделы с данными наполняются не сразу: размеры папок и Docker — десятки секунд,
+            // «Бэкап» ждёт ответа hdiutil про контейнер, и кадр заставал бы его на полпути.
+            let extra = section == .space ? 22 : section == .docker ? 17 : section == .backup ? 8 : 0
             if extra > 0 {
                 try? await Task.sleep(for: .seconds(extra))
                 await focus(window, model: model, section: section)
