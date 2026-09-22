@@ -13,9 +13,12 @@ public struct VolumeInfo: Hashable, Sendable, Identifiable {
     public let blockSize: Int64
     public let isReadOnly: Bool
     public let isInternal: Bool
+    /// Том внутри зашифрованного образа — сейф. Всё, что пишется сюда, на внешнем диске
+    /// лежит зашифрованным.
+    public let isEncryptedImage: Bool
 
     public init(mountPoint: URL, name: String, fsType: String, totalBytes: Int64, availableBytes: Int64,
-                blockSize: Int64, isReadOnly: Bool, isInternal: Bool) {
+                blockSize: Int64, isReadOnly: Bool, isInternal: Bool, isEncryptedImage: Bool = false) {
         self.mountPoint = mountPoint
         self.name = name
         self.fsType = fsType
@@ -24,6 +27,7 @@ public struct VolumeInfo: Hashable, Sendable, Identifiable {
         self.blockSize = blockSize
         self.isReadOnly = isReadOnly
         self.isInternal = isInternal
+        self.isEncryptedImage = isEncryptedImage
     }
 
     /// macOS хранит символические ссылки и на exFAT/FAT — в собственном формате (проверено на реальном томе).
@@ -77,6 +81,33 @@ public enum Volumes {
         return urls.compactMap { info(for: $0) }
             .filter { !$0.isInternal && !$0.isReadOnly && $0.mountPoint.path.hasPrefix("/Volumes/") }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// Сейф как место назначения. Свободное место внутри образа — не то же самое, что место
+    /// на диске, где образ лежит: разрежённый образ растёт, пока на диске есть куда, и предел
+    /// в полдиска ничего не значит, если сам диск почти полон. Поэтому свободным считается
+    /// меньшее из двух, за вычетом запаса на служебные данные образа.
+    public static func safe(mountedAt mount: URL, host: VolumeInfo) -> VolumeInfo? {
+        guard let inside = info(for: mount) else { return nil }
+        let hostRoom = max(0, host.availableBytes - safeHostReserve)
+        return VolumeInfo(mountPoint: inside.mountPoint, name: inside.name, fsType: inside.fsType,
+                          totalBytes: inside.totalBytes, availableBytes: min(inside.availableBytes, hostRoom),
+                          blockSize: inside.blockSize, isReadOnly: inside.isReadOnly, isInternal: false,
+                          isEncryptedImage: true)
+    }
+
+    /// Полосы образа по 8 МБ и его служебные файлы: оставляем на диске немного воздуха.
+    public static let safeHostReserve: Int64 = 1 << 30
+
+    /// Зашифрован ли сам том целиком (APFS с шифрованием, FileVault). У exFAT и FAT
+    /// шифрования не бывает вовсе — всё, что лежит на таком диске вне сейфа, читается как есть.
+    public static func isVolumeEncrypted(_ volume: VolumeInfo) -> Bool {
+        guard ["apfs", "hfs"].contains(volume.fsType),
+              let result = try? Runner.run("diskutil", ["info", "-plist", volume.mountPoint.path], timeout: 20), result.succeeded,
+              let plist = try? PropertyListSerialization.propertyList(from: result.stdout, format: nil) as? [String: Any] else {
+            return false
+        }
+        return (plist["Encryption"] as? Bool) == true || (plist["FileVault"] as? Bool) == true
     }
 
     static func string<T>(fromCTuple tuple: T) -> String {

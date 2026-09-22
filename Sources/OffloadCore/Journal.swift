@@ -90,6 +90,17 @@ public enum Journal {
         }
     }
 
+    /// Убирает запись из журнала на диске — когда архив переехал в сейф и на открытой
+    /// части диска его больше нет. Локальная копия журнала при этом не трогается:
+    /// в ней запись уже обновлена и указывает на сейф.
+    public static func remove(_ id: UUID, from volume: VolumeInfo) throws {
+        let manifest = manifestURL(on: volume)
+        guard case .records(var records) = state(of: manifest), records.contains(where: { $0.id == id }) else { return }
+        records.removeAll { $0.id == id }
+        try encoder.encode(records).write(to: manifest, options: .atomic)
+        if volume.createsAppleDouble { SafeMover.removeSidecar(of: manifest) }
+    }
+
     static var encoder: JSONEncoder {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

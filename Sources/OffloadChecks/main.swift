@@ -540,10 +540,10 @@ if env["OFFLOAD_SKIP_INTEGRATION"] != "1" {
         check(Volumes.info(for: mount)?.fsType == "apfs", "внутри контейнера APFS")
         check(vault.currentMountPoint()?.path == mount.path, "открытый контейнер находится по точке монтирования")
         let manualVault = scratch.appendingPathComponent("disk-root/Secrets.sparsebundle", isDirectory: true)
-        try fm.createDirectory(at: manualVault.appendingPathComponent("bands"), withIntermediateDirectories: true)
-        // Заголовок настоящего зашифрованного образа начинается с «encrcdsa» и весит
-        // десятки килобайт: в нём лежит ключевой материал. Подделка короче порога не считается.
-        try (Data("encrcdsa".utf8) + Data(count: 2048)).write(to: manualVault.appendingPathComponent("token"))
+        try fm.createDirectory(at: manualVault.deletingLastPathComponent(), withIntermediateDirectories: true)
+        // Контейнер, созданный человеком вручную, — настоящий зашифрованный образ. Муляж из папки
+        // с файлом token теперь не проходит: шифрование подтверждает сама macOS (hdiutil isencrypted).
+        try SecretsVault(imageURL: manualVault).create(password: "ручной контейнер для проверки 2026", sizeGB: 1)
         try fm.createDirectory(at: scratch.appendingPathComponent("disk-root/Plain.sparsebundle"), withIntermediateDirectories: true)
         check(SecretsVault.existingEncryptedBundle(in: scratch.appendingPathComponent("disk-root"))?.standardizedFileURL.path == manualVault.standardizedFileURL.path,
               "созданный вручную зашифрованный контейнер находится, незашифрованный — нет")
@@ -634,6 +634,7 @@ checksContainer()
 checksInterface()
 checksHardenLocal()
 checksHardenRestore()
+checksSafe()
 
 try? fm.removeItem(at: scratch)
 print("")

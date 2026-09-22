@@ -2,15 +2,18 @@ import AppKit
 import Observation
 import OffloadCore
 
+/// Порядок разделов — это и есть сценарий: посмотреть, что с Mac; завести сейф;
+/// освободить место переносом в него; видеть и возвращать перенесённое; бэкапить.
 enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
-    case overview, space, history, backup, docker
+    case overview, safe, space, history, backup, docker
 
     var id: Self { self }
 
     var title: String {
         switch self {
         case .overview: return "Обзор"
-        case .space: return "Что занимает место"
+        case .safe: return "Сейф"
+        case .space: return "Освободить место"
         case .history: return "Перенесённое"
         case .backup: return "Бэкап"
         case .docker: return "Docker"
@@ -20,12 +23,21 @@ enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
     var systemImage: String {
         switch self {
         case .overview: return "gauge.with.dots.needle.50percent"
+        case .safe: return "lock.shield"
         case .space: return "chart.bar.doc.horizontal"
         case .history: return "clock.arrow.circlepath"
         case .backup: return "externaldrive.badge.checkmark"
         case .docker: return "shippingbox"
         }
     }
+}
+
+/// Куда класть: в сейф (зашифровано) или открытой папкой на диск.
+enum StoreMode: String, CaseIterable, Identifiable {
+    case safe, open
+
+    var id: Self { self }
+    var title: String { self == .safe ? "В сейф" : "Открыто на диск" }
 }
 
 @MainActor
@@ -37,6 +49,7 @@ final class AppModel {
     private(set) var hasFullDiskAccess = FullDiskAccess.isGranted
 
     let rules = SafetyRules()
+    let safe = SafeModel()
     let overview = OverviewModel()
     let space = SpaceModel()
     let history = HistoryModel()
@@ -52,6 +65,38 @@ final class AppModel {
     var destination: VolumeInfo? { volumes.first { $0.id == destinationID } }
     var isBusy: Bool { runningOperations > 0 }
 
+    /// По умолчанию — в сейф: на внешнем диске, который можно потерять, открытыми
+    /// лежать должны только те данные, для которых человек сам так решил.
+    var storeMode: StoreMode = StoreMode(rawValue: UserDefaults.standard.string(forKey: "storeMode") ?? "") ?? .safe {
+        didSet { UserDefaults.standard.set(storeMode.rawValue, forKey: "storeMode") }
+    }
+
+    /// Открытый сейф на выбранном диске как место назначения.
+    var safeVolume: VolumeInfo? { safe.volume(host: destination) }
+
+    /// Куда пойдут перенос, бэкап и тома Docker: сейф или сам диск — как выбрано.
+    var target: VolumeInfo? { storeMode == .safe ? safeVolume : destination }
+
+    /// Почему класть некуда — одной фразой, с тем, что сделать.
+    var targetProblem: String? {
+        guard destination != nil else { return "Подключите внешний диск." }
+        guard storeMode == .safe, safeVolume == nil else { return nil }
+        return safe.exists ? "Сейф закрыт — откройте его паролем." : "На диске нет сейфа — создайте его в разделе «Сейф»."
+    }
+
+    /// Где искать журналы переносов: подключённые диски и открытый сейф.
+    var historyVolumes: [VolumeInfo] { volumes + [safeVolume].compactMap { $0 } }
+
+    /// Перенесённое, что лежит на выбранном диске открыто: его прочтёт любой, у кого диск.
+    var plainRecords: [MoveRecord] {
+        guard let host = destination else { return [] }
+        let prefix = host.mountPoint.path + "/"
+        let fm = FileManager.default
+        return history.records.filter {
+            !$0.isEncrypted && $0.archivedPath.hasPrefix(prefix) && fm.fileExists(atPath: $0.archivedPath)
+        }
+    }
+
     /// Идентификатор заводится здесь, на каждый запуск свой. Один общий на модель приводил
     /// к тому, что второй запуск не регистрировался вовсе, а конец первого снимал учёт обоих:
     /// счётчик обнулялся посреди копирования, и выход из программы переставал спрашивать.
@@ -59,12 +104,15 @@ final class AppModel {
         let id = UUID()
         cancellers[id] = cancel
         runningOperations += 1
+        safe.noteUse()
         return id
     }
 
     func endOperation(_ id: UUID) {
         guard cancellers.removeValue(forKey: id) != nil else { return }
         runningOperations = max(0, runningOperations - 1)
+        // Закрытие сейфа, отложенное ради копирования (сон, блокировка экрана, команда), — сейчас.
+        if runningOperations == 0 { safe.operationsFinished(app: self) }
     }
 
     func cancelEverything() {
@@ -74,11 +122,19 @@ final class AppModel {
     init() {
         refreshVolumes()
         let center = NSWorkspace.shared.notificationCenter
+        // Сейф — тоже том: его открытие и закрытие приходят сюда же, в том числе если
+        // его открыли или закрыли в обход Offload (hdiutil, Дисковая утилита).
         for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification, NSWorkspace.didRenameVolumeNotification] {
             observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.refreshVolumes() }
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.refreshVolumes()
+                    self.safe.refresh(app: self)
+                }
             })
         }
+        safe.startGuards(app: self)
+        safe.refresh(app: self)
     }
 
     /// Список внешних дисков и свободное место на них меняются после каждой операции.

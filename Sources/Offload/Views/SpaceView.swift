@@ -135,10 +135,16 @@ struct MoveSheet: View {
                         .lineLimit(1).truncationMode(.middle)
                 }
             }
-            if let volume = app.destination {
+            TargetSummary().font(.callout)
+            if let volume = app.target {
                 content(volume: volume)
-            } else {
-                Notice(.warning, "Подключите внешний диск и выберите его внизу боковой панели.")
+            } else if app.destination != nil, app.storeMode == .safe, app.safe.state?.isEncrypted == true {
+                // Сейф закрыт — открываем прямо здесь, не уходя из окна переноса.
+                SafeUnlockRow()
+                Button("Всё-таки положить открыто на диск «\(app.destination?.name ?? "")»") { app.storeMode = .open }
+                    .buttonStyle(.link).font(.caption)
+            } else if let problem = app.targetProblem {
+                Notice(.warning, problem)
             }
             HStack {
                 Spacer()
@@ -163,8 +169,9 @@ struct MoveSheet: View {
         // Esc на этапе проверки закрывает окно, но обход дерева шёл бы дальше: на большой папке
         // это десятки секунд впустую, и остановить их было бы уже нечем — окна нет.
         .onDisappear { model.cancel() }
-        .task(id: app.destinationID) {
-            if let volume = app.destination { model.prepare(source: source, volume: volume, rules: app.rules) }
+        // План зависит от того, куда класть: сейф или открытая часть диска, и от свободного места.
+        .task(id: app.target?.id) {
+            if let volume = app.target { model.prepare(source: source, volume: volume, rules: app.rules) }
         }
     }
 
@@ -184,6 +191,9 @@ struct MoveSheet: View {
                 }
                 LabeledContent("Куда") {
                     Text(plan.target.path).lineLimit(1).truncationMode(.head).textSelection(.enabled)
+                }
+                if !plan.volume.isEncryptedImage {
+                    Notice(.warning, "Копия ляжет на диск открыто: кто получит диск, прочтёт её без пароля. Чтобы зашифровать, выберите внизу боковой панели «В сейф».")
                 }
                 switch plan.verdict {
                 case .blocked(let reason):
@@ -213,6 +223,9 @@ struct MoveSheet: View {
                 Notice(.success, record.originalRemoved
                        ? "Перенесено и сверено: \(record.files) файлов, \(Format.bytes(record.bytes)). Оригинал удалён, место на Mac освободилось."
                        : "Скопировано и сверено: \(record.files) файлов, \(Format.bytes(record.bytes)). Оригинал на месте.")
+                if record.isEncrypted {
+                    Label("Лежит в сейфе — зашифровано.", systemImage: "lock.fill").foregroundStyle(.green).font(.callout)
+                }
                 Button("Показать на диске") { revealInFinder(URL(fileURLWithPath: record.archivedPath)) }
                 Text("Вернуть обратно можно в разделе «Перенесённое».").font(.caption).foregroundStyle(.secondary)
             }

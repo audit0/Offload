@@ -125,29 +125,3 @@ struct FullDiskAccessBanner: View {
         .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
     }
 }
-
-struct DestinationFooter: View {
-    @Environment(AppModel.self) private var app
-
-    var body: some View {
-        @Bindable var app = app
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Внешний диск").font(.caption).foregroundStyle(.secondary)
-            if app.volumes.isEmpty {
-                Label("Не подключён", systemImage: "externaldrive.badge.xmark").font(.callout).foregroundStyle(.secondary)
-            } else {
-                Picker("Внешний диск", selection: $app.destinationID) {
-                    ForEach(app.volumes) { volume in
-                        Text(volume.name).tag(Optional(volume.id))
-                    }
-                }
-                .labelsHidden()
-                if let volume = app.destination {
-                    Text("\(volume.fsDisplayName) · свободно \(Format.bytes(volume.availableBytes))")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}

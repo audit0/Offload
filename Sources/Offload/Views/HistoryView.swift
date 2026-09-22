@@ -106,7 +106,7 @@ struct HistoryView: View {
                       : "Зарегистрировать папку или файл, уже перенесённые на внешний диск без Offload")
         }
         .sheet(isPresented: $showImport) { ImportSheet() }
-        .task(id: app.volumes.map(\.id)) { model.reload(volumes: app.volumes) }
+        .task(id: app.historyVolumes.map(\.id)) { model.reload(volumes: app.historyVolumes) }
         .confirmationDialog("Вернуть на Mac?",
                             isPresented: Binding(get: { pendingRestore != nil }, set: { if !$0 { pendingRestore = nil } }),
                             presenting: pendingRestore) { record in
@@ -170,7 +170,8 @@ struct HistoryGroupRow: View {
                             .fontWeight(.medium)
                         Text(relativeToHome(group.originalParent, home: home)).font(.caption).foregroundStyle(.secondary)
                             .lineLimit(1).truncationMode(.middle)
-                        Text("\(group.latest.formatted(date: .abbreviated, time: .shortened)) · \(Format.bytes(group.bytes)) · файлов \(group.files) · диск «\(group.first.volumeName)»")
+                        Text("\(group.latest.formatted(date: .abbreviated, time: .shortened)) · \(Format.bytes(group.bytes)) · файлов \(group.files) · "
+                             + (group.first.isEncrypted ? "в сейфе «\(group.first.volumeName)»" : "открыто на «\(group.first.volumeName)»"))
                             .font(.caption).foregroundStyle(.secondary)
                         if let note = group.note, !note.isEmpty {
                             Text(note).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
@@ -180,7 +181,7 @@ struct HistoryGroupRow: View {
                     if group.first.restored {
                         Text("Возвращено").foregroundStyle(.green).font(.callout)
                     } else if !group.records.contains(where: isAvailable) {
-                        Text("Диск не подключён").foregroundStyle(.secondary).font(.callout)
+                        Text(group.first.isEncrypted ? "Сейф закрыт" : "Диск не подключён").foregroundStyle(.secondary).font(.callout)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -212,14 +213,15 @@ struct HistoryRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: record.restored ? "arrow.uturn.backward.circle.fill" : "externaldrive.fill")
+            Image(systemName: record.restored ? "arrow.uturn.backward.circle.fill" : (record.isEncrypted ? "lock.fill" : "externaldrive.fill"))
                 .foregroundStyle(record.restored ? Color.green : Color.accentColor)
                 .font(.title3)
             VStack(alignment: .leading, spacing: 3) {
                 Text(URL(fileURLWithPath: record.originalPath).lastPathComponent).fontWeight(.medium)
                 Text(relativeToHome(record.originalPath, home: home)).font(.caption).foregroundStyle(.secondary)
                     .lineLimit(1).truncationMode(.middle)
-                Text("\(record.date.formatted(date: .abbreviated, time: .shortened)) · \(Format.bytes(record.bytes)) · файлов \(record.files) · диск «\(record.volumeName)»")
+                Text("\(record.date.formatted(date: .abbreviated, time: .shortened)) · \(Format.bytes(record.bytes)) · файлов \(record.files) · "
+                     + (record.isEncrypted ? "в сейфе «\(record.volumeName)»" : "открыто на «\(record.volumeName)»"))
                     .font(.caption).foregroundStyle(.secondary)
                 if let note = record.note, !note.isEmpty {
                     Text(note).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
@@ -235,7 +237,7 @@ struct HistoryRow: View {
             } else if available {
                 Button("Вернуть…", action: onRestore).disabled(busy)
             } else {
-                Text("Диск не подключён").foregroundStyle(.secondary).font(.callout)
+                Text(record.isEncrypted ? "Сейф закрыт" : "Диск не подключён").foregroundStyle(.secondary).font(.callout)
             }
         }
         .buttonStyle(.bordered)
@@ -339,7 +341,7 @@ struct ImportSheet: View {
                     try SafeMover(rules: rules).importRecord(archived: archive, original: original, originalRemoved: removed,
                                                              note: text.isEmpty ? nil : text)
                 }.value
-                app.history.reload(volumes: app.volumes)
+                app.history.reload(volumes: app.historyVolumes)
                 dismiss()
             } catch {
                 self.error = error.localizedDescription

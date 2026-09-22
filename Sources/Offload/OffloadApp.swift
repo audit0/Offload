@@ -1,4 +1,5 @@
 import AppKit
+import OffloadCore
 import SwiftUI
 
 @main
@@ -20,6 +21,14 @@ struct OffloadApp: App {
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("О программе Offload") { AboutPanel.show() }
+            }
+            // Как «Dismount All» в VeraCrypt: закрыть сейф из любого места одним сочетанием.
+            CommandMenu("Сейф") {
+                Button("Закрыть сейф") { model.safe.close(app: model) }
+                    .keyboardShortcut("l", modifiers: [.command, .shift])
+                    .disabled(!model.safe.isOpen)
+                Button("Открыть раздел «Сейф»") { model.section = .safe }
+                    .keyboardShortcut("0", modifiers: [.command])
             }
             CommandGroup(replacing: .help) {
                 Link("Offload на GitHub", destination: Self.repositoryURL)
@@ -64,7 +73,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// и рядом с папкой осталась бы скрытая недокопия «.offload-partial-…» в полный размер.
     /// Поэтому сначала спрашиваем, потом отменяем по-человечески и ждём, пока уберётся мусор.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard let model, model.isBusy else { return .terminateNow }
+        guard let model, model.isBusy else {
+            closeSafeBeforeQuit()
+            return .terminateNow
+        }
         let alert = NSAlert()
         alert.messageText = "Сейчас идёт копирование"
         alert.informativeText = "Если выйти, копирование прервётся. Данные не пострадают: оригинал не удаляется, пока копия не сверена, а незаконченная копия будет убрана."
@@ -79,9 +91,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             while model.isBusy, Date() < deadline {
                 try? await Task.sleep(for: .milliseconds(200))
             }
+            self.closeSafeBeforeQuit()
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
+    }
+
+    /// Выходя, сейф закрываем всегда: оставить его открытым без программы, которая следит
+    /// за сном, блокировкой и простоем, значило бы оставить ключ в памяти без присмотра.
+    /// Если в нём открыты файлы, спрашиваем, закрыть ли принудительно.
+    private func closeSafeBeforeQuit() {
+        guard let model, let mount = model.safe.state?.mount else { return }
+        do {
+            try SecretsVault.detach(mount)
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "Сейф не закрывается"
+            alert.informativeText = "В нём открыты файлы в других программах. Закрыть принудительно? Несохранённое в этих программах может пропасть."
+            alert.addButton(withTitle: "Закрыть принудительно")
+            alert.addButton(withTitle: "Оставить открытым")
+            if alert.runModal() == .alertFirstButtonReturn { try? SecretsVault.detach(mount, force: true) }
+        }
     }
 }
 

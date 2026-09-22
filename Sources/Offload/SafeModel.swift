@@ -1,0 +1,398 @@
+import AppKit
+import Observation
+import OffloadCore
+
+/// Сейф — зашифрованный образ (AES-256, APFS внутри) на внешнем диске.
+///
+/// Пока он открыт, перенос, бэкап и ключи идут в него; закрыт — на диске лежит только
+/// шифротекст, и потерянный или украденный диск ничего не выдаёт. Пароль Offload не хранит:
+/// он приходит из поля ввода, уходит в hdiutil через stdin и больше нигде не живёт.
+@MainActor
+@Observable
+final class SafeModel {
+    struct State: Equatable {
+        /// Внешний диск, на котором лежит образ.
+        var volumeID: String
+        var imageURL: URL
+        var exists: Bool
+        var isEncrypted: Bool
+        var info: SecretsVault.EncryptionInfo?
+        var sizeLimit: Int64?
+        var allocated: Int64
+        var mount: URL?
+        var candidates: [URL]
+        /// Зашифрован ли сам внешний диск целиком (APFS с шифрованием).
+        var hostEncrypted: Bool
+
+        var displayName: String { imageURL.deletingPathExtension().lastPathComponent }
+    }
+
+    /// Перенос открытых архивов внутрь сейфа: какой по счёту и сколько байт.
+    struct Migration: Equatable {
+        var index: Int
+        var count: Int
+        var item: String
+        var phase: String
+        var bytesDone: Int64
+        var bytesTotal: Int64
+    }
+
+    private(set) var state: State?
+    /// Что сейчас делается с сейфом («Открываю…»): пока не nil, кнопки заблокированы.
+    private(set) var activity: String?
+    private(set) var migration: Migration?
+    var message: Notice.Message?
+    /// Почему сейф закроется, как только закончится идущая операция.
+    private(set) var pendingClose: String?
+
+    var closeOnSleep: Bool { didSet { persist() } }
+    var closeOnLock: Bool { didSet { persist() } }
+    /// Через сколько минут простоя закрывать сам; 0 — не закрывать.
+    var idleMinutes: Int { didSet { persist() } }
+    /// Закрывать даже посреди копирования: операция отменяется, оригиналы остаются на месте.
+    var interruptOperations: Bool { didSet { persist() } }
+
+    @ObservationIgnored private var preferredImages: [String: String] { didSet { persist() } }
+    @ObservationIgnored private var lastUse = Date()
+    @ObservationIgnored private var generation = UUID()
+    @ObservationIgnored private var observers: [(NotificationCenter, NSObjectProtocol)] = []
+    @ObservationIgnored private var idleTimer: Timer?
+    @ObservationIgnored private var migrationToken: CancelToken?
+
+    var isOpen: Bool { state?.mount != nil }
+    var exists: Bool { state?.exists == true }
+
+    static let idleChoices = [0, 5, 15, 30, 60]
+
+    init() {
+        let defaults = UserDefaults.standard
+        closeOnSleep = defaults.object(forKey: "safe.closeOnSleep") as? Bool ?? true
+        closeOnLock = defaults.object(forKey: "safe.closeOnLock") as? Bool ?? true
+        idleMinutes = defaults.object(forKey: "safe.idleMinutes") as? Int ?? 30
+        interruptOperations = defaults.object(forKey: "safe.interrupt") as? Bool ?? false
+        preferredImages = defaults.dictionary(forKey: "safe.images") as? [String: String] ?? [:]
+    }
+
+    private func persist() {
+        let defaults = UserDefaults.standard
+        defaults.set(closeOnSleep, forKey: "safe.closeOnSleep")
+        defaults.set(closeOnLock, forKey: "safe.closeOnLock")
+        defaults.set(idleMinutes, forKey: "safe.idleMinutes")
+        defaults.set(interruptOperations, forKey: "safe.interrupt")
+        defaults.set(preferredImages, forKey: "safe.images")
+    }
+
+    // MARK: - Состояние
+
+    /// Перечитывает, что с сейфом на выбранном диске. Ответ привязан к диску: запрос про
+    /// прежний диск, пришедший последним, не должен перезаписать состояние нового.
+    func refresh(app: AppModel) {
+        guard let host = app.destination else {
+            state = nil
+            return
+        }
+        let generation = UUID()
+        self.generation = generation
+        if state?.volumeID != host.id { state = nil }
+        let preferred = preferredImages[host.id].map { URL(fileURLWithPath: $0, isDirectory: true) }
+        Task {
+            let snapshot = await Task.detached(priority: .utility) { () -> State in
+                let vault = SecretsVault(on: host, preferred: preferred)
+                let exists = vault.exists
+                let info = exists ? SecretsVault.encryptionInfo(of: vault.imageURL) : nil
+                let encrypted = exists && SecretsVault.hasEncryptionHeader(vault.imageURL) && (info?.opensWithPassword ?? false)
+                return State(volumeID: host.id, imageURL: vault.imageURL, exists: exists, isEncrypted: encrypted, info: info,
+                             sizeLimit: exists ? vault.sizeLimit : nil, allocated: exists ? vault.allocatedBytes : 0,
+                             mount: exists ? vault.currentMountPoint() : nil,
+                             candidates: SecretsVault.candidates(in: host.mountPoint),
+                             hostEncrypted: Volumes.isVolumeEncrypted(host))
+            }.value
+            guard self.generation == generation, app.destinationID == snapshot.volumeID else { return }
+            state = snapshot
+        }
+    }
+
+    /// Сейф как место назначения: том внутри образа, а свободное место — меньшее из того,
+    /// что осталось внутри образа и на самом диске.
+    func volume(host: VolumeInfo?) -> VolumeInfo? {
+        guard let host, let state, state.volumeID == host.id, state.isEncrypted, let mount = state.mount else { return nil }
+        return Volumes.safe(mountedAt: mount, host: host)
+    }
+
+    /// Какой из зашифрованных образов на диске считать сейфом.
+    func choose(image: URL, app: AppModel) {
+        guard let host = app.destination else { return }
+        preferredImages[host.id] = image.path
+        refresh(app: app)
+    }
+
+    // MARK: - Открыть, закрыть, создать
+
+    private func perform(_ title: String, app: AppModel,
+                         _ work: @escaping @Sendable () throws -> Notice.Message?,
+                         after: @escaping @MainActor () -> Void = {}) {
+        guard activity == nil else { return }
+        activity = title
+        message = nil
+        Task {
+            do {
+                if let result = try await Task.detached(priority: .userInitiated, operation: work).value { message = result }
+            } catch {
+                message = Notice.Message(.error, error.localizedDescription)
+            }
+            activity = nil
+            after()
+            app.refreshVolumes()
+            refresh(app: app)
+        }
+    }
+
+    func create(password: String, app: AppModel) {
+        guard let host = app.destination else { return }
+        let vault = SecretsVault(imageURL: host.mountPoint.appendingPathComponent(SecretsVault.safeImageName, isDirectory: true))
+        // Предел — весь диск: образ разрежённый и занимает ровно столько, сколько в нём лежит.
+        // Растянуть APFS внутри образа потом нельзя, поэтому запас закладывается сразу.
+        let limit = host.totalBytes
+        perform("Создаю сейф…", app: app, {
+            try vault.create(password: password, maxBytes: limit, volumeName: SecretsVault.safeVolumeName)
+            return Notice.Message(.success, "Сейф создан: AES-256, пароль знаете только вы. Если его забыть, данные не восстановит никто — даже Offload.")
+        }, after: { [weak self] in
+            self?.preferredImages[host.id] = vault.imageURL.path
+        })
+    }
+
+    func open(password: String, app: AppModel) {
+        guard let state, state.exists else { return }
+        let vault = SecretsVault(imageURL: state.imageURL)
+        perform("Открываю сейф…", app: app, {
+            _ = try vault.attach(password: password)
+            return nil
+        }, after: { [weak self] in
+            self?.lastUse = Date()
+        })
+    }
+
+    /// Закрыть по команде человека. Если в сейф прямо сейчас пишется, он закроется сразу
+    /// после конца операции: оборвать копирование ради закрытия — не то, чего человек ждёт.
+    func close(app: AppModel, force: Bool = false, reason: String? = nil) {
+        guard let mount = state?.mount else { return }
+        if app.isBusy, !force {
+            pendingClose = reason ?? "по вашей команде"
+            message = Notice.Message(.info, "Идёт копирование — сейф закроется, как только оно закончится.")
+            return
+        }
+        pendingClose = nil
+        perform("Закрываю сейф…", app: app) {
+            try SecretsVault.detach(mount, force: force)
+            return Notice.Message(.success, reason.map { "Сейф закрыт: \($0)." } ?? "Сейф закрыт — на диске снова только шифротекст.")
+        }
+    }
+
+    // MARK: - Автозакрытие
+
+    /// Подписка на сон, блокировку экрана, заставку, смену пользователя и таймер простоя —
+    /// то же, что «Auto-dismount» в VeraCrypt. Ключ шифрования живёт в памяти, пока сейф открыт,
+    /// и лучший способ его защитить — не держать сейф открытым без нужды.
+    func startGuards(app: AppModel) {
+        let workspace = NSWorkspace.shared.notificationCenter
+        observers.append((workspace, workspace.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self, weak app] _ in
+            MainActor.assumeIsolated {
+                guard let self, let app, self.closeOnSleep else { return }
+                self.closeNow(reason: "Mac уходит в сон", app: app)
+            }
+        }))
+        observers.append((workspace, workspace.addObserver(forName: NSWorkspace.sessionDidResignActiveNotification, object: nil, queue: .main) { [weak self, weak app] _ in
+            MainActor.assumeIsolated {
+                guard let self, let app, self.closeOnLock else { return }
+                self.trigger("сменился пользователь", app: app)
+            }
+        }))
+        let distributed = DistributedNotificationCenter.default()
+        for name in ["com.apple.screenIsLocked", "com.apple.screensaver.didstart"] {
+            observers.append((distributed, distributed.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { [weak self, weak app] _ in
+                MainActor.assumeIsolated {
+                    guard let self, let app, self.closeOnLock else { return }
+                    self.trigger("экран заблокирован", app: app)
+                }
+            }))
+        }
+        idleTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self, weak app] _ in
+            MainActor.assumeIsolated {
+                guard let self, let app else { return }
+                self.checkIdle(app: app)
+            }
+        }
+    }
+
+    /// Любая работа с сейфом откладывает закрытие по простою.
+    func noteUse() { lastUse = Date() }
+
+    /// Операции закончились: если закрытие было отложено ради них — закрываем.
+    func operationsFinished(app: AppModel) {
+        lastUse = Date()
+        if let reason = pendingClose { close(app: app, reason: reason) }
+    }
+
+    func trigger(_ reason: String, app: AppModel) {
+        guard isOpen else { return }
+        if app.isBusy {
+            pendingClose = reason
+            if interruptOperations {
+                app.cancelEverything()
+            } else {
+                message = Notice.Message(.info, "Сейф закроется, как только закончится копирование (\(reason)).")
+            }
+            return
+        }
+        close(app: app, reason: reason)
+    }
+
+    /// Перед сном асинхронная задача может не успеть выполниться, поэтому закрываем прямо здесь.
+    /// Если в сейф пишется, а прерывать операции не разрешено, он останется открытым —
+    /// и об этом будет сказано, а не промолчано.
+    private func closeNow(reason: String, app: AppModel) {
+        guard let mount = state?.mount else { return }
+        if app.isBusy, !interruptOperations {
+            pendingClose = reason
+            message = Notice.Message(.warning, "Перед сном сейф остался открытым: шло копирование. Он закроется, как только оно закончится.")
+            return
+        }
+        if app.isBusy { app.cancelEverything() }
+        do {
+            try SecretsVault.detach(mount, force: interruptOperations)
+            state?.mount = nil
+            message = Notice.Message(.success, "Сейф закрыт: \(reason).")
+        } catch {
+            message = Notice.Message(.warning, "Перед сном сейф закрыть не удалось: \(error.localizedDescription)")
+        }
+        app.refreshVolumes()
+    }
+
+    private func checkIdle(app: AppModel) {
+        guard idleMinutes > 0, isOpen, !app.isBusy, activity == nil,
+              Date().timeIntervalSince(lastUse) > TimeInterval(idleMinutes * 60),
+              let mount = state?.mount else { return }
+        // Без force: если в сейфе открыты файлы (им пользуются в Finder или в программе),
+        // закрытие откажет — и правильно. Попробуем снова через тот же срок.
+        lastUse = Date()
+        Task {
+            let closed = await Task.detached { (try? SecretsVault.detach(mount)) != nil }.value
+            if closed {
+                message = Notice.Message(.success, "Сейф закрыт: им не пользовались \(idleMinutes) мин.")
+            }
+            app.refreshVolumes()
+            refresh(app: app)
+        }
+    }
+
+    // MARK: - Пароль, заголовок, место
+
+    func changePassword(old: String, new: String, app: AppModel) {
+        guard let state, state.exists, state.mount == nil else { return }
+        let vault = SecretsVault(imageURL: state.imageURL)
+        perform("Меняю пароль…", app: app) {
+            try vault.changePassword(old: old, new: new)
+            return Notice.Message(.success, "Пароль сменён.", details: [
+                "Копии заголовка, снятые раньше, по-прежнему открываются старым паролем. Снимите новую копию, а старые удалите.",
+            ])
+        }
+    }
+
+    func compact(password: String, app: AppModel) {
+        guard let state, state.exists, state.mount == nil else { return }
+        let vault = SecretsVault(imageURL: state.imageURL)
+        let before = state.allocated
+        perform("Возвращаю место на диск…", app: app) {
+            try vault.compact(password: password)
+            let after = vault.allocatedBytes
+            let returned = max(0, before - after)
+            if returned < 16 << 20 {
+                return Notice.Message(.info, "macOS не нашла в образе пустых участков: диску вернулось \(Format.bytes(returned)). Место внутри сейфа при этом свободно и пойдёт под новые данные.")
+            }
+            return Notice.Message(.success, "Диску возвращено \(Format.bytes(returned)). Сейф занимает \(Format.bytes(after)).")
+        }
+    }
+
+    func backupHeader(app: AppModel) {
+        guard let state, state.isEncrypted else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Сохранить сюда"
+        panel.message = "Куда положить копию заголовка сейфа. Лучше не на тот же диск: если он откажет, пропадут и сейф, и копия."
+        guard panel.runModal() == .OK, let directory = panel.url else { return }
+        let vault = SecretsVault(imageURL: state.imageURL)
+        let sameDisk = directory.path.hasPrefix(state.imageURL.deletingLastPathComponent().path + "/")
+        perform("Сохраняю копию заголовка…", app: app) {
+            let url = try vault.backupHeader(to: directory)
+            var details = ["Копия защищена тем же паролем, что и сейф. Без пароля она бесполезна."]
+            if sameDisk { details.append("Копия лежит на том же диске, что и сейф: при отказе диска пропадут обе. Сохраните ещё одну в другом месте.") }
+            return Notice.Message(.success, "Копия заголовка сохранена: \(url.path)", details: details)
+        }
+    }
+
+    func restoreHeader(from file: URL, password: String, app: AppModel) {
+        guard let state, state.exists, state.mount == nil else { return }
+        let vault = SecretsVault(imageURL: state.imageURL)
+        perform("Восстанавливаю заголовок…", app: app) {
+            try vault.restoreHeader(from: file, password: password)
+            return Notice.Message(.success, "Заголовок восстановлен из копии, сейф открывается паролем этой копии.")
+        }
+    }
+
+    // MARK: - Зашифровать перенесённое
+
+    /// Переносит архивы, лежащие на диске открыто, внутрь сейфа — по одному, со сверкой.
+    func encrypt(_ records: [MoveRecord], app: AppModel) {
+        guard let safe = volume(host: app.destination), migration == nil, activity == nil else { return }
+        let token = CancelToken()
+        migrationToken = token
+        let operationID = app.beginOperation { token.cancel() }
+        let rules = app.rules
+        let throttle = Throttle()
+        migration = Migration(index: 0, count: records.count, item: "", phase: "", bytesDone: 0, bytesTotal: 0)
+        message = nil
+        Task {
+            var done = 0
+            var failures: [String] = []
+            for (index, record) in records.enumerated() {
+                if token.isCancelled { break }
+                let name = URL(fileURLWithPath: record.originalPath).lastPathComponent
+                migration = Migration(index: index + 1, count: records.count, item: name, phase: "Подготовка", bytesDone: 0, bytesTotal: 0)
+                do {
+                    _ = try await Task.detached(priority: .userInitiated) {
+                        try SafeMover(rules: rules).relocate(record, into: safe, isCancelled: { token.isCancelled }) { progress in
+                            guard throttle.ready() else { return }
+                            Task { @MainActor in
+                                self.migration?.phase = progress.phase.rawValue
+                                self.migration?.bytesDone = progress.bytesDone
+                                self.migration?.bytesTotal = progress.bytesTotal
+                            }
+                        }
+                    }.value
+                    done += 1
+                } catch is CancellationError {
+                    break
+                } catch {
+                    failures.append("«\(name)»: \(error.localizedDescription)")
+                }
+            }
+            migration = nil
+            migrationToken = nil
+            app.endOperation(operationID)
+            var details = failures
+            details.append("Удалённые открытые копии физически могут оставаться в памяти SSD или флешки, пока контроллер их не перезапишет. Полную гарантию даёт только диск, зашифрованный целиком.")
+            message = Notice.Message(failures.isEmpty ? .success : .warning,
+                                     token.isCancelled
+                                         ? "Остановлено. В сейф перенесено: \(done) из \(records.count), остальное осталось на месте как было."
+                                         : "В сейф перенесено и сверено: \(done) из \(records.count). Открытые копии удалены.",
+                                     details: details)
+            app.history.reload(volumes: app.historyVolumes)
+            app.refreshVolumes()
+            refresh(app: app)
+        }
+    }
+
+    func cancelMigration() { migrationToken?.cancel() }
+}

@@ -258,12 +258,19 @@ final class HistoryModel {
 
     func reload(volumes: [VolumeInfo]) {
         var byID: [UUID: MoveRecord] = [:]
+        let fm = FileManager.default
         for record in Journal.localRecords() { byID[record.id] = record }
         for volume in volumes {
-            for record in Journal.records(on: volume) { byID[record.id] = record }
+            for record in Journal.records(on: volume) {
+                // Запись с диска обычно свежее (её могли обновить на другом Mac), но не тогда,
+                // когда архив переехал в сейф: на открытой части могла остаться прежняя запись,
+                // указывающая на уже удалённую открытую копию. Побеждает та, чей архив на месте.
+                if let known = byID[record.id], fm.fileExists(atPath: known.archivedPath),
+                   !fm.fileExists(atPath: record.archivedPath) { continue }
+                byID[record.id] = record
+            }
         }
         records = byID.values.sorted { $0.date > $1.date }
-        let fm = FileManager.default
         availability = Dictionary(uniqueKeysWithValues: records.map { ($0.id, fm.fileExists(atPath: $0.archivedPath)) })
     }
 
@@ -295,10 +302,14 @@ final class HistoryModel {
                 // зелёный «всё сверено» после такого возврата был бы неправдой.
                 // По одному наличию оговорок судить нельзя: строчка «сверено столько-то из стольких-то»
                 // приходит всегда, и чистый возврат выглядел бы бедой.
+                var notes = outcome.notes
+                if record.isEncrypted, deleteArchive {
+                    notes.append("Место внутри сейфа освободилось и пойдёт под новые данные, но сам образ на диске от этого не уменьшится.")
+                }
                 message = outcome.needsAttention
-                    ? Notice.Message(.warning, "«\(name)» возвращён на место, но с оговорками:", details: outcome.notes)
+                    ? Notice.Message(.warning, "«\(name)» возвращён на место, но с оговорками:", details: notes)
                     : Notice.Message(.success, "«\(name)» возвращён на место, каждый файл перечитан и сверен по SHA-256.",
-                                     details: outcome.notes)
+                                     details: notes)
             } catch is CancellationError {
                 message = Notice.Message(.info, "Возврат отменён, незаконченная копия удалена. Архив на диске не тронут.")
             } catch {
@@ -313,7 +324,7 @@ final class HistoryModel {
             app.endOperation(operationID)
             app.refreshVolumes()
             app.space.invalidateAll()
-            reload(volumes: app.volumes)
+            reload(volumes: app.historyVolumes)
         }
     }
 
@@ -335,22 +346,10 @@ final class BackupModel {
     /// Токен на каждый запуск бэкапа: один на модель терялся при повторном запуске.
     @ObservationIgnored private var tokens: [UUID: CancelToken] = [:]
 
-    private(set) var vault: VaultState?
-    private(set) var vaultBusy = false
-    private(set) var vaultReport: SecretsReport?
-    var vaultMessage: Notice.Message?
-    @ObservationIgnored private var vaultGeneration = UUID()
-
-    /// Снимок состояния контейнера на выбранном диске. Раньше оно определялось один раз
-    /// и потом врало: после извлечения диска раздел продолжал показывать «Контейнер открыт»,
-    /// а при переключении дисков — контейнер с прошлого.
-    struct VaultState: Sendable, Equatable {
-        var volumeID: String
-        var imageURL: URL
-        var exists: Bool
-        var isEncrypted: Bool
-        var mount: URL?
-    }
+    /// Ключи и токены — только в сейф: итог последней раскладки.
+    private(set) var keysBusy = false
+    private(set) var keysReport: SecretsReport?
+    var keysMessage: Notice.Message?
 
     /// Своя папка бэкапа на диске (например, уже существующая), иначе «Offload Backup» в корне.
     var destinationPath: String? { didSet { persist() } }
@@ -457,89 +456,26 @@ final class BackupModel {
 
     func cancel() { for token in tokens.values { token.cancel() } }
 
-    /// Перечитывает состояние контейнера: есть ли он, зашифрован ли, открыт ли сейчас.
-    /// Ответ привязан к диску, а не только к поколению: запрос про прежний диск посылает,
-    /// например, закончившаяся работа с контейнером, и приходит он последним — состояние
-    /// обнулялось, а приходило про диск, который уже не выбран, и раздел навсегда оставался
-    /// со спиннером «смотрю, есть ли контейнер».
-    func refreshVault(on volume: VolumeInfo, app: AppModel) {
-        guard app.destinationID == volume.id else { return }
-        let generation = UUID()
-        vaultGeneration = generation
-        if vault?.volumeID != volume.id { vault = nil }
-        Task {
-            let state = await Task.detached(priority: .utility) { () -> VaultState in
-                let vault = SecretsVault(on: volume)
-                return VaultState(volumeID: volume.id, imageURL: vault.imageURL, exists: vault.exists,
-                                  isEncrypted: vault.isEncrypted, mount: vault.currentMountPoint())
-            }.value
-            guard vaultGeneration == generation, app.destinationID == state.volumeID else { return }
-            vault = state
-        }
-    }
-
-    func createVault(on volume: VolumeInfo, password: String, app: AppModel) {
-        let vault = SecretsVault(on: volume)
-        vaultBusy = true
-        vaultMessage = nil
-        Task {
-            do {
-                try await Task.detached(priority: .userInitiated) { try vault.create(password: password) }.value
-                vaultMessage = Notice.Message(.success, "Контейнер создан, шифрование AES-256 подтверждено. Откройте его, чтобы сложить ключи.")
-            } catch {
-                vaultMessage = Notice.Message(.error, error.localizedDescription)
-            }
-            vaultBusy = false
-            refreshVault(on: volume, app: app)
-        }
-    }
-
-    func openVault(on volume: VolumeInfo, password: String, app: AppModel) {
-        let vault = SecretsVault(on: volume)
-        vaultBusy = true
-        vaultMessage = nil
-        Task {
-            do {
-                _ = try await Task.detached(priority: .userInitiated) { try vault.attach(password: password) }.value
-            } catch {
-                vaultMessage = Notice.Message(.error, error.localizedDescription)
-            }
-            vaultBusy = false
-            refreshVault(on: volume, app: app)
-        }
-    }
-
-    func fillVault(on volume: VolumeInfo, app: AppModel) {
-        guard let state = vault, let mount = state.mount, state.isEncrypted else { return }
+    /// Складывает ~/.ssh, учётку GitHub CLI, дотфайлы с токенами, базы KeePass и секреты
+    /// из папок бэкапа в открытый сейф. В открытую часть диска всё это не попадает никогда.
+    func putKeys(app: AppModel) {
+        guard let safe = app.safeVolume, !keysBusy else { return }
         let home = app.rules.home
         let roots = sources
-        vaultBusy = true
-        vaultMessage = nil
+        let mount = safe.mountPoint
+        keysBusy = true
+        keysMessage = nil
+        let operationID = app.beginOperation {}
         Task {
             let report = await Task.detached(priority: .userInitiated) {
                 SecretsVault.fill(mount, home: home, projectRoots: roots)
             }.value
-            vaultReport = report
-            let text = "Сложено файлов: \(report.copied), без изменений: \(report.unchanged)" + (report.problems.isEmpty ? "." : ", проблем: \(report.problems.count).")
-            vaultMessage = Notice.Message(report.problems.isEmpty ? .success : .warning, text)
-            vaultBusy = false
+            keysReport = report
+            let text = "В сейф сложено файлов: \(report.copied), без изменений: \(report.unchanged)" + (report.problems.isEmpty ? "." : ", проблем: \(report.problems.count).")
+            keysMessage = Notice.Message(report.problems.isEmpty ? .success : .warning, text, details: Array(report.problems.prefix(5)))
+            keysBusy = false
+            app.endOperation(operationID)
             app.refreshVolumes()
-            refreshVault(on: volume, app: app)
-        }
-    }
-
-    func closeVault(on volume: VolumeInfo, app: AppModel) {
-        guard let mount = vault?.mount else { return }
-        vaultBusy = true
-        Task {
-            do {
-                try await Task.detached { try SecretsVault.detach(mount) }.value
-                vaultMessage = Notice.Message(.success, "Контейнер закрыт — данные внутри снова зашифрованы.")
-            } catch {
-                vaultMessage = Notice.Message(.error, "Закрыть не удалось: \(error.localizedDescription)")
-            }
-            vaultBusy = false
-            refreshVault(on: volume, app: app)
         }
     }
 }
@@ -579,7 +515,13 @@ final class DockerModel {
         volumes.filter { selection.contains($0.name) }.compactMap(\.sizeBytes).reduce(0, +)
     }
 
-    func reload(destination: VolumeInfo?) {
+    /// Архивы томов ищутся и в сейфе, и на открытой части диска: упакованное раньше
+    /// не должно пропасть из виду оттого, что теперь всё кладётся в сейф.
+    func reload(app: AppModel) {
+        reload(archiveVolumes: [app.safeVolume, app.destination].compactMap { $0 })
+    }
+
+    func reload(archiveVolumes: [VolumeInfo]) {
         status = .checking
         let service = service
         let generation = UUID()
@@ -596,7 +538,7 @@ final class DockerModel {
             volumes = quick.1
             rawBytes = quick.2
             selection = selection.intersection(Set(volumes.map(\.name)))
-            archives = destination.map { DockerService.archives(on: $0) } ?? []
+            archives = archiveVolumes.flatMap { DockerService.archives(on: $0) }
             guard status == .ready, !volumes.isEmpty else { return }
             sizing = true
             let sizes = await Task.detached(priority: .userInitiated) { service.volumeSizes() }.value
@@ -657,7 +599,7 @@ final class DockerModel {
             app.endOperation(id)
             selection = []
             app.refreshVolumes()
-            reload(destination: app.destination)
+            reload(app: app)
         }
     }
 
@@ -689,7 +631,7 @@ final class DockerModel {
             tokens.removeValue(forKey: id)
             app.endOperation(id)
             app.refreshVolumes()
-            reload(destination: app.destination)
+            reload(app: app)
         }
     }
 

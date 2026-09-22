@@ -25,7 +25,7 @@ struct DockerView: View {
                 } description: {
                     Text("Откройте Docker Desktop и обновите список.")
                 } actions: {
-                    Button("Обновить") { model.reload(destination: app.destination) }
+                    Button("Обновить") { model.reload(app: app) }
                 }
             case .ready:
                 Table(model.volumes, selection: $bindable.selection) {
@@ -66,11 +66,13 @@ struct DockerView: View {
             }
         }
         .navigationTitle("Docker")
-        .task { if model.status == .unknown { model.reload(destination: app.destination) } }
-        .onChange(of: app.destinationID) { model.reload(destination: app.destination) }
+        .task { if model.status == .unknown { model.reload(app: app) } }
+        .onChange(of: app.target?.id) { model.reload(app: app) }
         .confirmationDialog("Архивировать выбранные тома?", isPresented: $confirmArchive) {
-            Button("Упаковать на «\(app.destination?.name ?? "")» и убрать из Docker") {
-                if let volume = app.destination { model.archiveSelected(to: volume, app: app) }
+            Button(app.target?.isEncryptedImage == true
+                   ? "Упаковать в сейф и убрать из Docker"
+                   : "Упаковать на «\(app.target?.name ?? "")» открыто и убрать из Docker") {
+                if let volume = app.target { model.archiveSelected(to: volume, app: app) }
             }
             Button("Отмена", role: .cancel) {}
         } message: {
@@ -89,6 +91,7 @@ struct DockerView: View {
     }
 
     private func relativeToVolume(_ url: URL) -> String {
+        if let safe = app.safeVolume, url.path.hasPrefix(safe.mountPoint.path + "/") { return "🔒 " + url.lastPathComponent }
         guard let root = app.destination?.mountPoint.path, url.path.hasPrefix(root + "/") else { return url.lastPathComponent }
         return String(url.path.dropFirst(root.count + 1))
     }
@@ -110,13 +113,11 @@ struct DockerView: View {
                 Text(busy).font(.callout).lineLimit(1).truncationMode(.middle)
                 Button("Отменить") { model.cancel() }
             }
-            Button { model.reload(destination: app.destination) } label: { Label("Обновить", systemImage: "arrow.clockwise") }
+            Button { model.reload(app: app) } label: { Label("Обновить", systemImage: "arrow.clockwise") }
                 .disabled(model.busy != nil)
             Button { confirmArchive = true } label: { Label("Архивировать на диск…", systemImage: "archivebox") }
-                .disabled(model.selection.isEmpty || model.busy != nil || app.destination == nil)
-                .help(app.destination == nil
-                      ? "Нужен подключённый внешний диск: выберите его внизу боковой панели"
-                      : "Упаковать выбранные тома на внешний диск и убрать их из Docker")
+                .disabled(model.selection.isEmpty || model.busy != nil || app.target == nil)
+                .help(app.targetProblem ?? "Упаковать выбранные тома и убрать их из Docker")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -135,7 +136,7 @@ struct DockerView: View {
         if !model.archives.isEmpty {
             Divider()
             VStack(alignment: .leading, spacing: 8) {
-                Text("Архивы на диске «\(app.destination?.name ?? "")»").font(.headline)
+                Text("Архивы томов").font(.headline)
                 ScrollView {
                     VStack(spacing: 6) {
                         ForEach(model.archives, id: \.self) { archive in

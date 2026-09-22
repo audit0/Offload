@@ -13,9 +13,14 @@ public struct MoveRecord: Codable, Sendable, Identifiable, Hashable {
     public var restored: Bool
     /// Пояснение для человека: например, что архив упакован в tar.gz.
     public var note: String?
+    /// Архив лежит внутри сейфа (зашифрован). У старых записей поля нет — значит, открыто.
+    public var inSafe: Bool?
+
+    public var isEncrypted: Bool { inSafe == true }
 
     public init(id: UUID = UUID(), date: Date = Date(), originalPath: String, archivedPath: String, volumeName: String,
-                files: Int, bytes: Int64, originalRemoved: Bool = false, restored: Bool = false, note: String? = nil) {
+                files: Int, bytes: Int64, originalRemoved: Bool = false, restored: Bool = false, note: String? = nil,
+                inSafe: Bool? = nil) {
         self.id = id
         self.date = date
         self.originalPath = originalPath
@@ -26,6 +31,7 @@ public struct MoveRecord: Codable, Sendable, Identifiable, Hashable {
         self.originalRemoved = originalRemoved
         self.restored = restored
         self.note = note
+        self.inSafe = inSafe
     }
 }
 
@@ -237,7 +243,7 @@ public struct SafeMover: Sendable {
         }
 
         var record = MoveRecord(originalPath: source.path, archivedPath: plan.target.path, volumeName: plan.volume.name,
-                                files: hashes.count, bytes: total)
+                                files: hashes.count, bytes: total, inSafe: plan.volume.isEncryptedImage ? true : nil)
         try Journal.save(record, volume: plan.volume)
         if deleteOriginal {
             progress(MoveProgress(phase: .removing, bytesDone: total, bytesTotal: total, item: source.lastPathComponent))
@@ -247,6 +253,101 @@ public struct SafeMover: Sendable {
             try? Journal.save(record, volume: plan.volume)
         }
         return record
+    }
+
+    // MARK: - Зашифровать перенесённое
+
+    /// Переносит архив, который уже лежит на внешнем диске открыто, внутрь сейфа.
+    ///
+    /// Та же дисциплина, что при переносе с Mac: копия под временным именем, побайтовая
+    /// сверка, и только потом открытый архив удаляется. Журнал переписывается до удаления:
+    /// оборвись работа на удалении — запись уже указывает на копию в сейфе, и данные
+    /// найдутся. Оговорка, которую надо сказать человеку честно: удалённые с флешки или SSD
+    /// байты не затираются физически, их можно восстановить специальными средствами,
+    /// пока контроллер диска их не перезапишет. Полную гарантию даёт только диск,
+    /// зашифрованный целиком.
+    public func relocate(_ record: MoveRecord, into safe: VolumeInfo, isCancelled: () -> Bool = { false },
+                         progress: (MoveProgress) -> Void = { _ in }) throws -> MoveRecord {
+        guard safe.isEncryptedImage else { throw MoveError.unsafeRecord("сейф не открыт") }
+        let (archived, _) = try validate(record)
+        guard Self.exists(archived) else {
+            throw MoveError.unsafeRecord("архив не найден — подключите диск «\(record.volumeName)»")
+        }
+        let safeRoot = safe.mountPoint.standardizedFileURL.path
+        guard let host = Volumes.info(for: archived), host.mountPoint.standardizedFileURL.path != safeRoot,
+              !archived.path.hasPrefix(safeRoot + "/") else {
+            throw MoveError.unsafeRecord("архив уже в сейфе")
+        }
+        // Внутри сейфа путь повторяет путь на диске, чтобы по архиву было видно, откуда он.
+        let hostRoot = host.mountPoint.standardizedFileURL.path
+        let hostOffload = hostRoot + "/" + Self.folderName + "/"
+        let relative = archived.path.hasPrefix(hostOffload)
+            ? String(archived.path.dropFirst(hostOffload.count))
+            : String(archived.path.dropFirst(hostRoot.count + 1))
+        let target = safe.mountPoint.appendingPathComponent(Self.folderName, isDirectory: true).appendingPathComponent(relative)
+        guard !Self.exists(target) else { throw MoveError.alreadyExists(target.path) }
+
+        let fm = FileManager.default
+        progress(MoveProgress(phase: .inspecting, bytesDone: 0, bytesTotal: 0, item: archived.lastPathComponent))
+        // ._-двойники, которые macOS наплодила на exFAT, в сейф не везём: на APFS они не нужны.
+        let entries = try TreeWalker.walk(archived, strict: true, exclude: { relative, isDirectory in
+            let name = (relative as NSString).lastPathComponent
+            guard !isDirectory, name.hasPrefix("._") else { return false }
+            let sibling = ((relative as NSString).deletingLastPathComponent as NSString).appendingPathComponent(String(name.dropFirst(2)))
+            return Self.exists(archived.appendingPathComponent(sibling))
+        }, isCancelled: isCancelled).entries
+        let total = entries.reduce(Int64(0)) { $0 + $1.size }
+        guard total + (64 << 20) <= safe.availableBytes else {
+            throw MoveError.destination(["В сейфе не хватает места: нужно \(Format.bytes(total)), свободно \(Format.bytes(safe.availableBytes)). Освободите место на диске «\(host.name)»."])
+        }
+
+        let parent = target.deletingLastPathComponent()
+        try fm.createDirectory(at: parent, withIntermediateDirectories: true)
+        let partial = parent.appendingPathComponent(".offload-partial-\(UUID().uuidString)")
+        Self.removeStalePartials(in: parent, keeping: partial)
+        do {
+            var copied: Int64 = 0
+            let marker = PartialMarker(partial: partial)
+            let hashes = try VerifiedCopy.copyTree(entries, from: archived, to: partial, keepPermissions: host.keepsPermissions,
+                                                   isCancelled: isCancelled, progress: { name, bytes in
+                copied += Int64(bytes)
+                marker.touch(whileCopying: name)
+                progress(MoveProgress(phase: .copying, bytesDone: copied, bytesTotal: total, item: name))
+            }, didCreateRoot: { _ in marker.write() })
+            var verified: Int64 = 0
+            try VerifiedCopy.verify(entries, hashes: hashes, at: partial, isCancelled: isCancelled) { name, bytes in
+                verified += Int64(bytes)
+                progress(MoveProgress(phase: .verifying, bytesDone: verified, bytesTotal: total, item: name))
+            }
+            marker.remove(restoring: entries.first)
+            try Self.renameExclusive(partial, to: target)
+        } catch {
+            try? fm.removeItem(at: partial)
+            throw error
+        }
+        // Список сумм и права, записанные при переносе, едут вместе с архивом: возврат из сейфа
+        // сверится с тем же списком, что и раньше.
+        for sidecar in [Self.checksumURL(for: archived), Self.modesURL(for: archived)] where Self.exists(sidecar) {
+            let destination = target.deletingLastPathComponent()
+                .appendingPathComponent(target.lastPathComponent + String(sidecar.lastPathComponent.dropFirst(archived.lastPathComponent.count)))
+            try? fm.copyItem(at: sidecar, to: destination)
+        }
+
+        var moved = record
+        moved.archivedPath = target.path
+        moved.volumeName = safe.name
+        moved.inSafe = true
+        try Journal.save(moved, volume: safe)
+        try? Journal.remove(record.id, from: host)
+
+        progress(MoveProgress(phase: .removing, bytesDone: total, bytesTotal: total, item: archived.lastPathComponent))
+        try fm.removeItem(at: archived)
+        for sidecar in [Self.checksumURL(for: archived), Self.modesURL(for: archived)] {
+            try? fm.removeItem(at: sidecar)
+            Self.removeSidecar(of: sidecar)
+        }
+        Self.removeSidecar(of: archived)
+        return moved
     }
 
     // MARK: - Ручные переносы

@@ -84,14 +84,17 @@ func checksContainer() {
             check(false, "не удалось открыть подделку для осмотра")
         }
 
-        // Подделка убедительная: сигнатура и правдоподобный размер заголовка. Дешёвый признак
-        // её пропускает, и это нормально — такой образ подсистема образов не открывает вовсе,
-        // а если бы открыла, её остановила бы проверка уже подключённого тома.
+        // Подделка убедительная: сигнатура и правдоподобный размер заголовка. Файловый признак
+        // она проходит, но hdiutil isencrypted видит, что пароля к этому заголовку нет ни одного, —
+        // и сейфом она не считается ещё до попытки открыть.
         try (Data("encrcdsa".utf8) + Data(count: 64 << 10)).write(to: forged.appendingPathComponent("token"))
         let forgedVault = SecretsVault(imageURL: forged)
-        check(forgedVault.isEncrypted, "убедительная подделка проходит дешёвый признак — значит, он не последний")
+        check(SecretsVault.hasEncryptionHeader(forged), "убедительная подделка проходит файловый признак — значит, он не последний")
+        check(SecretsVault.encryptionInfo(of: forged)?.passphraseCount == 0, "macOS сообщает: паролей к такому заголовку нет")
+        check(!forgedVault.isEncrypted, "убедительная подделка не считается сейфом ещё до открытия")
         expectError("убедительная подделка не открывается как контейнер",
-                    { _ = try forgedVault.attach(password: "какой-угодно-пароль-123") })
+                    { _ = try forgedVault.attach(password: "какой-угодно-пароль-123") },
+                    matching: { ($0 as? VaultError) == .notEncrypted })
         check(forgedVault.currentMountPoint() == nil, "убедительная подделка не осталась подключённой")
 
         // Настоящий зашифрованный контейнер должен открываться по паролю как раньше:
