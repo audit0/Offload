@@ -165,6 +165,7 @@ struct HistoryGroupRow: View {
                     Image(systemName: group.first.restored ? "arrow.uturn.backward.circle.fill" : "square.stack.3d.up.fill")
                         .foregroundStyle(group.first.restored ? Color.green : Color.accentColor)
                         .font(.title3)
+                        .frame(width: 28)
                     VStack(alignment: .leading, spacing: 3) {
                         Text("\((group.originalParent as NSString).lastPathComponent) · \(group.records.count) \(pluralRu(group.records.count, "объект", "объекта", "объектов"))")
                             .fontWeight(.medium)
@@ -216,6 +217,8 @@ struct HistoryRow: View {
             Image(systemName: record.restored ? "arrow.uturn.backward.circle.fill" : (record.isEncrypted ? "lock.fill" : "externaldrive.fill"))
                 .foregroundStyle(record.restored ? Color.green : Color.accentColor)
                 .font(.title3)
+                // Иконки разной ширины (замок, диск, стрелка) иначе сдвигали текст строк.
+                .frame(width: 28)
             VStack(alignment: .leading, spacing: 3) {
                 Text(URL(fileURLWithPath: record.originalPath).lastPathComponent).fontWeight(.medium)
                 Text(relativeToHome(record.originalPath, home: home)).font(.caption).foregroundStyle(.secondary)

@@ -22,6 +22,12 @@ public struct AppMemory: Sendable, Identifiable, Hashable {
     public let name: String
     public let bytes: UInt64
     public let processes: Int
+
+    public init(name: String, bytes: UInt64, processes: Int) {
+        self.name = name
+        self.bytes = bytes
+        self.processes = processes
+    }
 }
 
 public struct MemorySnapshot: Sendable {
@@ -33,6 +39,18 @@ public struct MemorySnapshot: Sendable {
     public var pressure: MemoryPressure
     public var uptime: TimeInterval
     public var apps: [AppMemory]
+
+    public init(physicalBytes: UInt64, freeBytes: UInt64, compressedBytes: UInt64, swapUsedBytes: UInt64,
+                swapTotalBytes: UInt64, pressure: MemoryPressure, uptime: TimeInterval, apps: [AppMemory]) {
+        self.physicalBytes = physicalBytes
+        self.freeBytes = freeBytes
+        self.compressedBytes = compressedBytes
+        self.swapUsedBytes = swapUsedBytes
+        self.swapTotalBytes = swapTotalBytes
+        self.pressure = pressure
+        self.uptime = uptime
+        self.apps = apps
+    }
 }
 
 public enum MemoryStats {

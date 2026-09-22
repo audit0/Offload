@@ -121,6 +121,13 @@ public struct SecretsVault: Sendable {
         public var uuid: String?
 
         public var opensWithPassword: Bool { encrypted && passphraseCount > 0 }
+
+        public init(encrypted: Bool, passphraseCount: Int, version: Int?, uuid: String?) {
+            self.encrypted = encrypted
+            self.passphraseCount = passphraseCount
+            self.version = version
+            self.uuid = uuid
+        }
     }
 
     public static func encryptionInfo(of image: URL) -> EncryptionInfo? {

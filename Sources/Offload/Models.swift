@@ -12,6 +12,12 @@ final class OverviewModel {
     private(set) var advice: [String] = []
 
     func poll() async {
+        if Demo.isOn {
+            disk = Demo.macDisk
+            memory = Demo.memory
+            advice = Self.diskAdvice(Demo.macDisk) + MemoryStats.advice(for: Demo.memory)
+            return
+        }
         while !Task.isCancelled {
             let snapshot = await Task.detached(priority: .utility) {
                 (Volumes.info(for: FileManager.default.homeDirectoryForCurrentUser), MemoryStats.snapshot())
@@ -26,11 +32,11 @@ final class OverviewModel {
     static func diskAdvice(_ disk: VolumeInfo?) -> [String] {
         guard let disk, disk.totalBytes > 0,
               Double(disk.availableBytes) / Double(disk.totalBytes) < 0.15 else { return [] }
-        return ["На диске Mac свободно всего \(Format.bytes(disk.availableBytes)). Когда места мало, macOS тормозит: ей негде держать swap. Откройте «Что занимает место»."]
+        return ["На диске Mac свободно всего \(Format.bytes(disk.availableBytes)). Когда места мало, macOS тормозит: ей негде держать swap. Откройте «Освободить место»."]
     }
 }
 
-// MARK: - Что занимает место
+// MARK: - Освободить место
 
 @MainActor
 @Observable
@@ -86,6 +92,11 @@ final class SpaceModel {
     }
 
     private func scan(rules: SafetyRules) {
+        if Demo.isOn {
+            items = Demo.spaceItems()
+            isScanning = false
+            return
+        }
         let token = CancelToken()
         self.token = token
         items = []
@@ -257,6 +268,11 @@ final class HistoryModel {
     @ObservationIgnored private var availability: [UUID: Bool] = [:]
 
     func reload(volumes: [VolumeInfo]) {
+        if Demo.isOn {
+            records = Demo.records()
+            availability = Dictionary(uniqueKeysWithValues: records.map { ($0.id, !$0.restored) })
+            return
+        }
         var byID: [UUID: MoveRecord] = [:]
         let fm = FileManager.default
         for record in Journal.localRecords() { byID[record.id] = record }
@@ -364,6 +380,7 @@ final class BackupModel {
         excludedText = defaults.string(forKey: Self.excludedKey)
             ?? BackupEngine.defaultExcludedNames.sorted().joined(separator: ", ")
         destinationPath = defaults.string(forKey: Self.destinationKey)
+        if Demo.isOn { sources = Demo.backupSources }
     }
 
     var excludedNames: Set<String> {
@@ -397,6 +414,8 @@ final class BackupModel {
     }
 
     private func persist() {
+        // В демо ничего не сохраняем: иначе вымышленные папки заменили бы настоящие.
+        guard !Demo.isOn else { return }
         UserDefaults.standard.set(sources.map(\.path), forKey: Self.sourcesKey)
         UserDefaults.standard.set(excludedText, forKey: Self.excludedKey)
         UserDefaults.standard.set(destinationPath, forKey: Self.destinationKey)

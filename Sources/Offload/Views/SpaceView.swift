@@ -47,7 +47,7 @@ struct SpaceView: View {
                 if model.items.isEmpty, model.isScanning { ProgressView("Считаю размеры…") }
             }
         }
-        .navigationTitle("Что занимает место")
+        .navigationTitle("Освободить место")
         .task {
             if model.items.isEmpty, !model.isScanning { model.open(model.location, rules: app.rules) }
         }

@@ -14,6 +14,9 @@ public enum Format {
         let formatter = RelativeDateTimeFormatter()
         formatter.locale = Locale(identifier: "ru_RU")
         formatter.unitsStyle = .full
-        return formatter.localizedString(for: date, relativeTo: now)
+        // «Сейчас» вместо «через 0 секунд»: у файла, изменённого только что, дата может оказаться
+        // на долю секунды впереди часов, и числовой стиль показывал её как будущую.
+        formatter.dateTimeStyle = .named
+        return formatter.localizedString(for: min(date, now), relativeTo: now)
     }
 }

@@ -191,7 +191,7 @@ struct SafeStatusPanel: View {
         guard let state = safe.state else { return "смотрю…" }
         if !state.exists { return "не создан" }
         if !state.isEncrypted { return "образ не зашифрован" }
-        if let volume = app.safeVolume { return "открыт · свободно \(Format.bytes(volume.availableBytes))" }
+        if let volume = app.safeVolume { return "открыт · \(Format.bytes(volume.availableBytes))" }
         return "закрыт · \(state.displayName)"
     }
 }

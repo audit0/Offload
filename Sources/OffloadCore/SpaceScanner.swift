@@ -12,6 +12,16 @@ public struct SpaceItem: Sendable, Identifiable, Hashable {
     public let verdict: Verdict
     /// false — размер ещё считается.
     public let isMeasured: Bool
+
+    public init(url: URL, bytes: Int64, modified: Date?, isDirectory: Bool, accessDenied: Bool, verdict: Verdict, isMeasured: Bool) {
+        self.url = url
+        self.bytes = bytes
+        self.modified = modified
+        self.isDirectory = isDirectory
+        self.accessDenied = accessDenied
+        self.verdict = verdict
+        self.isMeasured = isMeasured
+    }
 }
 
 public enum SpaceScanner {

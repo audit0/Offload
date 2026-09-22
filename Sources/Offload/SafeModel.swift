@@ -74,6 +74,7 @@ final class SafeModel {
     }
 
     private func persist() {
+        guard !Demo.isOn else { return }
         let defaults = UserDefaults.standard
         defaults.set(closeOnSleep, forKey: "safe.closeOnSleep")
         defaults.set(closeOnLock, forKey: "safe.closeOnLock")
@@ -87,6 +88,10 @@ final class SafeModel {
     /// Перечитывает, что с сейфом на выбранном диске. Ответ привязан к диску: запрос про
     /// прежний диск, пришедший последним, не должен перезаписать состояние нового.
     func refresh(app: AppModel) {
+        if Demo.isOn {
+            state = Demo.safeState
+            return
+        }
         guard let host = app.destination else {
             state = nil
             return
@@ -115,6 +120,7 @@ final class SafeModel {
     /// Сейф как место назначения: том внутри образа, а свободное место — меньшее из того,
     /// что осталось внутри образа и на самом диске.
     func volume(host: VolumeInfo?) -> VolumeInfo? {
+        if Demo.isOn { return isOpen ? Demo.safeVolume : nil }
         guard let host, let state, state.volumeID == host.id, state.isEncrypted, let mount = state.mount else { return nil }
         return Volumes.safe(mountedAt: mount, host: host)
     }
@@ -194,6 +200,8 @@ final class SafeModel {
     /// то же, что «Auto-dismount» в VeraCrypt. Ключ шифрования живёт в памяти, пока сейф открыт,
     /// и лучший способ его защитить — не держать сейф открытым без нужды.
     func startGuards(app: AppModel) {
+        // Вымышленный сейф закрывать нечем и незачем.
+        guard !Demo.isOn else { return }
         let workspace = NSWorkspace.shared.notificationCenter
         observers.append((workspace, workspace.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self, weak app] _ in
             MainActor.assumeIsolated {

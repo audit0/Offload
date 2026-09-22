@@ -68,7 +68,7 @@ final class AppModel {
     /// По умолчанию — в сейф: на внешнем диске, который можно потерять, открытыми
     /// лежать должны только те данные, для которых человек сам так решил.
     var storeMode: StoreMode = StoreMode(rawValue: UserDefaults.standard.string(forKey: "storeMode") ?? "") ?? .safe {
-        didSet { UserDefaults.standard.set(storeMode.rawValue, forKey: "storeMode") }
+        didSet { if !Demo.isOn { UserDefaults.standard.set(storeMode.rawValue, forKey: "storeMode") } }
     }
 
     /// Открытый сейф на выбранном диске как место назначения.
@@ -90,6 +90,7 @@ final class AppModel {
     /// Перенесённое, что лежит на выбранном диске открыто: его прочтёт любой, у кого диск.
     var plainRecords: [MoveRecord] {
         guard let host = destination else { return [] }
+        if Demo.isOn { return history.records.filter { !$0.isEncrypted && !$0.restored } }
         let prefix = host.mountPoint.path + "/"
         let fm = FileManager.default
         return history.records.filter {
@@ -139,6 +140,12 @@ final class AppModel {
 
     /// Список внешних дисков и свободное место на них меняются после каждой операции.
     func refreshVolumes() {
+        if Demo.isOn {
+            volumes = [Demo.disk]
+            destinationID = Demo.disk.id
+            hasFullDiskAccess = true
+            return
+        }
         volumes = Volumes.external()
         if destination == nil { destinationID = volumes.first?.id }
         hasFullDiskAccess = FullDiskAccess.isGranted

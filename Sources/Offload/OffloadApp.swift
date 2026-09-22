@@ -101,7 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// за сном, блокировкой и простоем, значило бы оставить ключ в памяти без присмотра.
     /// Если в нём открыты файлы, спрашиваем, закрыть ли принудительно.
     private func closeSafeBeforeQuit() {
-        guard let model, let mount = model.safe.state?.mount else { return }
+        guard !Demo.isOn, let model, let mount = model.safe.state?.mount else { return }
         do {
             try SecretsVault.detach(mount)
         } catch {
