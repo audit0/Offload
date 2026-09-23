@@ -19,7 +19,7 @@ func checksInterface() {
             throw CopyError.unreadable(image.path)
         }
         defer { _ = try? Runner.run("hdiutil", ["detach", "-force", mount.path], timeout: 60) }
-        guard let volume = Volumes.info(for: mount) else { throw CopyError.unreadable(mount.path) }
+        guard Volumes.info(for: mount) != nil else { throw CopyError.unreadable(mount.path) }
         let rules = SafetyRules(home: room.appendingPathComponent("home", isDirectory: true))
         let mover = SafeMover(rules: rules)
 
