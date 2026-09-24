@@ -54,16 +54,8 @@ struct CleanupView: View {
             switch model.stage {
             case .idle:
                 start
-            case .scanning(let done, let total):
-                Card(spacing: 12) {
-                    HStack {
-                        Text(total == 0 ? "Собираю, что посмотреть…" : "Смотрю, что занимает место: \(done) из \(total)")
-                            .fontWeight(.medium).monospacedDigit()
-                        Spacer()
-                        Button("Отменить") { model.cancel() }
-                    }
-                    ProgressView(value: total > 0 ? Double(done) / Double(total) : 0)
-                }
+            case .scanning(let progress):
+                scanning(progress)
             case .review:
                 review
             case .running(let progress):
@@ -96,26 +88,65 @@ struct CleanupView: View {
 
     // MARK: - Начало
 
+    /// Где разбор ищет — чтобы было видно, что личное в ~/Library он не трогает.
+    private static let places: [(symbol: String, title: String)] = [
+        ("arrow.down.circle", "Загрузки"), ("menubar.dock.rectangle", "Рабочий стол"), ("doc", "Документы"),
+        ("film", "Фильмы"), ("music.note", "Музыка"), ("photo", "Изображения"),
+        ("folder", "Свои папки в домашней"), ("hammer", "Кеши Xcode и пакетов"),
+    ]
+
     private var start: some View {
         let model = app.cleanup
+        let shape = RoundedRectangle(cornerRadius: Theme.cardRadius + 4, style: .continuous)
         return VStack(alignment: .leading, spacing: Theme.sectionSpacing) {
-            Card(spacing: 16) {
-                HStack(alignment: .top, spacing: 14) {
-                    IconTile(systemImage: "wand.and.stars", size: 52)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Разобрать Mac").font(.title2.weight(.semibold))
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .top, spacing: 16) {
+                    Image(systemName: "wand.and.stars")
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 64, height: 64)
+                        .background(LinearGradient(colors: [Theme.brand, Theme.brand.opacity(0.7)],
+                                                   startPoint: .topLeading, endPoint: .bottomTrailing),
+                                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .shadow(color: Theme.brand.opacity(0.35), radius: 10, y: 4)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Разобрать Mac").font(.title.weight(.bold))
                         Text("Offload посмотрит, что занимает место, и предложит: что удалить, что убрать в сейф, что добавить в бэкап. Вы поправите, где не согласны, — и только потом что-то произойдёт.")
                             .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                HStack(spacing: 12) {
-                    Button { model.scan(app: app) } label: { Label("Разобрать", systemImage: "wand.and.stars") }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                    if let run = model.lastRun {
-                        Text("В прошлый раз, \(run.date.formatted(date: .abbreviated, time: .omitted)): в Корзину \(Format.bytes(run.trashedBytes)), в сейф \(Format.bytes(run.movedBytes)), в бэкап папок \(run.addedToBackup).")
-                            .font(.caption).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Где посмотрю").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    FlowLayout(spacing: 6) {
+                        ForEach(Self.places, id: \.title) { place in
+                            Label(place.title, systemImage: place.symbol)
+                                .font(.callout)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Color.primary.opacity(0.06), in: Capsule())
+                        }
                     }
+                }
+                Button { model.scan(app: app) } label: {
+                    Label("Разобрать", systemImage: "wand.and.stars").padding(.horizontal, 8)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .keyboardShortcut(.defaultAction)
+            }
+            .padding(22)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(LinearGradient(colors: [Theme.brand.opacity(0.20), Theme.brand.opacity(0.04)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing), in: shape)
+            .overlay { shape.strokeBorder(Theme.brand.opacity(0.25)) }
+            if let run = model.lastRun {
+                CardSection(title: "Прошлый разбор — \(run.date.formatted(date: .abbreviated, time: .shortened))") {
+                    HStack(alignment: .top, spacing: 16) {
+                        result(Format.bytes(run.trashedBytes), "ушло в Корзину")
+                        result(Format.bytes(run.movedBytes), "убрано в сейф")
+                        result("\(run.addedToBackup)", "добавлено в бэкап")
+                    }
+                    .padding(Theme.cardPadding)
                 }
             }
             CardSection(title: "Как раскладывается") {
@@ -146,6 +177,56 @@ struct CleanupView: View {
         case .keep:
             return "То, чем вы пользуетесь, и то, что трогать нельзя. Ваши решения запоминаются: в следующий раз Offload предложит то же, что вы выбрали."
         }
+    }
+
+    // MARK: - Поиск
+
+    private func scanning(_ progress: CleanupModel.ScanProgress) -> some View {
+        Card(spacing: 16) {
+            HStack(spacing: 16) {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(Theme.brand)
+                    .symbolEffect(.pulse)
+                    .frame(width: 56, height: 56)
+                    .background(Theme.brand.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(progress.total == 0 ? "Собираю, что посмотреть…" : "Смотрю, что занимает место")
+                        .font(.title3.weight(.semibold))
+                    Text(progress.current.isEmpty ? " " : progress.current)
+                        .font(.callout).foregroundStyle(.secondary)
+                        .lineLimit(1).truncationMode(.middle)
+                }
+                Spacer(minLength: 12)
+                if progress.total > 0 {
+                    Text("\(progress.done) из \(progress.total)")
+                        .font(.callout).foregroundStyle(.secondary).monospacedDigit()
+                }
+                Button("Отменить") { app.cleanup.cancel() }
+            }
+            ProgressView(value: progress.total > 0 ? Double(progress.done) / Double(progress.total) : 0)
+            HStack(alignment: .top, spacing: 16) {
+                found(.trash, Format.bytes(progress.trashBytes))
+                found(.safe, Format.bytes(progress.safeBytes))
+                found(.backup, "\(progress.backupCount)")
+            }
+        }
+    }
+
+    /// Сколько уже набралось по действию, пока идёт поиск.
+    private func found(_ action: CleanupAction, _ value: String) -> some View {
+        HStack(spacing: 10) {
+            IconTile(systemImage: action.symbol, tone: action.tone, size: 30)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(value)
+                    .font(.system(.body, design: .rounded, weight: .semibold))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                Text(action.title).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.snappy, value: value)
     }
 
     // MARK: - Предложения

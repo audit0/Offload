@@ -84,6 +84,8 @@ public struct CleanupPlanner: Sendable {
     public var staleDays: Double = 90
     /// Установщик, скачанный меньше недели назад, может быть ещё не поставлен.
     public var installerDays: Double = 7
+    /// Меньше этого (кроме удаляемого) в список не попадает.
+    public var minimumBytes: Int64 = 100_000_000
 
     public static let installerExtensions: Set<String> = ["dmg", "pkg", "mpkg", "xip", "iso"]
 
@@ -131,14 +133,20 @@ public struct CleanupPlanner: Sendable {
     }
 
     /// Предложения по убыванию пользы: сначала то, что освобождает место, внутри — по размеру.
-    /// Мелочь отбрасывается: разбирать её дольше, чем она стоит.
-    public func suggestions(_ items: [CleanupObservation], minimumBytes: Int64 = 100_000_000) -> [CleanupSuggestion] {
+    public func suggestions(_ items: [CleanupObservation]) -> [CleanupSuggestion] {
         items.map(suggest)
-            .filter { $0.bytes >= ($0.action == .trash ? 10_000_000 : minimumBytes) || ($0.learned && $0.action != .keep) }
+            .filter(isWorthShowing)
             .sorted { lhs, rhs in
                 let left = Self.order(lhs.action), right = Self.order(rhs.action)
                 return left != right ? left < right : (lhs.bytes, rhs.id) > (rhs.bytes, lhs.id)
             }
+    }
+
+    /// Показывать ли предложение: мелочь разбирать дольше, чем она стоит. Удаляемое показывается
+    /// с 10 МБ, остальное — со 100 МБ; прошлое решение «убрать» — всегда, человек его ждёт.
+    public func isWorthShowing(_ suggestion: CleanupSuggestion) -> Bool {
+        suggestion.bytes >= (suggestion.action == .trash ? 10_000_000 : minimumBytes)
+            || (suggestion.learned && suggestion.action != .keep)
     }
 
     static func order(_ action: CleanupAction) -> Int {

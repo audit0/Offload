@@ -12,10 +12,20 @@ import OffloadCore
 final class CleanupModel {
     enum Stage: Equatable {
         case idle
-        case scanning(done: Int, total: Int)
+        case scanning(ScanProgress)
         case review
         case running(Progress)
         case done(Report)
+    }
+
+    /// Поиск: сколько просмотрено, что сейчас и что уже набралось по действиям.
+    struct ScanProgress: Equatable {
+        var done = 0
+        var total = 0
+        var current = ""
+        var trashBytes: Int64 = 0
+        var safeBytes: Int64 = 0
+        var backupCount = 0
     }
 
     struct Progress: Equatable {
@@ -92,9 +102,9 @@ final class CleanupModel {
         let rules = app.rules
         let sources = app.backup.sources.map(\.standardizedFileURL.path)
         let memory = (try? store?.lastDecisions()) ?? [:]
-        stage = .scanning(done: 0, total: 0)
+        stage = .scanning(ScanProgress())
         let throttle = Throttle(interval: 0.2)
-        let counter = Counter()
+        let tally = ScanTally()
         Task {
             let found = await Task.detached(priority: .userInitiated) { () -> [CleanupSuggestion] in
                 let fm = FileManager.default
@@ -103,25 +113,27 @@ final class CleanupModel {
                 let urls = (CleanupPlanner.roots(home: rules.home).flatMap { SpaceScanner.children(of: $0) }
                             + regenerable.keys.sorted().map { URL(fileURLWithPath: $0, isDirectory: true) })
                     .filter { seen.insert($0.standardizedFileURL.path).inserted }
-                await MainActor.run { if !token.isCancelled { self.stage = .scanning(done: 0, total: urls.count) } }
-                let collector = Collector<SpaceItem>()
+                await MainActor.run { if !token.isCancelled { self.stage = .scanning(ScanProgress(total: urls.count)) } }
+                let planner = CleanupPlanner(regenerable: regenerable, memory: memory)
+                let collector = Collector<CleanupObservation>()
                 await SpaceScanner.scan(urls, rules: rules, isCancelled: { token.isCancelled }) { item in
-                    collector.append(item)
-                    let done = Int(counter.add(1))
-                    guard throttle.ready() else { return }
-                    Task { @MainActor in
-                        if case .scanning = self.stage, !token.isCancelled { self.stage = .scanning(done: done, total: urls.count) }
-                    }
-                }
-                let observations = collector.all.map { item -> CleanupObservation in
                     let path = item.url.standardizedFileURL.path
-                    return CleanupObservation(
+                    let observation = CleanupObservation(
                         url: item.url, bytes: item.bytes, modified: item.modified, isDirectory: item.isDirectory,
                         verdict: item.verdict,
                         isProject: item.isDirectory && fm.fileExists(atPath: item.url.appendingPathComponent(".git").path),
                         inBackup: sources.contains { path == $0 || path.hasPrefix($0 + "/") })
+                    collector.append(observation)
+                    // Промежуточный итог — по тем же правилам, что и список: видно, что поиск чего-то стоит.
+                    var progress = tally.add(planner.suggest(observation), counted: planner.isWorthShowing)
+                    guard throttle.ready() else { return }
+                    progress.total = urls.count
+                    progress.current = item.url.lastPathComponent
+                    Task { @MainActor in
+                        if case .scanning = self.stage, !token.isCancelled { self.stage = .scanning(progress) }
+                    }
                 }
-                return CleanupPlanner(regenerable: regenerable, memory: memory).suggestions(observations)
+                return planner.suggestions(collector.all)
             }.value
             guard !token.isCancelled else {
                 stage = .idle
@@ -268,6 +280,27 @@ final class CleanupModel {
         case .safe: return "Подготовка"
         case .backup: return "В бэкап"
         case .keep: return ""
+        }
+    }
+}
+
+/// Промежуточный итог поиска: пополняется из параллельных замеров, поэтому под замком.
+final class ScanTally: @unchecked Sendable {
+    private let lock = NSLock()
+    private var progress = CleanupModel.ScanProgress()
+
+    func add(_ suggestion: CleanupSuggestion, counted: (CleanupSuggestion) -> Bool) -> CleanupModel.ScanProgress {
+        lock.withLock {
+            progress.done += 1
+            if counted(suggestion) {
+                switch suggestion.action {
+                case .trash: progress.trashBytes += suggestion.bytes
+                case .safe: progress.safeBytes += suggestion.bytes
+                case .backup: progress.backupCount += 1
+                case .keep: break
+                }
+            }
+            return progress
         }
     }
 }
