@@ -44,6 +44,7 @@ struct CleanupView: View {
     @Environment(AppModel.self) private var app
     @State private var confirming = false
     @State private var showKept = false
+    @State private var growingSafe = false
 
     var body: some View {
         let model = app.cleanup
@@ -78,6 +79,7 @@ struct CleanupView: View {
         .navigationTitle("Разобрать")
         // В демонстрации сразу показываем предложения — снимку экрана нечего ждать.
         .task { if Demo.isOn, model.stage == .idle { model.scan(app: app) } }
+        .sheet(isPresented: $growingSafe) { GrowSafeSheet(needed: model.bytes(.safe)) }
         .confirmationDialog("Выполнить разбор?", isPresented: $confirming) {
             Button("Выполнить") { model.run(app: app) }
             Button("Отмена", role: .cancel) {}
@@ -256,6 +258,20 @@ struct CleanupView: View {
                         SafeUnlockRow().frame(maxWidth: 440)
                     } else {
                         TargetSummary(problemTone: .caution)
+                    }
+                }
+            }
+            let toSafe = model.bytes(.safe)
+            if toSafe > 0, let room = app.safe.roomLeft(host: app.destination, volume: app.safeVolume), toSafe > room {
+                Card(spacing: 10, tint: .orange) {
+                    Label {
+                        Text("В сейф выбрано \(Format.bytes(toSafe)), а поместится около \(Format.bytes(room)). Не поместившееся останется на месте — увеличьте предел сейфа, содержимое при этом не пострадает.")
+                            .fixedSize(horizontal: false, vertical: true)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    }
+                    Button { growingSafe = true } label: {
+                        Label("Увеличить предел сейфа…", systemImage: "arrow.up.left.and.arrow.down.right")
                     }
                 }
             }

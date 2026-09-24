@@ -6,11 +6,13 @@ struct SafeView: View {
     @State private var password = ""
     @State private var confirmation = ""
     @State private var creatingAnother = false
+    /// Предел нового сейфа; nil — весь диск.
+    @State private var newLimit: Int64?
     @State private var sheet: SafeSheet?
     @State private var excluded: Set<UUID> = []
 
     enum SafeSheet: Identifiable {
-        case changePassword, compact, restoreHeader
+        case changePassword, compact, restoreHeader, grow
         var id: Self { self }
     }
 
@@ -41,7 +43,7 @@ struct SafeView: View {
             if safe.state?.isEncrypted == true {
                 CardSection(title: "Пароль, заголовок, место",
                             footer: safe.isOpen
-                                ? "Смена пароля, восстановление заголовка и сжатие — на закрытом сейфе."
+                                ? "Смена пароля, восстановление заголовка, увеличение и сжатие — на закрытом сейфе."
                                 : "В заголовке лежит ключ данных, зашифрованный паролем: испортится он — пропадёт всё, даже при верном пароле. Храните копию заголовка отдельно от диска. Место, освобождённое внутри сейфа, идёт под новые данные, но сам образ на диске не уменьшается; сжатие возвращает его частично, а на больших сейфах macOS может не вернуть ничего — Offload покажет, сколько вернулось на самом деле.") {
                     keySection
                 }
@@ -69,6 +71,7 @@ struct SafeView: View {
             case .changePassword: ChangePasswordSheet()
             case .compact: CompactSheet()
             case .restoreHeader: RestoreHeaderSheet()
+            case .grow: GrowSafeSheet()
             }
         }
     }
@@ -156,8 +159,12 @@ struct SafeView: View {
         }
         .font(.callout)
         if let limit = state.sizeLimit, limit < 20 << 30 {
-            Notice(.warning, "Этот образ ограничен \(Format.bytes(limit)): для ключей хватит, а для переноса больших папок — нет. Растянуть APFS внутри образа нельзя, поэтому для переноса нужен отдельный сейф на весь диск.")
-            Button("Создать сейф на весь диск…") { creatingAnother = true }
+            Notice(.warning, "Этот сейф ограничен \(Format.bytes(limit)): для ключей хватит, а для переноса больших папок — нет. Предел можно увеличить — содержимое останется на месте.")
+            HStack {
+                Button { sheet = .grow } label: { Label("Увеличить предел…", systemImage: "arrow.up.left.and.arrow.down.right") }
+                    .buttonStyle(.borderedProminent)
+                Button("Создать другой сейф…") { creatingAnother = true }
+            }
         }
         candidatesPicker(state)
     }
@@ -191,11 +198,22 @@ struct SafeView: View {
         HStack(alignment: .top, spacing: 14) {
             IconTile(systemImage: "lock.shield", tone: .brand, size: 52)
             VStack(alignment: .leading, spacing: 4) {
-                Text(replacing == nil ? "На диске «\(host.name)» сейфа пока нет" : "Новый сейф на весь диск «\(host.name)»")
+                Text(replacing == nil ? "На диске «\(host.name)» сейфа пока нет" : "Новый сейф на диске «\(host.name)»")
                     .font(.title2.weight(.semibold))
-                Text("Образ разрежённый: его предел — весь диск (\(Format.bytes(host.totalBytes))), а места он занимает ровно столько, сколько в нём лежит. Придумайте пароль, который не используете больше нигде. Надёжнее всего — фраза из 4–6 случайных слов.")
+                Text("Образ разрежённый: места он занимает ровно столько, сколько в нём лежит, а предел лишь не даёт ему вырасти больше. Предел потом можно увеличить. Придумайте пароль, который не используете больше нигде. Надёжнее всего — фраза из 4–6 случайных слов.")
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
+        }
+        VStack(alignment: .leading, spacing: 4) {
+            Picker("Предел сейфа", selection: $newLimit) {
+                ForEach(SafeModel.limitChoices(host: host), id: \.self) { limit in
+                    Text(limit == host.totalBytes ? "весь диск (\(Format.bytes(limit)))" : Format.bytes(limit))
+                        .tag(limit == host.totalBytes ? Int64?.none : Int64?.some(limit))
+                }
+            }
+            .fixedSize()
+            Text("Остальное место на «\(host.name)» остаётся для обычных файлов, пока сейф до него не дорос.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         fields.frame(maxWidth: 440)
         HStack {
@@ -206,7 +224,7 @@ struct SafeView: View {
                 }
             }
             Button("Создать сейф") {
-                app.safe.create(password: password, app: app)
+                app.safe.create(password: password, limit: newLimit ?? host.totalBytes, app: app)
                 password = ""; confirmation = ""
                 creatingAnother = false
             }
@@ -340,6 +358,11 @@ struct SafeView: View {
             }
         }
         RowDivider()
+        FormRow(title: "Предел роста",
+                detail: "Сейчас \(app.safe.state?.sizeLimit.map { Format.bytes($0) } ?? "неизвестно"). Увеличивается без потери содержимого.") {
+            Button("Увеличить…") { sheet = .grow }.disabled(!closed)
+        }
+        RowDivider()
         FormRow(title: "Место на диске", detail: "Образ сам не уменьшается, когда из сейфа удаляют файлы.") {
             Button("Вернуть…") { sheet = .compact }.disabled(!closed)
         }
@@ -418,6 +441,65 @@ struct CompactSheet: View {
             }
             .keyboardShortcut(.defaultAction)
             .disabled(password.isEmpty)
+        }
+    }
+}
+
+/// Увеличить предел сейфа. Открывается и из «Сейфа», и из «Разобрать», когда выбранное не помещается.
+struct GrowSafeSheet: View {
+    @Environment(AppModel.self) private var app
+    @Environment(\.dismiss) private var dismiss
+    @State private var limit: Int64?
+    @State private var password = ""
+    /// Сколько человек собирается положить — чтобы сразу предложить подходящий предел.
+    var needed: Int64 = 0
+
+    var body: some View {
+        let safe = app.safe
+        let current = safe.state?.sizeLimit ?? 0
+        let choices = app.destination.map { SafeModel.limitChoices(host: $0, above: current) } ?? []
+        let target = (safe.state?.allocated ?? 0) + needed
+        let chosen = limit ?? choices.first { $0 >= target } ?? choices.last
+        SheetLayout(systemImage: "arrow.up.left.and.arrow.down.right", title: "Увеличить предел сейфа",
+                    subtitle: "Сейчас — \(Format.bytes(current))") {
+            Text("Содержимое остаётся на месте, а места на диске образ занимает столько же, сколько занимал: предел лишь разрешает ему расти.")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if choices.isEmpty {
+                Notice(.info, "Сейф уже может занять весь диск — увеличивать некуда.")
+            } else {
+                Picker("Новый предел", selection: Binding(get: { chosen }, set: { limit = $0 })) {
+                    ForEach(choices, id: \.self) { value in
+                        Text(value == app.destination?.totalBytes ? "весь диск (\(Format.bytes(value)))" : Format.bytes(value))
+                            .tag(Int64?.some(value))
+                    }
+                }
+                .fixedSize()
+                if needed > 0, let chosen, chosen < target {
+                    Text("Выбранное для сейфа (\(Format.bytes(needed))) при таком пределе поместится не целиком.")
+                        .font(.caption).foregroundStyle(.orange)
+                }
+                if safe.isOpen {
+                    HStack {
+                        Text("Сейф открыт — увеличить можно только закрытый.")
+                            .font(.callout).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Закрыть сейф") { safe.close(app: app) }
+                    }
+                } else {
+                    SecureField("Пароль сейфа", text: $password)
+                        .textFieldStyle(.roundedBorder)
+                }
+                Text("На время увеличения сейф ненадолго подключится без открытия: файлы не видны ни Finder, ни программам.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        } actions: {
+            Button("Отмена") { password = ""; dismiss() }
+            Button("Увеличить") {
+                if let chosen { safe.grow(to: chosen, password: password, app: app) }
+                password = ""; dismiss()
+            }
+            .keyboardShortcut(.defaultAction)
+            .disabled(chosen == nil || password.isEmpty || safe.isOpen || safe.activity != nil)
         }
     }
 }
