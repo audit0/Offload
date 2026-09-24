@@ -259,7 +259,9 @@ public struct SecretsVault: Sendable {
         guard currentMountPoint() == nil else { throw VaultError.busy }
         guard isEncrypted else { throw VaultError.notEncrypted }
         let current = sizeLimit ?? 0
-        guard maxBytes >= current else { throw VaultError.growFailed("уменьшать сейф нельзя — только увеличивать") }
+        // hdiutil округляет размер образа вверх, поэтому повтор с тем же пределом видит
+        // чуть больший нынешний — это не уменьшение.
+        guard maxBytes >= current - (64 << 20) else { throw VaultError.growFailed("уменьшать сейф нельзя — только увеличивать") }
         let pass = Data(password.utf8)
         if maxBytes > current {
             let size = "\(maxBytes >> 20)m"
