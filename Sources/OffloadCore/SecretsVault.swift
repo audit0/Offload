@@ -248,11 +248,13 @@ public struct SecretsVault: Sendable {
 
     /// Увеличивает предел сейфа, не трогая содержимое. Нужны пароль и закрытый сейф.
     ///
-    /// `hdiutil resize` сам растягивает только HFS+, поэтому в два шага: сначала растёт
-    /// образ (`-imageonly`), затем образ подключается без монтирования, и раздел с файловой
-    /// системой занимает новое место (`diskutil apfs resizeContainer … 0` для APFS,
-    /// `diskutil resizeVolume … R` для HFS+). Оборвётся второй шаг — данные целы, а повтор
-    /// с тем же пределом доделает начатое: первый шаг тогда пропускается.
+    /// Сначала растёт сам образ: `hdiutil resize` целиком, а если он файловую систему внутри
+    /// не берётся — только образ (`-imageonly`). Затем образ подключается без монтирования,
+    /// и раздел занимает новое место: `diskutil apfs resizeContainer … 0` для APFS,
+    /// `diskutil resizeVolume … R` для HFS+. Если раздел не видит нового места (карта разделов
+    /// всё ещё кончается там, где кончался прежний образ), карта чинится `diskutil repairDisk`
+    /// и растяжение повторяется. Итог сверяется по размеру раздела, а не по кодам возврата.
+    /// Оборвётся посередине — данные целы, а повтор с тем же пределом доделает начатое.
     public func grow(to maxBytes: Int64, password: String) throws {
         guard currentMountPoint() == nil else { throw VaultError.busy }
         guard isEncrypted else { throw VaultError.notEncrypted }
@@ -260,9 +262,14 @@ public struct SecretsVault: Sendable {
         guard maxBytes >= current else { throw VaultError.growFailed("уменьшать сейф нельзя — только увеличивать") }
         let pass = Data(password.utf8)
         if maxBytes > current {
-            let resized = try Runner.run("hdiutil", ["resize", "-size", "\(maxBytes >> 20)m", "-imageonly", "-stdinpass", imageURL.path],
-                                         stdin: pass, timeout: 600)
-            guard resized.succeeded else { throw Self.growError(resized.stderr) }
+            let size = "\(maxBytes >> 20)m"
+            let full = try Runner.run("hdiutil", ["resize", "-size", size, "-stdinpass", imageURL.path], stdin: pass, timeout: 1800)
+            if !full.succeeded {
+                if case .wrongPassword = Self.passwordError(full.stderr) { throw VaultError.wrongPassword }
+                let imageOnly = try Runner.run("hdiutil", ["resize", "-size", size, "-imageonly", "-stdinpass", imageURL.path],
+                                               stdin: pass, timeout: 600)
+                guard imageOnly.succeeded else { throw Self.growError(imageOnly.stderr) }
+            }
         }
         let attached = try Runner.run("hdiutil", ["attach", "-nomount", "-nobrowse", "-plist", "-stdinpass", imageURL.path],
                                       stdin: pass, timeout: 180)
@@ -279,17 +286,34 @@ public struct SecretsVault: Sendable {
         guard let partition = devices.partition else {
             throw VaultError.growFailed("в образе не нашёлся раздел с файловой системой")
         }
-        let content = Self.diskContent(partition)
+        let content = Self.diskInfo(partition)?["Content"] as? String
         let arguments: [String]
         switch content {
         case "Apple_APFS": arguments = ["apfs", "resizeContainer", partition, "0"]
         case "Apple_HFS", "Apple_HFSX": arguments = ["resizeVolume", partition, "R"]
         default: throw VaultError.growFailed("внутри не APFS и не HFS+ (\(content ?? "неизвестно")) — такой раздел Offload не растягивает")
         }
-        let result = try Runner.run("diskutil", arguments, timeout: 1800)
-        guard result.succeeded else {
-            let output = (result.stderr.isEmpty ? String(decoding: result.stdout, as: UTF8.self) : result.stderr)
-            throw VaultError.growFailed(output.trimmingCharacters(in: .whitespacesAndNewlines))
+        // Раздел занимает весь образ, кроме карты разделов в начале и её копии в конце.
+        let target = (sizeLimit ?? maxBytes) - (16 << 20)
+        func partitionSize() -> Int64 { (Self.diskInfo(partition)?["Size"] as? NSNumber)?.int64Value ?? 0 }
+        func output(_ result: CommandResult) -> String {
+            (String(decoding: result.stdout, as: UTF8.self) + "\n" + result.stderr).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        var log: [String] = []
+        if partitionSize() < target {
+            log.append(output(try Runner.run("diskutil", arguments, timeout: 1800)))
+        }
+        if partitionSize() < target {
+            // «The new size must be different than the existing size»: раздел упирается в конец
+            // прежней карты. repairDisk переносит её копию в новый конец образа; спрашивает
+            // подтверждение — отвечаем «y», данные раздела он не трогает.
+            log.append(output(try Runner.run("diskutil", ["repairDisk", whole], stdin: Data("y\n".utf8), timeout: 600)))
+            log.append(output(try Runner.run("diskutil", arguments, timeout: 1800)))
+        }
+        let reached = partitionSize()
+        guard reached >= target else {
+            let layout = (try? Runner.run("diskutil", ["list", whole], timeout: 30)).map(output) ?? ""
+            throw VaultError.growFailed("раздел занимает \(reached) байт из \(target). " + (log + [layout]).joined(separator: "\n"))
         }
     }
 
@@ -317,11 +341,10 @@ public struct SecretsVault: Sendable {
         return (whole, partition)
     }
 
-    /// Тип раздела по мнению diskutil: «Apple_APFS», «Apple_HFS» и т. п.
-    static func diskContent(_ device: String) -> String? {
-        guard let result = try? Runner.run("diskutil", ["info", "-plist", device], timeout: 30), result.succeeded,
-              let plist = try? PropertyListSerialization.propertyList(from: result.stdout, format: nil) as? [String: Any] else { return nil }
-        return plist["Content"] as? String
+    /// Что diskutil знает о разделе: «Content» (Apple_APFS, Apple_HFS…), «Size» и прочее.
+    static func diskInfo(_ device: String) -> [String: Any]? {
+        guard let result = try? Runner.run("diskutil", ["info", "-plist", device], timeout: 30), result.succeeded else { return nil }
+        return try? PropertyListSerialization.propertyList(from: result.stdout, format: nil) as? [String: Any]
     }
 
     static func growError(_ stderr: String) -> VaultError {
