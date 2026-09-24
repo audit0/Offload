@@ -181,16 +181,19 @@ func checksSafe() {
         try vault.grow(to: 1 << 30, password: password)
         check(vault.isEncrypted, "повтор с тем же пределом проходит, сейф по-прежнему зашифрован")
 
-        // HFS+ — такие образы бывают, если их создавали вручную.
+        // HFS+ — такие образы бывают, если их создавали вручную. Растягивать их Offload
+        // отказывается до того, как что-то изменит: образ остаётся как был и открывается.
         let hfsImage = folder.appendingPathComponent("Старый HFS.sparsebundle", isDirectory: true)
         try Runner.check("hdiutil", ["create", "-size", "200m", "-type", "SPARSEBUNDLE", "-fs", "HFS+J", "-encryption", "AES-256",
                                      "-volname", "OffloadCheckHFS", "-stdinpass", "-quiet", hfsImage.path],
                          stdin: Data(password.utf8), timeout: 300)
         let hfs = SecretsVault(imageURL: hfsImage)
-        try hfs.grow(to: 1 << 30, password: password)
+        let hfsLimit = hfs.sizeLimit
+        expectError("сейф на HFS+ не растягивается", { try hfs.grow(to: 1 << 30, password: password) },
+                    matching: { if case VaultError.growFailed = $0 { return true }; return false })
+        check(hfs.sizeLimit == hfsLimit, "образ HFS+ не изменился: \(hfs.sizeLimit ?? 0)")
+        check(hfs.currentMountPoint() == nil, "после отказа образ HFS+ отключён")
         mount = try hfs.attach(password: password)
-        let grown = try capacity(mount)
-        check(grown > 900 << 20, "HFS+ внутри тоже растянулся: \(grown)")
         try SecretsVault.detach(mount)
     }
 
