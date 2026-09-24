@@ -38,7 +38,7 @@ struct DockerView: View {
                         } else if model.sizing {
                             ProgressView().controlSize(.mini)
                         } else {
-                            Text("—")
+                            Text("—").foregroundStyle(.secondary)
                         }
                     }
                     .width(90)
@@ -57,11 +57,16 @@ struct DockerView: View {
                     }
                     .width(160)
                     TableColumn("Используется") { volume in
-                        Text(volume.usedBy.isEmpty ? "—" : volume.usedBy.joined(separator: ", "))
-                            .foregroundStyle(volume.usedBy.isEmpty ? Color.secondary : Color.orange)
-                            .lineLimit(1)
+                        if volume.usedBy.isEmpty {
+                            Text("—").foregroundStyle(.secondary)
+                        } else {
+                            Label(volume.usedBy.joined(separator: ", "), systemImage: "cube.fill")
+                                .foregroundStyle(.orange)
+                                .lineLimit(1)
+                        }
                     }
                 }
+                .alternatingRowBackgrounds()
                 footer
             }
         }
@@ -90,17 +95,19 @@ struct DockerView: View {
         }
     }
 
-    private func relativeToVolume(_ url: URL) -> String {
-        if let safe = app.safeVolume, url.path.hasPrefix(safe.mountPoint.path + "/") { return "🔒 " + url.lastPathComponent }
-        guard let root = app.destination?.mountPoint.path, url.path.hasPrefix(root + "/") else { return url.lastPathComponent }
-        return String(url.path.dropFirst(root.count + 1))
+    /// Архив лежит в сейфе или открыто на диске — и путь к нему, понятный человеку.
+    private func location(of url: URL) -> (inSafe: Bool, path: String) {
+        if let safe = app.safeVolume, url.path.hasPrefix(safe.mountPoint.path + "/") { return (true, url.lastPathComponent) }
+        guard let root = app.destination?.mountPoint.path, url.path.hasPrefix(root + "/") else { return (false, url.lastPathComponent) }
+        return (false, String(url.path.dropFirst(root.count + 1)))
     }
 
     private var header: some View {
         let model = app.docker
         return HStack(spacing: 12) {
+            IconTile(systemImage: "shippingbox.fill", size: 36)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Тома Docker").font(.headline)
+                Text("Тома Docker").font(.title3.weight(.semibold))
                 if model.sizing {
                     Text("Docker считает размеры томов — это может занять минуту").font(.caption).foregroundStyle(.secondary)
                 } else if let raw = model.rawBytes {
@@ -116,11 +123,12 @@ struct DockerView: View {
             Button { model.reload(app: app) } label: { Label("Обновить", systemImage: "arrow.clockwise") }
                 .disabled(model.busy != nil)
             Button { confirmArchive = true } label: { Label("Архивировать на диск…", systemImage: "archivebox") }
+                .buttonStyle(.borderedProminent)
                 .disabled(model.selection.isEmpty || model.busy != nil || app.target == nil)
                 .help(app.targetProblem ?? "Упаковать выбранные тома и убрать их из Docker")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
     }
 
     @ViewBuilder
@@ -128,8 +136,10 @@ struct DockerView: View {
         let model = app.docker
         if !model.messages.isEmpty {
             Divider()
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(model.messages, id: \.self) { Text($0).font(.callout).textSelection(.enabled) }
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(model.messages, id: \.self) { message in
+                    Notice(Self.notice(for: message))
+                }
             }
             .padding(12)
         }
@@ -138,11 +148,16 @@ struct DockerView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Архивы томов").font(.headline)
                 ScrollView {
-                    VStack(spacing: 6) {
+                    VStack(spacing: 0) {
                         ForEach(model.archives, id: \.self) { archive in
-                            HStack {
-                                Image(systemName: "archivebox.fill").foregroundStyle(.secondary)
-                                Text(relativeToVolume(archive)).lineLimit(1).truncationMode(.middle).help(archive.path)
+                            let place = location(of: archive)
+                            HStack(spacing: 10) {
+                                IconTile(systemImage: place.inSafe ? "lock.fill" : "archivebox.fill",
+                                         tone: place.inSafe ? .good : .neutral, size: 26)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(place.path).lineLimit(1).truncationMode(.middle).help(archive.path)
+                                    Text(place.inSafe ? "в сейфе" : "открыто на диске").font(.caption).foregroundStyle(.secondary)
+                                }
                                 Spacer()
                                 Button("Вернуть в Docker…") {
                                     restoreName = DockerService.volumeName(fromArchive: archive) ?? ""
@@ -150,12 +165,22 @@ struct DockerView: View {
                                 }
                                 .disabled(model.busy != nil)
                             }
+                            .padding(.vertical, 6)
                         }
                     }
                 }
                 .frame(maxHeight: 180)
             }
-            .padding(12)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
         }
+    }
+
+    /// Итоги упаковки приходят строками с отметкой в начале: «✓» — удалось, «✗» — нет.
+    /// Отметка становится цветом плашки, а из текста уходит.
+    private static func notice(for message: String) -> Notice.Message {
+        if message.hasPrefix("✓ ") { return Notice.Message(.success, String(message.dropFirst(2))) }
+        if message.hasPrefix("✗ ") { return Notice.Message(.error, String(message.dropFirst(2))) }
+        return Notice.Message(.info, message)
     }
 }

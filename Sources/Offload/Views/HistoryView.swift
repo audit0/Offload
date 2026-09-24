@@ -38,6 +38,15 @@ struct HistoryGroup: Identifiable {
     }
 }
 
+/// Как выглядит запись: в сейфе — зелёный замок, открыто на диске — оранжевый диск, возвращённая — серая стрелка.
+extension MoveRecord {
+    var symbol: String { restored ? "arrow.uturn.backward" : (isEncrypted ? "lock.fill" : "externaldrive.fill") }
+    var tone: Tone { restored ? .neutral : (isEncrypted ? .good : .caution) }
+    var location: String { isEncrypted ? "в сейфе «\(volumeName)»" : "открыто на «\(volumeName)»" }
+    /// Почему вернуть сейчас нельзя.
+    var unavailableReason: String { isEncrypted ? "Сейф закрыт" : "Диск не подключён" }
+}
+
 struct HistoryView: View {
     @Environment(AppModel.self) private var app
     @State private var pendingRestore: MoveRecord?
@@ -47,21 +56,24 @@ struct HistoryView: View {
         let model = app.history
         VStack(spacing: 0) {
             if let busy = model.busyID, let record = model.records.first(where: { $0.id == busy }) {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     HStack {
+                        ProgressView().controlSize(.small)
                         Text("Возвращаю «\(URL(fileURLWithPath: record.originalPath).lastPathComponent)»").font(.headline)
                         Spacer()
+                        Text(model.progress?.phase.rawValue ?? "Подготовка").foregroundStyle(.secondary)
                         Button("Отменить") { model.cancel() }
                     }
-                    ProgressView(value: model.progress?.fraction ?? 0) { Text(model.progress?.phase.rawValue ?? "Подготовка") }
+                    ProgressView(value: model.progress?.fraction ?? 0)
                 }
-                .padding(14)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
                 Divider()
             }
-            if let message = model.message {
-                Notice(message).padding(12)
-            }
             if model.records.isEmpty {
+                if let message = model.message {
+                    Notice(message).padding(16)
+                }
                 ContentUnavailableView {
                     Label("Пока ничего не перенесено", systemImage: "tray")
                 } description: {
@@ -74,24 +86,27 @@ struct HistoryView: View {
                         .help(app.destination == nil ? "Нужен подключённый внешний диск" : "")
                 }
             } else {
-                summary(model.records)
-                Divider()
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(HistoryGroup.make(model.records)) { group in
-                            if group.isSingle {
-                                // Отступ под шеврон групп: значки всех строк стоят в одну колонку.
-                                HistoryRow(record: group.first, home: app.rules.home, available: model.isArchiveAvailable(group.first),
-                                           archiveExists: model.archiveExists(group.first),
-                                           busy: model.busyID != nil, onRestore: { pendingRestore = group.first })
-                                    .padding(.leading, 40)
-                                    .padding(.trailing, 16)
-                            } else {
-                                HistoryGroupRow(group: group, home: app.rules.home, busy: model.busyID != nil,
-                                                isAvailable: { model.isArchiveAvailable($0) },
-                                                archiveExists: { model.archiveExists($0) }, onRestore: { pendingRestore = $0 })
+                PageScroll {
+                    if let message = model.message { Notice(message) }
+                    summary(model.records)
+                    Card(padding: 0, spacing: 0) {
+                        let groups = HistoryGroup.make(model.records)
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(groups) { group in
+                                if group.isSingle {
+                                    // Отступ под шеврон групп: значки всех строк стоят в одну колонку.
+                                    HistoryRow(record: group.first, home: app.rules.home, available: model.isArchiveAvailable(group.first),
+                                               archiveExists: model.archiveExists(group.first),
+                                               busy: model.busyID != nil, onRestore: { pendingRestore = group.first })
+                                        .padding(.leading, 38)
+                                        .padding(.trailing, 14)
+                                } else {
+                                    HistoryGroupRow(group: group, home: app.rules.home, busy: model.busyID != nil,
+                                                    isAvailable: { model.isArchiveAvailable($0) },
+                                                    archiveExists: { model.archiveExists($0) }, onRestore: { pendingRestore = $0 })
+                                }
+                                if group.id != groups.last?.id { RowDivider() }
                             }
-                            Divider().padding(.leading, 16)
                         }
                     }
                 }
@@ -120,26 +135,18 @@ struct HistoryView: View {
 
     private func summary(_ records: [MoveRecord]) -> some View {
         let onDisks = records.filter { !$0.restored }
-        return HStack(spacing: 32) {
-            SummaryStat(value: Format.bytes(onDisks.reduce(0) { $0 + $1.bytes }), title: "лежит на внешних дисках")
-            SummaryStat(value: "\(onDisks.count)", title: pluralRu(onDisks.count, "перенесённый объект", "перенесённых объекта", "перенесённых объектов"))
-            SummaryStat(value: "\(records.count - onDisks.count)", title: "возвращено на Mac")
-            Spacer()
+        let open = onDisks.filter { !$0.isEncrypted }.count
+        return HStack(alignment: .top, spacing: 16) {
+            StatTile(value: Format.bytes(onDisks.reduce(0) { $0 + $1.bytes }), title: "лежит на внешних дисках",
+                     systemImage: "externaldrive.fill")
+            StatTile(value: "\(onDisks.count)",
+                     title: pluralRu(onDisks.count, "перенесённый объект", "перенесённых объекта", "перенесённых объектов"),
+                     detail: "в сейфе \(onDisks.count - open) · открыто \(open)",
+                     systemImage: open > 0 ? "lock.open.fill" : "lock.fill", tone: open > 0 ? .caution : .good)
+            StatTile(value: "\(records.count - onDisks.count)", title: "возвращено на Mac",
+                     systemImage: "arrow.uturn.backward", tone: .neutral)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-    }
-}
-
-struct SummaryStat: View {
-    let value: String
-    let title: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(value).font(.title2.weight(.semibold)).monospacedDigit()
-            Text(title).font(.caption).foregroundStyle(.secondary)
-        }
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -162,17 +169,14 @@ struct HistoryGroupRow: View {
                         .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                         .frame(width: 12)
-                    Image(systemName: group.first.restored ? "arrow.uturn.backward.circle.fill" : "square.stack.3d.up.fill")
-                        .foregroundStyle(group.first.restored ? Color.green : Color.accentColor)
-                        .font(.title3)
-                        .frame(width: 28)
+                    IconTile(systemImage: group.first.restored ? "arrow.uturn.backward" : "square.stack.3d.up.fill",
+                             tone: group.first.restored ? .neutral : .brand, size: 32)
                     VStack(alignment: .leading, spacing: 3) {
                         Text("\((group.originalParent as NSString).lastPathComponent) · \(group.records.count) \(pluralRu(group.records.count, "объект", "объекта", "объектов"))")
                             .fontWeight(.medium)
                         Text(relativeToHome(group.originalParent, home: home)).font(.caption).foregroundStyle(.secondary)
                             .lineLimit(1).truncationMode(.middle)
-                        Text("\(group.latest.formatted(date: .abbreviated, time: .shortened)) · \(Format.bytes(group.bytes)) · файлов \(group.files) · "
-                             + (group.first.isEncrypted ? "в сейфе «\(group.first.volumeName)»" : "открыто на «\(group.first.volumeName)»"))
+                        Text("\(group.latest.formatted(date: .abbreviated, time: .shortened)) · \(Format.bytes(group.bytes)) · файлов \(group.files) · \(group.first.location)")
                             .font(.caption).foregroundStyle(.secondary)
                         if let note = group.note, !note.isEmpty {
                             Text(note).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
@@ -180,22 +184,23 @@ struct HistoryGroupRow: View {
                     }
                     Spacer()
                     if group.first.restored {
-                        Text("Возвращено").foregroundStyle(.green).font(.callout)
+                        StatusPill(title: "Возвращено", systemImage: "checkmark", tone: .good)
                     } else if !group.records.contains(where: isAvailable) {
-                        Text(group.first.isEncrypted ? "Сейф закрыт" : "Диск не подключён").foregroundStyle(.secondary).font(.callout)
+                        StatusPill(title: group.first.unavailableReason, tone: .neutral)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             if expanded {
                 ForEach(group.records) { record in
+                    RowDivider(inset: 82)
                     HistoryRow(record: record, home: home, available: isAvailable(record),
                                archiveExists: archiveExists(record), busy: busy, onRestore: { onRestore(record) })
-                        .padding(.leading, 64)
-                        .padding(.trailing, 16)
+                        .padding(.leading, 82)
+                        .padding(.trailing, 14)
                 }
             }
         }
@@ -211,20 +216,16 @@ struct HistoryRow: View {
     let archiveExists: Bool
     let busy: Bool
     let onRestore: () -> Void
+    @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: record.restored ? "arrow.uturn.backward.circle.fill" : (record.isEncrypted ? "lock.fill" : "externaldrive.fill"))
-                .foregroundStyle(record.restored ? Color.green : Color.accentColor)
-                .font(.title3)
-                // Иконки разной ширины (замок, диск, стрелка) иначе сдвигали текст строк.
-                .frame(width: 28)
+            IconTile(systemImage: record.symbol, tone: record.tone, size: 32)
             VStack(alignment: .leading, spacing: 3) {
                 Text(URL(fileURLWithPath: record.originalPath).lastPathComponent).fontWeight(.medium)
                 Text(relativeToHome(record.originalPath, home: home)).font(.caption).foregroundStyle(.secondary)
                     .lineLimit(1).truncationMode(.middle)
-                Text("\(record.date.formatted(date: .abbreviated, time: .shortened)) · \(Format.bytes(record.bytes)) · файлов \(record.files) · "
-                     + (record.isEncrypted ? "в сейфе «\(record.volumeName)»" : "открыто на «\(record.volumeName)»"))
+                Text("\(record.date.formatted(date: .abbreviated, time: .shortened)) · \(Format.bytes(record.bytes)) · файлов \(record.files) · \(record.location)")
                     .font(.caption).foregroundStyle(.secondary)
                 if let note = record.note, !note.isEmpty {
                     Text(note).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
@@ -232,19 +233,33 @@ struct HistoryRow: View {
             }
             Spacer()
             if archiveExists {
+                // Лупа видна под мышью: в каждой строке сразу она только шумела бы.
                 Button { revealInFinder(URL(fileURLWithPath: record.archivedPath)) } label: { Image(systemName: "magnifyingglass") }
+                    .buttonStyle(.borderless)
                     .help("Показать на диске")
+                    .opacity(hovering ? 1 : 0)
             }
             if record.restored {
-                Text("Возвращено").foregroundStyle(.green).font(.callout)
+                StatusPill(title: "Возвращено", systemImage: "checkmark", tone: .good)
             } else if available {
-                Button("Вернуть…", action: onRestore).disabled(busy)
+                Button("Вернуть…", action: onRestore)
+                    .buttonStyle(.bordered)
+                    .disabled(busy)
             } else {
-                Text(record.isEncrypted ? "Сейф закрыт" : "Диск не подключён").foregroundStyle(.secondary).font(.callout)
+                StatusPill(title: record.unavailableReason, tone: .neutral)
             }
         }
-        .buttonStyle(.bordered)
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .contextMenu {
+            if archiveExists {
+                Button("Показать на диске") { revealInFinder(URL(fileURLWithPath: record.archivedPath)) }
+            }
+            if available, !record.restored {
+                Button("Вернуть…", action: onRestore).disabled(busy)
+            }
+        }
     }
 }
 
@@ -261,42 +276,44 @@ struct ImportSheet: View {
     @State private var busy = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Добавить перенесённое вручную").font(.title3.weight(.semibold))
-            Text("Для папок и файлов, которые вы уже перенесли на внешний диск без Offload. Запись появится в списке, и вернуть их на Mac можно будет как обычно — со сверкой.")
-                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            LabeledContent("На диске") {
-                HStack {
-                    Text(archive.map { relativeToVolume($0) } ?? "не выбрано")
-                        .lineLimit(1).truncationMode(.middle).foregroundStyle(archive == nil ? .secondary : .primary)
-                    Spacer()
-                    Button("Выбрать…") { pickArchive() }
+        SheetLayout(systemImage: "plus.rectangle.on.folder", title: "Добавить перенесённое вручную",
+                    subtitle: "Для папок и файлов, которые вы уже перенесли на внешний диск без Offload. Запись появится в списке, и вернуть их на Mac можно будет как обычно — со сверкой.",
+                    width: 580) {
+            VStack(spacing: 0) {
+                pickRow("На диске", value: archive.map { relativeToVolume($0) }, action: pickArchive)
+                RowDivider()
+                pickRow("Было на Mac в папке", value: originalParent.map { relativeToHome($0.path, home: app.rules.home) }, action: pickParent)
+                RowDivider()
+                FormRow(title: "Под именем") {
+                    TextField("имя папки или файла", text: $originalName)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 280)
                 }
             }
-            LabeledContent("Было на Mac в папке") {
-                HStack {
-                    Text(originalParent.map { relativeToHome($0.path, home: app.rules.home) } ?? "не выбрано")
-                        .lineLimit(1).truncationMode(.middle).foregroundStyle(originalParent == nil ? .secondary : .primary)
-                    Spacer()
-                    Button("Выбрать…") { pickParent() }
-                }
-            }
-            LabeledContent("Под именем") {
-                TextField("имя папки или файла", text: $originalName).textFieldStyle(.roundedBorder)
-            }
+            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             Toggle("Оригинал уже удалён с Mac", isOn: $originalRemoved)
-            TextField("Заметка, например «упаковано в tar.gz» (необязательно)", text: $note, axis: .vertical).lineLimit(1...3)
+            TextField("Заметка, например «упаковано в tar.gz» (необязательно)", text: $note, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(1...3)
             if let error { Notice(.error, error) }
-            HStack {
-                Spacer()
-                Button("Отмена") { dismiss() }
-                Button("Добавить") { add() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(archive == nil || originalParent == nil || originalName.isEmpty || busy)
-            }
+        } actions: {
+            Button("Отмена") { dismiss() }
+            Button("Добавить") { add() }
+                .keyboardShortcut(.defaultAction)
+                .disabled(archive == nil || originalParent == nil || originalName.isEmpty || busy)
         }
-        .padding(22)
-        .frame(width: 580)
+    }
+
+    private func pickRow(_ title: String, value: String?, action: @escaping () -> Void) -> some View {
+        HStack(spacing: 12) {
+            Text(title)
+            Spacer(minLength: 12)
+            Text(value ?? "не выбрано")
+                .lineLimit(1).truncationMode(.middle)
+                .foregroundStyle(value == nil ? .secondary : .primary)
+            Button("Выбрать…", action: action)
+        }
+        .rowPadding()
     }
 
     private func relativeToVolume(_ url: URL) -> String {

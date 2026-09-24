@@ -1,34 +1,38 @@
 import OffloadCore
 import SwiftUI
 
+extension Verdict {
+    var title: String {
+        switch self {
+        case .safe: return "Можно перенести"
+        case .caution: return "С оговорками"
+        case .blocked: return "Не трогать"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .safe: return "checkmark.circle.fill"
+        case .caution: return "exclamationmark.triangle.fill"
+        case .blocked: return "hand.raised.fill"
+        }
+    }
+
+    var tone: Tone {
+        switch self {
+        case .safe: return .good
+        case .caution: return .caution
+        case .blocked: return .neutral
+        }
+    }
+}
+
 struct VerdictBadge: View {
     let verdict: Verdict
 
     var body: some View {
-        Group {
-            switch verdict {
-            case .safe:
-                Label("Можно перенести", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-            case .caution:
-                Label("С оговорками", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-            case .blocked:
-                Label("Не трогать", systemImage: "hand.raised.fill").foregroundStyle(.secondary)
-            }
-        }
-        .font(.caption)
-        .help(verdict.notes.joined(separator: "\n"))
-    }
-}
-
-struct SizeBar: View {
-    let fraction: Double
-
-    // Без GeometryReader: внутри строк List он заставляет таблицу пересчитывать высоту строки
-    // прямо из своего делегата — AppKit ругается на реентерабельность и ломает отрисовку.
-    var body: some View {
-        ProgressView(value: min(1, max(0.005, fraction)))
-            .progressViewStyle(.linear)
-            .tint(Color.accentColor)
+        StatusPill(title: verdict.title, systemImage: verdict.symbol, tone: verdict.tone)
+            .help(verdict.notes.joined(separator: "\n"))
     }
 }
 
@@ -68,7 +72,12 @@ struct Notice: View {
     }
 
     var body: some View {
-        Label {
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: symbol)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(color)
+                .frame(width: 18)
             VStack(alignment: .leading, spacing: 6) {
                 Text(text).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                 ForEach(details, id: \.self) { detail in
@@ -77,12 +86,12 @@ struct Notice: View {
                         .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                 }
             }
-        } icon: {
-            Image(systemName: symbol).foregroundStyle(color)
+            Spacer(minLength: 0)
         }
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+        .background(color.opacity(0.09), in: shape)
+        .overlay { shape.strokeBorder(color.opacity(0.22)) }
     }
 
     private var symbol: String {
@@ -108,20 +117,21 @@ struct FullDiskAccessBanner: View {
     @Environment(AppModel.self) private var app
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "lock.shield").font(.title2).foregroundStyle(.orange)
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Нет полного доступа к диску").font(.headline)
-                Text("Без него Offload не видит «Документы», «Рабочий стол», Почту и данные многих приложений, и часть занятого места останется неизвестной. Выдайте доступ в настройках и перезапустите Offload.")
-                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                HStack {
-                    Button("Открыть настройки") { FullDiskAccess.openSettings() }
-                    Button("Проверить снова") { app.refreshVolumes() }
+        Card(tint: .orange) {
+            HStack(alignment: .top, spacing: 14) {
+                IconTile(systemImage: "lock.shield", tone: .caution, size: 36)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Нет полного доступа к диску").font(.headline)
+                    Text("Без него Offload не видит «Документы», «Рабочий стол», Почту и данные многих приложений, и часть занятого места останется неизвестной. Выдайте доступ в настройках и перезапустите Offload.")
+                        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    HStack {
+                        Button("Открыть настройки") { FullDiskAccess.openSettings() }
+                            .buttonStyle(.borderedProminent)
+                        Button("Проверить снова") { app.refreshVolumes() }
+                    }
+                    .padding(.top, 2)
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
     }
 }
