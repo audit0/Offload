@@ -1,0 +1,97 @@
+import Foundation
+import OffloadCore
+
+/// Разбор Mac одной кнопкой: что предлагается и что запоминается из решений человека.
+func checksCleanup() {
+    section("Разбор: предложения") {
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        let home = URL(fileURLWithPath: "/Users/q", isDirectory: true)
+        func item(_ relative: String, gb: Double, daysAgo: Double?, directory: Bool = true, verdict: Verdict = .safe,
+                  project: Bool = false, inBackup: Bool = false) -> CleanupObservation {
+            CleanupObservation(url: home.appendingPathComponent(relative), bytes: Int64(gb * 1_000_000_000),
+                               modified: daysAgo.map { now.addingTimeInterval(-$0 * 86_400) }, isDirectory: directory,
+                               verdict: verdict, isProject: project, inBackup: inBackup)
+        }
+        let derived = home.appendingPathComponent("Library/Developer/Xcode/DerivedData").path
+        let planner = CleanupPlanner(now: now, regenerable: [derived: "кеш сборки"])
+
+        let cache = planner.suggest(item("Library/Developer/Xcode/DerivedData", gb: 20, daysAgo: 1,
+                                         verdict: .blocked("Данные приложений")))
+        check(cache.action == .trash, "кеш сборки Xcode предлагается в Корзину, хотя ~/Library переносить нельзя")
+        check(cache.allowed == [.trash, .keep], "кеш можно только удалить или оставить — ни в сейф, ни в бэкап")
+
+        let installer = planner.suggest(item("Downloads/Figma.dmg", gb: 0.3, daysAgo: 20, directory: false))
+        check(installer.action == .trash, "старый установщик — в Корзину")
+        let fresh = planner.suggest(item("Downloads/Figma.dmg", gb: 0.3, daysAgo: 2, directory: false))
+        check(!fresh.allowed.contains(.trash), "установщик, скачанный на днях, удалить не предлагается: его могли ещё не поставить")
+        let video = planner.suggest(item("Downloads/film.mkv", gb: 3, daysAgo: 400, directory: false))
+        check(!video.allowed.contains(.trash), "личный файл удалить нельзя вовсе — только в сейф или оставить")
+        check(video.action == .safe, "большой и давно не менявшийся файл — в сейф")
+
+        let old = planner.suggest(item("Movies/Съёмки 2019", gb: 80, daysAgo: 500))
+        check(old.action == .safe && old.allowed.contains(.backup), "большая старая папка — в сейф, бэкап тоже можно выбрать")
+        let recent = planner.suggest(item("Movies/Монтаж", gb: 80, daysAgo: 3))
+        check(recent.action == .keep, "папка, которую меняли на днях, остаётся на месте")
+        let project = planner.suggest(item("Projects/app", gb: 2, daysAgo: 200, project: true))
+        check(project.action == .backup, "проект с git предлагается в бэкап, а не в сейф")
+        let backedUp = planner.suggest(item("Projects/app", gb: 2, daysAgo: 200, project: true, inBackup: true))
+        check(!backedUp.allowed.contains(.backup), "то, что уже в бэкапе, второй раз туда не предлагается")
+        let library = planner.suggest(item("Pictures/Photos Library.photoslibrary", gb: 60, daysAgo: 500,
+                                           verdict: .blocked("медиатека")))
+        check(library.action == .keep && library.allowed == [.keep] && library.reason == "медиатека",
+              "медиатеку нельзя ни удалить, ни перенести — и сказано почему")
+        let caution = planner.suggest(item("Projects/old", gb: 5, daysAgo: 400, verdict: .caution(["оговорка"])))
+        check(caution.action == .keep && caution.allowed.contains(.safe) && caution.cautions == ["оговорка"],
+              "с оговорками — само не предлагается, но выбрать можно, и оговорка видна")
+
+        var learning = planner
+        learning.memory = [home.appendingPathComponent("Movies/Съёмки 2019").path: .keep,
+                           home.appendingPathComponent("Movies/Монтаж").path: .trash]
+        let remembered = learning.suggest(item("Movies/Съёмки 2019", gb: 80, daysAgo: 500))
+        check(remembered.action == .keep && remembered.learned, "прошлое решение «оставить» побеждает правило")
+        let impossible = learning.suggest(item("Movies/Монтаж", gb: 80, daysAgo: 3))
+        check(impossible.action == .keep && !impossible.learned,
+              "прошлое решение, которое теперь недопустимо (удалить личную папку), не применяется")
+
+        let list = planner.suggestions([
+            item("Downloads/small", gb: 0.01, daysAgo: 500),
+            item("Movies/Съёмки 2019", gb: 80, daysAgo: 500),
+            item("Library/Developer/Xcode/DerivedData", gb: 2, daysAgo: 1, verdict: .blocked("Данные приложений")),
+            item("Movies/Монтаж", gb: 90, daysAgo: 3),
+        ])
+        check(list.map(\.action) == [.trash, .safe, .keep], "сначала то, что освобождает место; мелочь не показывается")
+    }
+
+    section("Разбор: база решений") {
+        let url = scratch.appendingPathComponent("decisions/decisions.sqlite")
+        do {
+            let store = try DecisionStore(url: url)
+            try store.record([(path: "/a", action: .keep, bytes: 10), (path: "/b", action: .safe, bytes: 20)],
+                             at: Date(timeIntervalSince1970: 100))
+            try store.record([(path: "/a", action: .backup, bytes: 10)], at: Date(timeIntervalSince1970: 200))
+            try store.recordRun(DecisionStore.Run(date: Date(timeIntervalSince1970: 200), trashedBytes: 5, movedBytes: 20,
+                                                  addedToBackup: 1, failures: 0))
+            let decisions = try store.lastDecisions()
+            check(decisions == ["/a": .backup, "/b": .safe], "по каждому пути помнится последнее решение")
+            check(try store.counts(for: "/a") == [.keep: 1, .backup: 1], "считается, сколько раз что выбирали")
+        }
+        let reopened = try DecisionStore(url: url)
+        check(try reopened.lastDecisions()["/a"] == .backup, "решения переживают перезапуск программы")
+        check(try reopened.lastRun()?.movedBytes == 20, "итог последнего разбора сохранён")
+        let permissions = (try? fm.attributesOfItem(atPath: url.path))?[.posixPermissions] as? NSNumber
+        check(permissions?.intValue == 0o600, "файл базы читает только владелец")
+
+        let tricky = "/Users/q/Мои «папки»/it's; DROP TABLE decisions;--"
+        try reopened.record([(path: tricky, action: .keep, bytes: 1)])
+        check(try reopened.lastDecisions()[tricky] == .keep, "кавычки и точки с запятой в пути — просто текст, не команды")
+
+        let broken = scratch.appendingPathComponent("decisions/broken.sqlite")
+        try "это не база".write(to: broken, atomically: true, encoding: .utf8)
+        expectError("испорченный файл базы — понятная ошибка, а не падение") { _ = try DecisionStore(url: broken) }
+
+        let memory = try DecisionStore(url: nil)
+        try memory.record([(path: "/x", action: .trash, bytes: 1)])
+        check(try memory.lastDecisions() == ["/x": .trash], "база в памяти работает и ничего не пишет на диск")
+        check(try memory.lastRun() == nil, "разборов ещё не было — итога нет")
+    }
+}

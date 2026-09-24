@@ -88,6 +88,35 @@ enum Demo {
         ]
     }
 
+    static func cleanupSuggestions() -> [CleanupSuggestion] {
+        func suggestion(_ relative: String, _ gb: Double, _ action: CleanupAction, _ reason: String, allowed: [CleanupAction],
+                        daysAgo: Double, directory: Bool = true, learned: Bool = false) -> CleanupSuggestion {
+            CleanupSuggestion(url: home.appendingPathComponent(relative, isDirectory: directory), bytes: Int64(gb * Double(gigabyte)),
+                              modified: Date().addingTimeInterval(-daysAgo * 86_400), isDirectory: directory, action: action,
+                              reason: reason, allowed: allowed, learned: learned, cautions: [])
+        }
+        return [
+            suggestion("Library/Developer/Xcode/DerivedData", 18.4, .trash,
+                       "Промежуточные файлы сборки Xcode — пересоздаются при следующей сборке.", allowed: [.trash, .keep], daysAgo: 0),
+            suggestion("Downloads/Xcode_16.xip", 7.9, .trash,
+                       "Установщик: если программа уже стоит, он не нужен, а скачать его можно снова.",
+                       allowed: [.trash, .safe, .keep], daysAgo: 60, directory: false),
+            suggestion("Movies/Съёмки 2023", 86.4, .safe,
+                       "Большое и давно не менялось — в сейфе не мешает, а вернуть можно в любой момент.",
+                       allowed: [.safe, .backup, .keep], daysAgo: 210),
+            suggestion("Downloads/Датасеты", 24.1, .safe, "В прошлый раз вы выбрали это же.",
+                       allowed: [.safe, .backup, .keep], daysAgo: 150, learned: true),
+            suggestion("Projects/offload-site", 1.2, .backup,
+                       "Похоже на проект (внутри git): его лучше держать в бэкапе, а не переносить.",
+                       allowed: [.safe, .backup, .keep], daysAgo: 120),
+            suggestion("Pictures/Photos Library.photoslibrary", 41.7, .keep,
+                       "«Photos Library.photoslibrary» зарегистрирован в приложении (виртуальная машина, медиатека или проект). После переноса приложение его потеряет, даже если данные целы.",
+                       allowed: [.keep], daysAgo: 1),
+            suggestion("Documents/Работа", 8.1, .keep, "Менялось недавно — похоже, вы этим пользуетесь.",
+                       allowed: [.safe, .backup, .keep], daysAgo: 2),
+        ]
+    }
+
     static var backupSources: [URL] {
         ["Projects", "Documents", "Desktop"].map { home.appendingPathComponent($0, isDirectory: true) }
     }

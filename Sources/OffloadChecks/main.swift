@@ -635,6 +635,7 @@ checksInterface()
 checksHardenLocal()
 checksHardenRestore()
 checksSafe()
+checksCleanup()
 
 try? fm.removeItem(at: scratch)
 print("")
