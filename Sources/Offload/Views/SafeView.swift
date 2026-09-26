@@ -25,7 +25,7 @@ struct SafeView: View {
                     statusSection
                 }
                 Text("Сейф — зашифрованный образ (AES-256) на внешнем диске. Пока он закрыт, на диске лежит только шифротекст: потерянный или украденный диск ничего не выдаст. Пароль Offload не хранит и не записывает — если его забыть, данные не восстановит никто.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Theme.muted)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 4)
             }
@@ -95,7 +95,7 @@ struct SafeView: View {
             } else {
                 HStack(spacing: 10) {
                     ProgressView().controlSize(.small)
-                    Text("Смотрю, что на диске «\(host.name)»…").foregroundStyle(.secondary)
+                    Text("Смотрю, что на диске «\(host.name)»…").foregroundStyle(Theme.muted)
                 }
             }
         } else {
@@ -103,7 +103,7 @@ struct SafeView: View {
                 IconTile(systemImage: "externaldrive.badge.xmark", tone: .neutral, size: 52)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Нет внешнего диска").font(Theme.display(22))
-                    Text("Подключите внешний диск — сейф живёт на нём.").foregroundStyle(.secondary)
+                    Text("Подключите внешний диск — сейф живёт на нём.").foregroundStyle(Theme.muted)
                 }
             }
         }
@@ -120,7 +120,7 @@ struct SafeView: View {
                 Text(isOpen
                      ? "Перенос, бэкап и ключи сейчас идут сюда. Закройте после работы."
                      : "На диске только шифротекст. Чтобы класть в сейф или брать из него, откройте его паролем.")
-                    .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12)
             if let mount = state.mount {
@@ -139,7 +139,7 @@ struct SafeView: View {
             SafeUnlockRow().frame(maxWidth: 440)
         } else if let pending = safe.pendingClose {
             Label("Закроется после копирования (\(pending))", systemImage: "clock")
-                .font(.callout).foregroundStyle(.secondary)
+                .font(.callout).foregroundStyle(Theme.muted)
         }
 
         Divider()
@@ -176,7 +176,7 @@ struct SafeView: View {
             Text(value)
                 .font(Theme.display(20))
                 .monospacedDigit()
-            Text(title).font(.caption).foregroundStyle(.secondary)
+            Text(title).font(.caption).foregroundStyle(Theme.muted)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -203,7 +203,7 @@ struct SafeView: View {
                 Text(replacing == nil ? "На диске «\(host.name)» сейфа пока нет" : "Новый сейф на диске «\(host.name)»")
                     .font(Theme.display(22))
                 Text("Образ разрежённый: места он занимает ровно столько, сколько в нём лежит, а предел лишь не даёт ему вырасти больше. Предел потом можно увеличить. Придумайте пароль, который не используете больше нигде. Надёжнее всего — фраза из 4–6 случайных слов.")
-                    .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             }
         }
         VStack(alignment: .leading, spacing: 4) {
@@ -215,7 +215,7 @@ struct SafeView: View {
             }
             .fixedSize()
             Text("Остальное место на «\(host.name)» остаётся для обычных файлов, пока сейф до него не дорос.")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
         }
         fields.frame(maxWidth: 440)
         HStack {
@@ -277,7 +277,7 @@ struct SafeView: View {
                         .lineLimit(1).truncationMode(.middle)
                     Spacer()
                     Text("\(Format.bytes(migration.bytesDone)) из \(Format.bytes(migration.bytesTotal))")
-                        .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                        .font(.caption).foregroundStyle(Theme.muted).monospacedDigit()
                 }
                 ProgressView(value: migration.bytesTotal > 0 ? Double(migration.bytesDone) / Double(migration.bytesTotal) : 0)
                 Button("Остановить") { safe.cancelMigration() }
@@ -296,7 +296,7 @@ struct SafeView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(URL(fileURLWithPath: record.originalPath).lastPathComponent).lineLimit(1).truncationMode(.middle)
                         Text("\(Format.bytes(record.bytes)) · \(relativeToHome(record.originalPath, home: app.rules.home))")
-                            .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                            .font(.caption).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.middle)
                     }
                     .padding(.leading, 4)
                 }
@@ -306,9 +306,9 @@ struct SafeView: View {
             }
             VStack(alignment: .leading, spacing: 10) {
                 Text("Если какой-то программой вы пользуетесь прямо с диска (например, моделями LM Studio), после переноса в сейф укажите ей новую папку и держите сейф открытым, пока она нужна. Такие пункты можно снять.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .font(.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                 if app.safeVolume == nil {
-                    Text(app.targetProblem ?? "Откройте сейф.").font(.callout).foregroundStyle(.secondary)
+                    Text(app.targetProblem ?? "Откройте сейф.").font(.callout).foregroundStyle(Theme.muted)
                 } else {
                     Button {
                         safe.encrypt(chosen, app: app)
@@ -333,10 +333,10 @@ struct SafeView: View {
                     Label("Сам диск «\(host.name)» зашифрован целиком.", systemImage: "checkmark.shield.fill").foregroundStyle(Theme.ok)
                 } else if ["apfs", "hfs"].contains(host.fsType) {
                     Text("Сам диск «\(host.name)» не зашифрован. Его можно зашифровать целиком, не стирая: правый щелчок по диску в Finder → «Зашифровать». Тогда защищено будет и то, что лежит вне сейфа.")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .font(.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text("Сам диск «\(host.name)» (\(host.fsDisplayName)) зашифровать нельзя: у этой файловой системы шифрования нет. Удалённые с SSD и флешек файлы физически могут оставаться в памяти, пока контроллер их не перезапишет. Для защиты всего диска, как в VeraCrypt при шифровании раздела: перенесите данные, отформатируйте диск в «APFS (зашифрованный)» в Дисковой утилите и верните их.")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .font(.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                 }
             }
             .rowPadding()
@@ -409,7 +409,7 @@ struct ChangePasswordSheet: View {
                 .textFieldStyle(.roundedBorder)
             fields
             Text("Копии заголовка, снятые раньше, откроются старым паролем: после смены снимите новую, а старые удалите.")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
         } actions: {
             Button("Отмена") { clear(); dismiss() }
             Button("Сменить") {
@@ -432,7 +432,7 @@ struct CompactSheet: View {
     var body: some View {
         SheetLayout(systemImage: "arrow.down.right.and.arrow.up.left", title: "Вернуть место на диск") {
             Text("Файлы, удалённые или возвращённые из сейфа, продолжают занимать место на диске: образ сам не уменьшается, хотя внутри это место идёт под новые данные. Сжатие отдаёт диску полностью пустые участки образа. На больших сейфах macOS может не найти таких участков — тогда вернётся мало или ничего, и Offload так и скажет.")
-                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             SecureField("Пароль сейфа", text: $password)
                 .textFieldStyle(.roundedBorder)
         } actions: {
@@ -465,7 +465,7 @@ struct GrowSafeSheet: View {
         SheetLayout(systemImage: "arrow.up.left.and.arrow.down.right", title: "Увеличить предел сейфа",
                     subtitle: "Сейчас — \(Format.bytes(current))") {
             Text("Содержимое остаётся на месте, а места на диске образ занимает столько же, сколько занимал: предел лишь разрешает ему расти.")
-                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             if choices.isEmpty {
                 Notice(.info, "Сейф уже может занять весь диск — увеличивать некуда.")
             } else {
@@ -483,7 +483,7 @@ struct GrowSafeSheet: View {
                 if safe.isOpen {
                     HStack {
                         Text("Сейф открыт — увеличить можно только закрытый.")
-                            .font(.callout).foregroundStyle(.secondary)
+                            .font(.callout).foregroundStyle(Theme.muted)
                         Spacer()
                         Button("Закрыть сейф") { safe.close(app: app) }
                     }
@@ -492,7 +492,7 @@ struct GrowSafeSheet: View {
                         .textFieldStyle(.roundedBorder)
                 }
                 Text("На время увеличения сейф ненадолго подключится без открытия: файлы не видны ни Finder, ни программам.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .font(.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             }
         } actions: {
             Button("Отмена") { password = ""; dismiss() }
@@ -515,9 +515,9 @@ struct RestoreHeaderSheet: View {
     var body: some View {
         SheetLayout(systemImage: "arrow.counterclockwise", tone: .caution, title: "Восстановить заголовок") {
             Text("Нужно, если сейф перестал открываться верным паролем (испортился заголовок). Сейф откроется паролем, который действовал, когда снималась копия. Если пароль к копии не подойдёт, прежний заголовок вернётся как был.")
-                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             HStack {
-                Image(systemName: "doc").foregroundStyle(.secondary)
+                Image(systemName: "doc").foregroundStyle(Theme.muted)
                 Text(file?.lastPathComponent ?? "Копия не выбрана").lineLimit(1).truncationMode(.middle)
                     .foregroundStyle(file == nil ? .secondary : .primary)
                 Spacer()

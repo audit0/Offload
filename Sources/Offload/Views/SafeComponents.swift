@@ -34,7 +34,7 @@ struct PasswordStrengthView: View {
                     .monospacedDigit()
             }
             ForEach(strength.advice, id: \.self) { tip in
-                Text(tip).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(tip).font(.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -84,7 +84,7 @@ struct SafeUnlockRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Image(systemName: "lock.fill").foregroundStyle(.secondary)
+                Image(systemName: "lock.fill").foregroundStyle(Theme.muted)
                 SecureField(prompt, text: $password)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(open)
@@ -141,7 +141,7 @@ struct TargetSummary: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.callout.weight(.medium)).fixedSize(horizontal: false, vertical: true)
                 if let detail {
-                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                    Text(detail).font(.caption).foregroundStyle(Theme.muted)
                 }
             }
             Spacer(minLength: 0)
@@ -162,9 +162,9 @@ struct SafeStatusPanel: View {
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Внешний диск").font(.caption).foregroundStyle(.secondary)
+                Text("Внешний диск").font(.caption).foregroundStyle(Theme.muted)
                 if app.volumes.isEmpty {
-                    Label("Не подключён", systemImage: "externaldrive.badge.xmark").font(.callout).foregroundStyle(.secondary)
+                    Label("Не подключён", systemImage: "externaldrive.badge.xmark").font(.callout).foregroundStyle(Theme.muted)
                 } else {
                     // Выбор нужен, только когда дисков несколько; один диск — просто его имя.
                     if app.volumes.count > 1 || app.destination == nil {
@@ -184,7 +184,7 @@ struct SafeStatusPanel: View {
                             CapacityBar(fraction: Double(volume.totalBytes - volume.availableBytes) / Double(volume.totalBytes), height: 4)
                         }
                         Text("\(volume.fsDisplayName) · свободно \(Format.bytes(volume.availableBytes))")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Theme.muted)
                     }
                 }
             }
@@ -202,8 +202,8 @@ struct SafeStatusPanel: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        // Плавающая панель над колонкой — стекло, как у элементов управления macOS 26.
-        .glassSurface(in: shape, fallback: Theme.background)
+        // Панель внизу колонки — светло-серая пластина на белом.
+        .background(Theme.background, in: shape)
     }
 
     @ViewBuilder
@@ -214,7 +214,7 @@ struct SafeStatusPanel: View {
             IconTile(systemImage: summary.systemImage, tone: summary.tone, size: 26)
             VStack(alignment: .leading, spacing: 1) {
                 Text(summary.title).font(.callout.weight(.medium)).lineLimit(1)
-                Text(status).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(status).font(.caption).foregroundStyle(Theme.muted).lineLimit(1)
             }
             Spacer(minLength: 4)
             if safe.activity != nil {
@@ -232,7 +232,7 @@ struct SafeStatusPanel: View {
                                 IconTile(systemImage: "lock.fill", tone: .good, size: 32)
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text("Открыть сейф").font(.headline)
-                                    Text("«\(safe.state?.displayName ?? "")»").font(.caption).foregroundStyle(.secondary)
+                                    Text("«\(safe.state?.displayName ?? "")»").font(.caption).foregroundStyle(Theme.muted)
                                 }
                             }
                             SafeUnlockRow().frame(width: 300)

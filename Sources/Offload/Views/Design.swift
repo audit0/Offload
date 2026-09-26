@@ -5,13 +5,12 @@ import SwiftUI
 
 /// Общий язык интерфейса: отступы, скругления, цвета и стекло.
 ///
-/// Стиль — строгий чёрно-белый, как у Apple: белая страница, светло-серые карточки без рамок и теней,
-/// шрифт SF, чёрные действия. Цветом ничего не украшается: состояния различаются значками и словами,
+/// Стиль — строгий чёрно-белый, как у Apple и Telegram: белые карточки на светло-сером, чёткий
+/// тёмный текст, шрифт SF, сплошные чёрные кнопки-капсулы. Цветом ничего не украшается: состояния различаются значками и словами,
 /// красный — только ошибка. Тема одна — светлая, при любой теме macOS.
 ///
-/// Liquid Glass (macOS 26) — только у элементов управления, как у самой Apple: боковая колонка,
-/// выделение в ней, кнопки, плавающая панель диска и сейфа. Содержимое на стекло не кладётся.
-/// На macOS 14–15 те же места рисуются ровной заливкой.
+/// Кнопки и выделение — сплошные: стеклянные (Liquid Glass) в неактивном окне бледнели до вида
+/// выключенных, и их было не разглядеть. `glassSurface` оставлен для будущих плавающих элементов.
 enum Theme {
     static let pagePadding: CGFloat = 32
     static let sectionSpacing: CGFloat = 28
@@ -20,15 +19,16 @@ enum Theme {
     /// Шире колонка страницы не растягивается: на большом мониторе строки иначе читались бы с трудом.
     static let contentWidth: CGFloat = 980
 
-    static let background = Color.white
-    /// Карточка — светло-серая пластина, как на apple.com.
-    static let panel = hex(0xF5F5F7)
-    /// Подложка внутри карточки: значки, ярлыки, выделение.
-    static let soft = Color.white
-    static let ink = hex(0x1D1D1F)
-    static let muted = hex(0x6E6E73)
-    static let faint = hex(0x86868B)
-    static let line = hex(0xD2D2D7)
+    /// Страница — светло-серая, карточки на ней — белые: граница видна сразу, без рамок.
+    static let background = hex(0xF2F2F7)
+    static let panel = Color.white
+    /// Подложка значков, ярлыков, выделенной строки и второстепенных кнопок.
+    static let soft = hex(0xEEEEF2)
+    static let ink = hex(0x111111)
+    /// Второстепенный текст — тёмно-серый: читается так же уверенно, как в Telegram.
+    static let muted = hex(0x55555A)
+    static let faint = hex(0x6E6E73)
+    static let line = hex(0xD8D8DE)
     static let lineSoft = hex(0xE8E8ED)
 
     /// Состояния — тем же чёрным: различает их значок (галочка, треугольник), а не цвет.
@@ -83,23 +83,48 @@ extension View {
         }
     }
 
-    /// Главная кнопка: чёрное стекло на macOS 26, чёрная капсула — раньше.
-    @ViewBuilder
-    func prominentButton() -> some View {
-        if #available(macOS 26.0, *) {
-            buttonStyle(.glassProminent).tint(Theme.ink)
-        } else {
-            buttonStyle(.borderedProminent).buttonBorderShape(.capsule).tint(Theme.ink)
-        }
+    /// Главная кнопка — сплошная чёрная капсула с белым текстом.
+    func prominentButton() -> some View { buttonStyle(PillButtonStyle(prominent: true)) }
+
+    /// Обычные кнопки всего окна — светло-серые капсулы с чёрным текстом.
+    func glassButtons() -> some View { buttonStyle(PillButtonStyle()) }
+}
+
+/// Кнопка-капсула, как «Подключить» и «Открыть» в Telegram: видна одинаково в активном
+/// и неактивном окне. Главная — чёрная, обычная — светло-серая.
+struct PillButtonStyle: ButtonStyle {
+    var prominent = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        Pill(configuration: configuration, prominent: prominent)
     }
 
-    /// Обычные кнопки всего окна: стекло на macOS 26, светлые капсулы — раньше.
-    @ViewBuilder
-    func glassButtons() -> some View {
-        if #available(macOS 26.0, *) {
-            buttonStyle(.glass)
-        } else {
-            buttonBorderShape(.capsule)
+    private struct Pill: View {
+        let configuration: ButtonStyleConfiguration
+        let prominent: Bool
+        @Environment(\.isEnabled) private var isEnabled
+        @Environment(\.controlSize) private var controlSize
+        @State private var hovering = false
+
+        var body: some View {
+            let large = controlSize == .large
+            let small = controlSize == .small || controlSize == .mini
+            configuration.label
+                .font(.system(size: large ? 14 : small ? 12 : 13, weight: .semibold))
+                .foregroundStyle(prominent ? Color.white : Theme.ink)
+                .lineLimit(1)
+                .fixedSize()
+                .padding(.horizontal, large ? 18 : small ? 10 : 14)
+                .padding(.vertical, large ? 8 : small ? 3 : 5)
+                .background(fill, in: Capsule())
+                .contentShape(Capsule())
+                .opacity(isEnabled ? 1 : 0.4)
+                .onHover { hovering = $0 }
+        }
+
+        private var fill: Color {
+            if prominent { return configuration.isPressed ? Color.black.opacity(0.75) : hovering ? Color.black : Theme.ink }
+            return configuration.isPressed ? Theme.line : hovering ? Theme.lineSoft : Theme.soft
         }
     }
 }
@@ -141,10 +166,9 @@ struct Card<Content: View>: View {
         }
         .padding(padding)
         .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil, alignment: .topLeading)
-        .background(tint == nil ? Theme.cardFill : tint == Theme.bad ? Theme.badSoft : Theme.background, in: shape)
-        // Выделенная карточка (предупреждение) — белая с тонкой рамкой: на белой странице среди серых
-        // она заметна без цвета.
-        .overlay { shape.strokeBorder(tint == nil ? Color.clear : Theme.line) }
+        .background(tint == Theme.bad ? Theme.badSoft : Theme.cardFill, in: shape)
+        // Выделенная карточка (предупреждение) — с чёрной рамкой: заметна без цвета.
+        .overlay { shape.strokeBorder(tint == nil ? Color.clear : tint == Theme.bad ? Theme.bad.opacity(0.35) : Theme.ink, lineWidth: tint == nil ? 0 : 1.2) }
     }
 }
 
@@ -251,7 +275,7 @@ struct FormRow<Trailing: View>: View {
                 if let detail {
                     Text(detail)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -285,7 +309,7 @@ struct InfoRow<Value: View>: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(title).foregroundStyle(.secondary)
+            Text(title).foregroundStyle(Theme.muted)
             Spacer(minLength: 12)
             value
         }
@@ -538,7 +562,7 @@ struct SheetLayout<Content: View, Actions: View>: View {
                         if let subtitle {
                             Text(subtitle)
                                 .font(.callout)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.muted)
                                 .lineLimit(2)
                                 .truncationMode(.middle)
                         }

@@ -67,7 +67,7 @@ struct DiskCard: View {
                             .font(Theme.display(26))
                             .monospacedDigit()
                         Text("свободно из \(Format.bytes(volume.totalBytes))")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Theme.muted)
                     }
                 }
                 Spacer(minLength: 0)
@@ -98,7 +98,7 @@ struct ExternalDiskCard: View {
                         CapacityBar(fraction: Double(disk.totalBytes - disk.availableBytes) / Double(disk.totalBytes))
                     }
                     Text("\(disk.fsDisplayName) · свободно \(Format.bytes(disk.availableBytes)) из \(Format.bytes(disk.totalBytes))")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Theme.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
@@ -110,9 +110,9 @@ struct ExternalDiskCard: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Не подключён")
                         .font(Theme.display(19))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.muted)
                     Text("На него Offload переносит то, что не нужно держать на Mac, и там же живёт сейф.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Theme.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
@@ -128,7 +128,7 @@ struct MemoryCard: View {
         Card(spacing: 14, fillsHeight: true) {
             CardTitle(title: "Память", systemImage: "memorychip") {
                 if let snapshot {
-                    Text(Format.memory(snapshot.physicalBytes)).font(.callout).foregroundStyle(.secondary)
+                    Text(Format.memory(snapshot.physicalBytes)).font(.callout).foregroundStyle(Theme.muted)
                 }
             }
             if let snapshot {
@@ -137,7 +137,7 @@ struct MemoryCard: View {
                         Circle().fill(color(snapshot.pressure)).frame(width: 10, height: 10)
                         Text(snapshot.pressure.title).font(Theme.display(19))
                     }
-                    Text("давление памяти").font(.caption).foregroundStyle(.secondary)
+                    Text("давление памяти").font(.caption).foregroundStyle(Theme.muted)
                 }
                 VStack(spacing: 5) {
                     InfoRow("Swap", value: "\(Format.memory(snapshot.swapUsedBytes)) из \(Format.memory(snapshot.swapTotalBytes))")
@@ -210,7 +210,7 @@ struct ScenarioCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 CardTitle(title: "Порядок работы", systemImage: "list.number") {
                     Text("готово \(done) из \(list.count)")
-                        .font(.callout).foregroundStyle(.secondary).monospacedDigit()
+                        .font(.callout).foregroundStyle(Theme.muted).monospacedDigit()
                 }
                 CapacityBar(fraction: Double(done) / Double(max(1, list.count)), tint: Theme.ok, height: 4)
             }
@@ -293,7 +293,7 @@ private struct StepRow: View {
                 .frame(width: 26, height: 26)
             VStack(alignment: .leading, spacing: 2) {
                 Text(step.title).fontWeight(.medium)
-                Text(step.detail).font(.callout).foregroundStyle(.secondary)
+                Text(step.detail).font(.callout).foregroundStyle(Theme.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.top, 3)
@@ -345,7 +345,7 @@ struct ConnectedPrompt: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Подключён «\(disk)»").font(.headline)
                     Text("Разобрать Mac: найду, что занимает место зря, и спрошу про каждое — удалить, убрать в сейф или добавить в бэкап. Без вашего «да» ничего не трогаю.")
-                        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     HStack {
                         Button {
                             app.connectedPrompt = nil

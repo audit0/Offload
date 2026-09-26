@@ -41,7 +41,7 @@ struct DockerView: View {
                         } else if model.sizing {
                             ProgressView().controlSize(.mini)
                         } else {
-                            Text("—").foregroundStyle(.secondary)
+                            Text("—").foregroundStyle(Theme.muted)
                         }
                     }
                     .width(90)
@@ -61,7 +61,7 @@ struct DockerView: View {
                     .width(160)
                     TableColumn("Используется") { volume in
                         if volume.usedBy.isEmpty {
-                            Text("—").foregroundStyle(.secondary)
+                            Text("—").foregroundStyle(Theme.muted)
                         } else {
                             Label(volume.usedBy.joined(separator: ", "), systemImage: "cube.fill")
                                 .foregroundStyle(Theme.warn)
@@ -113,9 +113,9 @@ struct DockerView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Docker").font(Theme.display(19))
                 if model.sizing {
-                    Text("Docker считает размеры томов — это может занять минуту").font(.caption).foregroundStyle(.secondary)
+                    Text("Docker считает размеры томов — это может занять минуту").font(.caption).foregroundStyle(Theme.muted)
                 } else if let raw = model.rawBytes {
-                    Text("Диск Docker (Docker.raw) занимает \(Format.bytes(raw))").font(.caption).foregroundStyle(.secondary)
+                    Text("Диск Docker (Docker.raw) занимает \(Format.bytes(raw))").font(.caption).foregroundStyle(Theme.muted)
                 }
             }
             Spacer()
@@ -147,9 +147,9 @@ struct DockerView: View {
                 figure("Тома", usage.volumes, note: "не подключены", tone: .neutral)
             } else if model.measuringUsage {
                 ProgressView().controlSize(.small)
-                Text("Docker считает, что занимает место внутри него…").font(.callout).foregroundStyle(.secondary)
+                Text("Docker считает, что занимает место внутри него…").font(.callout).foregroundStyle(Theme.muted)
             } else {
-                Text("Docker не сказал, сколько места занято внутри.").font(.callout).foregroundStyle(.secondary)
+                Text("Docker не сказал, сколько места занято внутри.").font(.callout).foregroundStyle(Theme.muted)
             }
             Spacer(minLength: 12)
             if model.usage != nil, model.measuringUsage { ProgressView().controlSize(.small) }
@@ -163,7 +163,7 @@ struct DockerView: View {
 
     private func figure(_ title: String, _ part: DockerUsage.Part?, note: String, tone: Tone = .good) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
+            Text(title).font(.caption).foregroundStyle(Theme.muted)
             Text(part.map { Format.bytes($0.bytes) } ?? "—").font(.callout.weight(.semibold)).monospacedDigit()
             if let part, part.reclaimable > 0 {
                 Text("\(note) \(Format.bytes(part.reclaimable))").font(.caption).foregroundStyle(tone.color).monospacedDigit()
@@ -196,7 +196,7 @@ struct DockerView: View {
                                          tone: place.inSafe ? .good : .neutral, size: 26)
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(place.path).lineLimit(1).truncationMode(.middle).help(archive.path)
-                                    Text(place.inSafe ? "в сейфе" : "открыто на диске").font(.caption).foregroundStyle(.secondary)
+                                    Text(place.inSafe ? "в сейфе" : "открыто на диске").font(.caption).foregroundStyle(Theme.muted)
                                 }
                                 Spacer()
                                 Button("Вернуть в Docker…") {
@@ -296,7 +296,7 @@ struct DockerPruneSheet: View {
                 .toggleStyle(.checkbox)
             VStack(alignment: .leading, spacing: 2) {
                 Text(target == .containers ? "\(target.title) (\(max(0, (part?.count ?? 0) - (part?.active ?? 0))))" : target.title)
-                Text(target.detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(target.detail).font(.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12)
             Text(part.map { Format.bytes($0.reclaimable) } ?? "—").fontWeight(.medium).monospacedDigit()

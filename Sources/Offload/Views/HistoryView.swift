@@ -61,7 +61,7 @@ struct HistoryView: View {
                         ProgressView().controlSize(.small)
                         Text("Возвращаю «\(URL(fileURLWithPath: record.originalPath).lastPathComponent)»").font(.headline)
                         Spacer()
-                        Text(model.progress?.phase.rawValue ?? "Подготовка").foregroundStyle(.secondary)
+                        Text(model.progress?.phase.rawValue ?? "Подготовка").foregroundStyle(Theme.muted)
                         Button("Отменить") { model.cancel() }
                     }
                     ProgressView(value: model.progress?.fraction ?? 0)
@@ -166,7 +166,7 @@ struct HistoryGroupRow: View {
             } label: {
                 HStack(spacing: 12) {
                     Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        .font(.caption.weight(.semibold)).foregroundStyle(Theme.muted)
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                         .frame(width: 12)
                     IconTile(systemImage: group.first.restored ? "arrow.uturn.backward" : "square.stack.3d.up.fill",
@@ -174,10 +174,10 @@ struct HistoryGroupRow: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("\((group.originalParent as NSString).lastPathComponent) · \(group.records.count) \(pluralRu(group.records.count, "объект", "объекта", "объектов"))")
                             .fontWeight(.medium)
-                        Text(relativeToHome(group.originalParent, home: home)).font(.caption).foregroundStyle(.secondary)
+                        Text(relativeToHome(group.originalParent, home: home)).font(.caption).foregroundStyle(Theme.muted)
                             .lineLimit(1).truncationMode(.middle)
                         Text("\(group.latest.formatted(date: .abbreviated, time: .shortened)) · \(Format.bytes(group.bytes)) · файлов \(group.files) · \(group.first.location)")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Theme.muted)
                         if let note = group.note, !note.isEmpty {
                             Text(note).font(.caption).foregroundStyle(Theme.warn).fixedSize(horizontal: false, vertical: true)
                         }
@@ -223,10 +223,10 @@ struct HistoryRow: View {
             IconTile(systemImage: record.symbol, tone: record.tone, size: 32)
             VStack(alignment: .leading, spacing: 3) {
                 Text(URL(fileURLWithPath: record.originalPath).lastPathComponent).fontWeight(.medium)
-                Text(relativeToHome(record.originalPath, home: home)).font(.caption).foregroundStyle(.secondary)
+                Text(relativeToHome(record.originalPath, home: home)).font(.caption).foregroundStyle(Theme.muted)
                     .lineLimit(1).truncationMode(.middle)
                 Text("\(record.date.formatted(date: .abbreviated, time: .shortened)) · \(Format.bytes(record.bytes)) · файлов \(record.files) · \(record.location)")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Theme.muted)
                 if let note = record.note, !note.isEmpty {
                     Text(note).font(.caption).foregroundStyle(Theme.warn).fixedSize(horizontal: false, vertical: true)
                 }
@@ -243,7 +243,7 @@ struct HistoryRow: View {
                 StatusPill(title: "Возвращено", systemImage: "checkmark", tone: .good)
             } else if available {
                 Button("Вернуть…", action: onRestore)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(PillButtonStyle())
                     .disabled(busy)
             } else {
                 StatusPill(title: record.unavailableReason, tone: .neutral)

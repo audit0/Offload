@@ -226,7 +226,7 @@ struct CleanupView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Разобрать Mac").font(Theme.display(30))
                     Text("Найду, что занимает место зря, и спрошу про каждое: удалить или нет. Выбирать файлы и ходить по папкам не нужно — только отвечать «да» или «не сейчас». Без вашего «да» ничего не трогаю.")
-                        .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     FlowLayout(spacing: 6) {
                         ForEach(Self.places, id: \.title) { place in
                             Label(place.title, systemImage: place.symbol)
@@ -274,7 +274,7 @@ struct CleanupView: View {
                     IconTile(systemImage: kind.symbol, tone: kind.tone)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(kind.title).fontWeight(.medium)
-                        Text(kind.detail).font(.callout).foregroundStyle(.secondary)
+                        Text(kind.detail).font(.callout).foregroundStyle(Theme.muted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 12)
@@ -295,7 +295,7 @@ struct CleanupView: View {
                 HStack(alignment: .top, spacing: 12) {
                     IconTile(systemImage: "sparkles", tone: .neutral)
                     Text("Пока привычек нет. Привычка появляется, когда вы хотя бы трижды одинаково решаете похожее — например, убираете в сейф старые съёмки из «Фильмов». Тогда похожие папки сами попадут в вопрос о сейфе.")
-                        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                 }
                 .rowPadding()
             }
@@ -304,10 +304,10 @@ struct CleanupView: View {
                     IconTile(systemImage: habit.action.symbol, tone: habit.action.tone)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(habit.scope.prefix(1).uppercased() + habit.scope.dropFirst()).fontWeight(.medium)
-                        Text("обычно \(HabitModel.Prediction.verb(habit.action))").font(.callout).foregroundStyle(.secondary)
+                        Text("обычно \(HabitModel.Prediction.verb(habit.action))").font(.callout).foregroundStyle(Theme.muted)
                     }
                     Spacer(minLength: 12)
-                    Text("\(habit.agreeing) из \(habit.total)").font(.callout).foregroundStyle(.secondary).monospacedDigit()
+                    Text("\(habit.agreeing) из \(habit.total)").font(.callout).foregroundStyle(Theme.muted).monospacedDigit()
                         .help("Столько похожих решений за это действие из всех похожих")
                 }
                 .rowPadding()
@@ -317,7 +317,7 @@ struct CleanupView: View {
                 if model.habits.isEmpty { RowDivider(inset: 54) }
                 HStack(spacing: 12) {
                     Text("Помню ваши ответы для \(model.remembered) \(pluralRu(model.remembered, "объекта", "объектов", "объектов"))")
-                        .font(.callout).foregroundStyle(.secondary)
+                        .font(.callout).foregroundStyle(Theme.muted)
                     Spacer(minLength: 12)
                     Button("Забыть мои решения…") { forgetting = true }
                 }
@@ -373,16 +373,16 @@ struct CleanupView: View {
                              : progress.total == 0 ? "Собираю, что посмотреть…" : "Смотрю, что занимает место")
                             .font(Theme.display(19))
                         Text(progress.current.isEmpty ? " " : progress.current)
-                            .font(.callout).foregroundStyle(.secondary)
+                            .font(.callout).foregroundStyle(Theme.muted)
                             .lineLimit(1).truncationMode(.middle)
                     }
                     Spacer(minLength: 12)
                     if progress.duplicates {
                         Text("\(progress.files) \(pluralRu(progress.files, "файл", "файла", "файлов"))")
-                            .font(.callout).foregroundStyle(.secondary).monospacedDigit()
+                            .font(.callout).foregroundStyle(Theme.muted).monospacedDigit()
                     } else if progress.total > 0 {
                         Text("\(progress.done) из \(progress.total)")
-                            .font(.callout).foregroundStyle(.secondary).monospacedDigit()
+                            .font(.callout).foregroundStyle(Theme.muted).monospacedDigit()
                     }
                     Button("Отменить") { app.cleanup.cancel() }
                 }
@@ -428,7 +428,7 @@ struct CleanupView: View {
                     .font(Theme.display(24))
                     .monospacedDigit()
                     .contentTransition(.numericText())
-                Text(module.title).font(.callout).foregroundStyle(.secondary)
+                Text(module.title).font(.callout).foregroundStyle(Theme.muted)
             }
         }
         .animation(.snappy, value: value)
@@ -487,18 +487,18 @@ struct CleanupView: View {
             HStack(alignment: .center, spacing: 20) {
                 VStack(alignment: .leading, spacing: 4) {
                     if !open.isEmpty {
-                        Text("Можно освободить").font(.callout).foregroundStyle(.secondary)
+                        Text("Можно освободить").font(.callout).foregroundStyle(Theme.muted)
                         Text(Format.bytes(model.pendingBytes))
                             .font(Theme.display(44)).monospacedDigit()
                             .contentTransition(.numericText())
                         Text("\(open.count) \(pluralRu(open.count, "вопрос", "вопроса", "вопросов")) — на каждый ответьте «да» или «не сейчас». Удаляемое сначала уходит в Корзину.")
-                            .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     } else {
-                        Text(model.isSettled ? "Готово" : "Делаю…").font(.callout).foregroundStyle(.secondary)
+                        Text(model.isSettled ? "Готово" : "Делаю…").font(.callout).foregroundStyle(Theme.muted)
                         Text(freed >= 100_000_000 ? "Освободилось \(Format.bytes(freed))" : "Ответили на всё")
                             .font(Theme.display(34)).monospacedDigit()
                         Text(settledLine)
-                            .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .animation(.snappy, value: model.pendingBytes)
@@ -546,7 +546,7 @@ struct CleanupView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Docker не запущен").font(.headline)
                         Text("Его диск занимает \(Format.bytes(idle)). Запустите Docker Desktop и разберите ещё раз — спрошу, что из него можно удалить.")
-                            .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 12)
                     if let docker = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.docker.docker") {
@@ -570,7 +570,7 @@ struct CleanupView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Удалить из Корзины насовсем?").font(.headline)
                         Text("В Корзине \(Format.bytes(inTrash)) из этого разбора: место на Mac освободится, только когда их удалят оттуда. Остальное в Корзине не трогаю. Вернуть удалённое насовсем будет нельзя.")
-                            .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 12)
                     Text(Format.bytes(inTrash)).font(Theme.display(20)).monospacedDigit()
@@ -578,7 +578,7 @@ struct CleanupView: View {
                 HStack(spacing: 10) {
                     if let finishing = model.finishing {
                         ProgressView().controlSize(.small)
-                        Text(finishing).font(.callout).foregroundStyle(.secondary)
+                        Text(finishing).font(.callout).foregroundStyle(Theme.muted)
                     }
                     Spacer()
                     Button(role: .destructive) { erasing = true } label: { Label("Удалить насовсем…", systemImage: "xmark.bin") }
@@ -603,7 +603,7 @@ struct CleanupView: View {
     private func result(_ value: String, _ title: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value).font(Theme.display(20)).monospacedDigit()
-            Text(title).font(.caption).foregroundStyle(.secondary)
+            Text(title).font(.caption).foregroundStyle(Theme.muted)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -637,9 +637,9 @@ struct QuestionCard: View {
                             .font(Theme.display(20))
                             .monospacedDigit()
                     }
-                    Text(question.text).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text(question.text).font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     ForEach(question.notes, id: \.self) { note in
-                        Label(note, systemImage: "info.circle").font(.caption).foregroundStyle(.secondary)
+                        Label(note, systemImage: "info.circle").font(.caption).foregroundStyle(Theme.muted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     if question.kind == .module(.safe), answer == .asking {
@@ -674,7 +674,7 @@ struct QuestionCard: View {
         case .queued:
             HStack(spacing: 10) {
                 ProgressView().controlSize(.small)
-                Text("В очереди — начну, как только закончу предыдущее").font(.callout).foregroundStyle(.secondary)
+                Text("В очереди — начну, как только закончу предыдущее").font(.callout).foregroundStyle(Theme.muted)
                 Spacer(minLength: 12)
                 Button("Отменить", action: reconsider)
             }
@@ -686,7 +686,7 @@ struct QuestionCard: View {
                     }
                     Text(progress.item.isEmpty ? " " : "«\(progress.item)»").lineLimit(1).truncationMode(.middle)
                     Spacer(minLength: 12)
-                    Text(progress.phase).foregroundStyle(.secondary)
+                    Text(progress.phase).foregroundStyle(Theme.muted)
                     Button("Остановить", action: stop)
                 }
                 .font(.callout)
@@ -716,7 +716,7 @@ struct QuestionCard: View {
         case .declined:
             HStack(spacing: 10) {
                 Text("Не трогаю. Спрошу в следующий раз.")
-                    .font(.callout).foregroundStyle(.secondary)
+                    .font(.callout).foregroundStyle(Theme.muted)
                 Spacer(minLength: 12)
                 Button("Передумал", action: reconsider).buttonStyle(InkLinkStyle())
             }
@@ -757,7 +757,7 @@ struct QuestionCard: View {
                     if item.id != shown.last?.id { RowDivider(inset: 44) }
                 }
                 if items.count > shown.count {
-                    Text("и ещё \(items.count - shown.count)").font(.caption).foregroundStyle(.secondary)
+                    Text("и ещё \(items.count - shown.count)").font(.caption).foregroundStyle(Theme.muted)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 6)
                 }
@@ -790,13 +790,13 @@ struct FoundRow: View {
                         StatusPill(title: "как вы обычно", systemImage: "sparkles", tone: .brand)
                     }
                 }
-                Text(relativeToHome(item.url.path, home: home)).font(.caption).foregroundStyle(.secondary)
+                Text(relativeToHome(item.url.path, home: home)).font(.caption).foregroundStyle(Theme.muted)
                     .lineLimit(1).truncationMode(.middle)
                 if let keeper {
                     Text("Такая же остаётся: \(relativeToHome(keeper.url.path, home: home))")
-                        .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                        .font(.caption).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.middle)
                 } else {
-                    Text(item.reason).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text(item.reason).font(.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                 }
                 ForEach(item.cautions, id: \.self) { caution in
                     Text(caution).font(.caption).foregroundStyle(Theme.warn).fixedSize(horizontal: false, vertical: true)
@@ -806,7 +806,7 @@ struct FoundRow: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(Format.bytes(item.bytes)).fontWeight(.semibold).monospacedDigit()
                 if let modified = item.modified {
-                    Text(Format.relative(modified)).font(.caption).foregroundStyle(.secondary)
+                    Text(Format.relative(modified)).font(.caption).foregroundStyle(Theme.muted)
                 }
             }
             .frame(width: 110, alignment: .trailing)
@@ -829,7 +829,7 @@ struct SafeStatusLine: View {
         let safe = app.safe
         Group {
             if Demo.isOn {
-                Label("Сейф открыт", systemImage: "lock.open.fill").foregroundStyle(.secondary)
+                Label("Сейф открыт", systemImage: "lock.open.fill").foregroundStyle(Theme.muted)
             } else if app.destination == nil {
                 Label("Подключите внешний диск с сейфом", systemImage: "externaldrive.badge.xmark").foregroundStyle(Theme.warn)
             } else if !safe.exists {
@@ -846,9 +846,9 @@ struct SafeStatusLine: View {
                 }
             } else if let volume = app.safeVolume {
                 Label("Сейф открыт · свободно \(Format.bytes(volume.availableBytes))", systemImage: "lock.open.fill")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.muted)
             } else {
-                Label("Сейф закрыт — пароль спрошу, когда ответите «да»", systemImage: "lock.fill").foregroundStyle(.secondary)
+                Label("Сейф закрыт — пароль спрошу, когда ответите «да»", systemImage: "lock.fill").foregroundStyle(Theme.muted)
             }
         }
         .font(.caption)
@@ -897,16 +897,16 @@ struct SafeBeforeRunSheet: View {
                     subtitle: "Убрать в сейф \(Format.bytes(bytes))") {
             if app.destination == nil {
                 Text("Подключите внешний диск, на котором лежит сейф, и ответьте ещё раз. Остальные вопросы от этого не зависят.")
-                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             } else if !safe.exists {
                 Text("На диске «\(app.destination?.name ?? "")» сейфа нет. Создайте его в разделе «Сейф» и ответьте ещё раз.")
-                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             } else if safe.state?.isEncrypted != true {
                 Text("Шифрование образа на диске не подтверждается — класть в него нельзя. Разберитесь в разделе «Сейф».")
-                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             } else {
                 Text("Пароль нужен, чтобы убрать это в сейф. Он уходит в macOS и нигде не сохраняется. Как только сейф откроется, начну.")
-                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                 SafeUnlockRow()
             }
         } actions: {

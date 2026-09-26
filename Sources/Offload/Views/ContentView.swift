@@ -9,7 +9,7 @@ struct ContentView: View {
         @Bindable var safe = app.safe
         NavigationSplitView {
             // Своя колонка вместо List: выделение у List macOS рисует системным синим,
-            // а здесь оно чёрно-белое — стекло или светло-серая подложка и жирный текст.
+            // а здесь оно чёрно-белое — светло-серая подложка и жирный текст.
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(SidebarSection.allCases) { section in
                     SidebarRow(section: section, badge: badge(for: section), isSelected: (app.section ?? .overview) == section) {
@@ -67,7 +67,7 @@ struct ContentView: View {
     }
 }
 
-/// Строка боковой колонки: выбранная — на стеклянной капсуле (macOS 26) или светло-серой подложке, жирным.
+/// Строка боковой колонки: выбранная — на светло-серой подложке и жирным, как чат в Telegram.
 private struct SidebarRow: View {
     let section: SidebarSection
     let badge: Int
@@ -105,14 +105,10 @@ private struct SidebarRow: View {
     }
 }
 
-/// Фон колонки: на macOS 26 его нет — колонку рисует системное стекло; раньше — светло-серая заливка.
+/// Фон колонки — белый, как список чатов в Telegram: на нём чётко видны строки и выделение.
 private struct SidebarBackground: ViewModifier {
     func body(content: Content) -> some View {
-        if #available(macOS 26.0, *) {
-            content
-        } else {
-            content.background(Theme.panel)
-        }
+        content.background(Theme.panel)
     }
 }
 
@@ -122,10 +118,6 @@ private struct SidebarSelection: ViewModifier {
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
-        if isSelected {
-            content.glassSurface(in: shape, fallback: Theme.lineSoft, interactive: true)
-        } else {
-            content.background(hovering ? Theme.lineSoft.opacity(0.6) : .clear, in: shape)
-        }
+        content.background(isSelected ? Theme.soft : hovering ? Theme.soft.opacity(0.5) : .clear, in: shape)
     }
 }

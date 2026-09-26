@@ -82,7 +82,7 @@ struct Notice: View {
                 Text(text).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                 ForEach(details, id: \.self) { detail in
                     Text("— " + detail)
-                        .font(.callout).foregroundStyle(.secondary)
+                        .font(.callout).foregroundStyle(Theme.muted)
                         .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                 }
             }
@@ -131,7 +131,7 @@ struct FullDiskAccessBanner: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Нет полного доступа к диску").font(.headline)
                     Text("Без него Offload не видит «Документы», «Рабочий стол», Почту и данные многих приложений, и часть занятого места останется неизвестной. Выдайте доступ в настройках и перезапустите Offload.")
-                        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     HStack {
                         Button("Открыть настройки") { FullDiskAccess.openSettings() }
                             .prominentButton()

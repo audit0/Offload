@@ -29,7 +29,7 @@ struct BackupView: View {
         let model = app.backup
         if model.sources.isEmpty {
             Text("Добавьте папки с проектами и документами.")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.muted)
                 .rowPadding()
             RowDivider()
         }
@@ -71,7 +71,7 @@ struct BackupView: View {
                     .textFieldStyle(.roundedBorder)
                     .lineLimit(2...6)
             } else if model.excludedNames.isEmpty {
-                Text("Ничего не пропускается.").font(.callout).foregroundStyle(.secondary)
+                Text("Ничего не пропускается.").font(.callout).foregroundStyle(Theme.muted)
             } else {
                 FlowLayout(spacing: 6) {
                     ForEach(model.excludedNames.sorted(), id: \.self) { Chip(text: $0) }
@@ -100,7 +100,7 @@ struct BackupView: View {
                 if model.isRunning {
                     HStack {
                         ProgressView().controlSize(.small)
-                        Text(model.currentItem).lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary)
+                        Text(model.currentItem).lineLimit(1).truncationMode(.middle).foregroundStyle(Theme.muted)
                         Spacer()
                         Text(Format.bytes(model.copiedBytes)).monospacedDigit()
                         Button("Остановить") { model.cancel() }
@@ -134,7 +134,7 @@ struct BackupView: View {
         let model = app.backup
         VStack(alignment: .leading, spacing: 12) {
             Text("~/.ssh, учётка GitHub CLI, дотфайлы с токенами (.zshrc, .npmrc, .netrc…), базы KeePass и .env/.key/.pem из папок бэкапа. Складываются с сохранением путей; инструкция по восстановлению лежит в сейфе рядом.")
-                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             if app.safeVolume != nil {
                 HStack {
                     Button { model.putKeys(app: app) } label: { Label("Сложить в сейф", systemImage: "key.horizontal") }
@@ -146,7 +146,7 @@ struct BackupView: View {
             } else if app.destination != nil {
                 Button("Создать сейф…") { app.section = .safe }
             } else {
-                Text("Подключите внешний диск.").foregroundStyle(.secondary)
+                Text("Подключите внешний диск.").foregroundStyle(Theme.muted)
             }
             if let message = model.keysMessage { Notice(message) }
             if let report = model.keysReport, !report.unprotectedKeys.isEmpty {

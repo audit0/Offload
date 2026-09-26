@@ -78,7 +78,7 @@ struct UTMSheet: View {
         } else {
             HStack(spacing: 10) {
                 ProgressView().controlSize(.small)
-                Text("Считаю, сколько занимает каждая машина…").foregroundStyle(.secondary)
+                Text("Считаю, сколько занимает каждая машина…").foregroundStyle(Theme.muted)
             }
         }
     }
@@ -95,7 +95,7 @@ struct UTMSheet: View {
                     IconTile(systemImage: "tray.full.fill", tone: .neutral, size: 30)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Прочее в папке UTM")
-                        Text("Кеш и данные самого UTM, не машины").font(.caption).foregroundStyle(.secondary)
+                        Text("Кеш и данные самого UTM, не машины").font(.caption).foregroundStyle(Theme.muted)
                     }
                     Spacer(minLength: 12)
                     Text(Format.bytes(rest)).fontWeight(.semibold).monospacedDigit()
@@ -112,7 +112,7 @@ struct UTMSheet: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(machine.name).fontWeight(.medium).lineLimit(1).truncationMode(.middle)
                 if let caption = caption(machine) {
-                    Text(caption).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(caption).font(.caption).foregroundStyle(Theme.muted).lineLimit(1)
                 }
             }
             Spacer(minLength: 12)
@@ -158,7 +158,7 @@ struct UTMSheet: View {
                 .background(Theme.brand, in: Circle())
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).fontWeight(.medium)
-                Text(text).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(text).font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             }
         }
     }
