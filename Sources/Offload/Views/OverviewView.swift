@@ -344,7 +344,7 @@ struct ConnectedPrompt: View {
                 IconTile(systemImage: "externaldrive.fill.badge.plus", size: 40)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Подключён «\(disk)»").font(.headline)
-                    Text("Разобрать Mac: что удалить, что убрать в сейф, что добавить в бэкап. Ничего не произойдёт, пока вы не подтвердите.")
+                    Text("Разобрать Mac: что удалить, что убрать в сейф, что добавить в бэкап. Сразу отмечу только то, что программы создадут заново; ничего не произойдёт, пока вы не нажмёте «Выполнить».")
                         .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     HStack {
                         Button {

@@ -90,6 +90,8 @@ func checksHabits() {
         let suggestion = planner.suggest(item)
         check(suggestion.action == .keep && suggestion.habit && !suggestion.learned,
               "правило советует сейф, но похожее вы оставляете — предлагается оставить, с пометкой")
+        check(suggestion.module == .safe && !suggestion.preselected,
+              "оставленное по привычке видно в плитке сейфа неотмеченным — с объяснением, почему")
         check(suggestion.kind == .folder && planner.suggest(CleanupObservation(url: home.appendingPathComponent("Projects/app"),
                                                                                 bytes: 1, modified: nil, isDirectory: true,
                                                                                 verdict: .safe, isProject: true)).kind == .project,
@@ -104,7 +106,16 @@ func checksHabits() {
                                                                                           example("Movies/b", .safe),
                                                                                           example("Movies/c", .safe)]))
         let same = agreeing.suggest(item)
-        check(same.action == .safe && !same.habit && same.reason.hasPrefix("Большое"), "привычка совпала с правилом — объясняет правило")
+        check(same.action == .safe && same.habit && same.preselected && same.reason.hasPrefix("Похожее вы обычно убираете в сейф"),
+              "правило сейф только предлагает, а вы похожее обычно туда и убираете — отмечено сразу, по привычке")
+        let projects = CleanupPlanner(now: now, home: home, habits: HabitModel(examples: (1...3).map {
+            example("Projects/\($0)", .backup, kind: .project)
+        }))
+        let project = projects.suggest(CleanupObservation(url: home.appendingPathComponent("Projects/app"), bytes: 2_000_000_000,
+                                                          modified: now.addingTimeInterval(-200 * 86_400), isDirectory: true,
+                                                          verdict: .safe, isProject: true))
+        check(project.action == .backup && !project.habit && project.preselected,
+              "привычка совпала с правилом, которое и так отмечает сразу, — объясняет правило")
 
         let blocked = planner.suggest(observation("Movies/Проект.fcpbundle", verdict: .blocked("пакет")))
         check(blocked.action == .keep && !blocked.habit && blocked.allowed == [.keep], "запрещённое остаётся запрещённым")
@@ -220,7 +231,7 @@ func checksHabits() {
         var statement: OpaquePointer?
         sqlite3_prepare_v2(reader, "PRAGMA user_version", -1, &statement, nil)
         sqlite3_step(statement)
-        check(sqlite3_column_int(statement, 0) == 3, "версия схемы — 3")
+        check(sqlite3_column_int(statement, 0) == 4, "версия схемы — последняя, 4")
         sqlite3_finalize(statement)
         sqlite3_close(reader)
     }
