@@ -45,22 +45,13 @@ func checksQuestions() {
                                  containers: DockerUsage.Part(count: 5, active: 1, bytes: 1_200_000, reclaimable: 1_100_000),
                                  volumes: DockerUsage.Part(count: 12, active: 4, bytes: 31_000_000_000, reclaimable: 20_000_000_000),
                                  buildCache: DockerUsage.Part(count: 120, active: 0, bytes: 5_600_000_000, reclaimable: 5_600_000_000))
-        func machine(_ name: String, gb: Double, daysAgo: Double?) -> UTMMachine {
-            UTMMachine(url: UTMMachines.folder(home: home).appendingPathComponent("\(name).utm", isDirectory: true),
-                       bytes: Int64(gb * 1_000_000_000), logicalBytes: Int64(gb * 2_000_000_000),
-                       modified: daysAgo.map { now.addingTimeInterval(-$0 * 86_400) })
-        }
-        let machines = [machine("Ubuntu", gb: 9, daysAgo: 2), machine("Windows 11", gb: 40, daysAgo: 150),
-                        machine("Крошка", gb: 0.5, daysAgo: 400), machine("Старая", gb: 12, daysAgo: 90),
-                        machine("Без даты", gb: 30, daysAgo: nil), machine("Оставленная", gb: 20, daysAgo: 200)]
-        let questions = CleanupQuestions.build(suggestions, docker: docker, machines: machines,
-                                               keptMachines: [machines[5].url.path], now: now)
+        let questions = CleanupQuestions.build(suggestions, docker: docker)
         func question(_ kind: CleanupQuestion.Kind) -> CleanupQuestion? { questions.first { $0.kind == kind } }
         func names(_ kind: CleanupQuestion.Kind) -> [String] { question(kind)?.items.map { $0.url.lastPathComponent } ?? [] }
 
         check(questions.map(\.kind) == [.module(.junk), .docker, .module(.duplicates), .module(.installers), .module(.safe),
-                                        .module(.projects), .machine(machines[1].url.path), .machine(machines[3].url.path)],
-              "порядок: сначала то, что пересоздаётся само, потом личное, машины — последними: \(questions.map(\.kind))")
+                                        .module(.projects)],
+              "порядок: сначала то, что пересоздаётся само, потом личное; машин UTM среди вопросов нет: \(questions.map(\.kind))")
 
         let junk = question(.module(.junk))
         check(names(.module(.junk)) == ["DerivedData"] && junk?.bytes == 20_000_000_000,
@@ -69,8 +60,10 @@ func checksQuestions() {
         check(junk?.labels == ["Промежуточные файлы сборки Xcode"], "мусор назван по-человечески, а не именем папки: \(junk?.labels ?? [])")
 
         let dockerQuestion = question(.docker)
-        check(dockerQuestion?.docker == [.buildCache: 5_600_000_000, .images: 10_200_000_000] && dockerQuestion?.bytes == 15_800_000_000,
-              "Docker: кеш сборки и образы без контейнеров")
+        check(dockerQuestion?.docker == [.buildCache: 5_600_000_000, .danglingImages: 0] && dockerQuestion?.bytes == 5_600_000_000,
+              "Docker: кеш сборки и образы без имени")
+        check(dockerQuestion?.docker[.images] == nil,
+              "все неиспользуемые образы (--all) в вопрос не входят: собранный вами образ не скачать")
         check(dockerQuestion?.docker[.containers] == nil, "остановленные контейнеры в вопрос о Docker не входят: в них бывают данные")
         check(!CleanupQuestions.build([], docker: DockerUsage(buildCache: DockerUsage.Part(count: 1, active: 0, bytes: 50_000_000,
                                                                                             reclaimable: 50_000_000))).contains { $0.kind == .docker },
@@ -92,16 +85,8 @@ func checksQuestions() {
         check(!questions.contains { $0.items.contains { $0.url.lastPathComponent == "Монтаж" } },
               "то, что трогать незачем, ни в один вопрос не попадает")
 
-        check(question(.machine(machines[1].url.path))?.bytes == 40_000_000_000,
-              "машина, которую не запускали пять месяцев, — отдельный вопрос")
-        check(question(.machine(machines[0].url.path)) == nil, "о машине, которую запускали на днях, не спрашиваю")
-        check(question(.machine(machines[2].url.path)) == nil, "о машине меньше гигабайта не спрашиваю")
-        check(question(.machine(machines[4].url.path)) == nil, "не знаю, когда машину запускали, — не спрашиваю")
-        check(question(.machine(machines[5].url.path)) == nil, "машину, которую вы решили оставить, больше не предлагаю")
-
-        check(questions.filter(\.answeredTogether).map(\.kind).allSatisfy { if case .machine = $0 { return false } else { return true } }
-              && questions.contains { !$0.answeredTogether },
-              "«Разрешить всё» не удаляет машины: о каждой спрашиваю отдельно")
+        check(questions.filter { !$0.answeredTogether }.map(\.kind) == [.module(.installers)],
+              "«Разрешить всё» не удаляет установщики: только отдельным «да» на их вопрос")
         check(questions.allSatisfy { $0.kind == .module(.projects) || $0.bytes > 0 }, "в каждом вопросе, кроме бэкапа, есть что освободить")
         check(CleanupQuestions.build([]).isEmpty, "нечего спрашивать — нет и вопросов")
     }

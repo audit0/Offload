@@ -135,25 +135,6 @@ enum Demo {
         ])
     }
 
-    /// Docker в демонстрации: кеш сборки и образы, которые можно убрать.
-    static let dockerUsage = DockerUsage(
-        images: DockerUsage.Part(count: 23, active: 4, bytes: 14_800_000_000, reclaimable: 11_200_000_000),
-        containers: DockerUsage.Part(count: 6, active: 2, bytes: 180_000_000, reclaimable: 90_000_000),
-        volumes: DockerUsage.Part(count: 9, active: 3, bytes: 31_600_000_000, reclaimable: 12_400_000_000),
-        buildCache: DockerUsage.Part(count: 140, active: 0, bytes: 7_300_000_000, reclaimable: 7_300_000_000))
-
-    /// Машины UTM в демонстрации: одну давно не запускали — о ней и вопрос.
-    static func machines() -> [UTMMachine] {
-        let folder = UTMMachines.folder(home: home)
-        let now = Date()
-        return [
-            UTMMachine(url: folder.appendingPathComponent("Windows 11.utm", isDirectory: true), bytes: 38_200_000_000,
-                       logicalBytes: 64_000_000_000, largestFile: 63_900_000_000, modified: now.addingTimeInterval(-150 * 86_400)),
-            UTMMachine(url: folder.appendingPathComponent("Ubuntu 24.04.utm", isDirectory: true), bytes: 9_600_000_000,
-                       logicalBytes: 32_000_000_000, largestFile: 31_900_000_000, modified: now.addingTimeInterval(-2 * 86_400)),
-        ]
-    }
-
     /// Прошлые решения, на которых в демонстрации выучены привычки. Пишутся только в базу в памяти.
     static func decisions() -> [DecisionStore.Decision] {
         let now = Date()

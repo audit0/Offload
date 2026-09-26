@@ -3,8 +3,8 @@ import Observation
 import OffloadCore
 
 /// Разбор Mac: поиск → вопросы → ответы. Человек не выбирает по файлам и не ходит по папкам:
-/// Offload сам раскладывает найденное по вопросам («Удалить мусор — 12 ГБ?», «Очистить Docker?»,
-/// «Удалить машину «Windows 11»?»), а на каждый отвечают «да» или «не сейчас». Сделанное по «да»
+/// Offload сам раскладывает найденное по вопросам («Удалить мусор — 12 ГБ?», «Очистить Docker?»),
+/// а на каждый отвечают «да» или «не сейчас». Сделанное по «да»
 /// видно сразу у вопроса (`CleanupQuestions`).
 ///
 /// Удаление — только в Корзину (образы Docker удаляет сам Docker), и ушедшее туда можно вернуть
@@ -81,7 +81,7 @@ final class CleanupModel {
     private(set) var stage: Stage = .idle
     private(set) var questions: [CleanupQuestion] = []
     private(set) var answers: [CleanupQuestion.Kind: Answer] = [:]
-    /// Почему «да» пока не выполнено (например, открыт UTM) — видно под вопросом.
+    /// Почему «да» пока не выполнено (например, сейф закрыт) — видно под вопросом.
     private(set) var hints: [CleanupQuestion.Kind: String] = [:]
     /// Docker стоит, но не запущен: столько занимает его диск, а что в нём можно убрать, не узнать.
     private(set) var dockerIdle: Int64?
@@ -116,8 +116,6 @@ final class CleanupModel {
     /// Всё найденное: из него вопросы собираются заново, когда человек просит что-то не предлагать.
     @ObservationIgnored private var suggestions: [CleanupSuggestion] = []
     @ObservationIgnored private var docker: DockerUsage?
-    @ObservationIgnored private var machines: [UTMMachine] = []
-    @ObservationIgnored private var keptMachines: Set<String> = []
     @ObservationIgnored private var runRecorded = false
 
     init() {
@@ -204,17 +202,12 @@ final class CleanupModel {
     }
 
     /// Ответ на вопрос. «Да» ставит его в очередь, и он выполняется, как только дойдёт черёд;
-    /// «не сейчас» ничего не запоминает — в следующий раз спрошу снова. Кроме машины: решили
-    /// оставить — больше не спрашиваю.
+    /// «не сейчас» ничего не запоминает — в следующий раз спрошу снова.
     func answer(_ kind: CleanupQuestion.Kind, yes: Bool, app: AppModel) {
-        guard stage == .review, let question = question(kind), answer(for: kind) == .asking else { return }
+        guard stage == .review, question(kind) != nil, answer(for: kind) == .asking else { return }
         hints[kind] = nil
         guard yes else {
             answers[kind] = .declined
-            if case .machine(let path) = kind, let machine = question.machine {
-                record([DecisionStore.Decision(path: path, action: .keep, bytes: machine.bytes, suggested: .trash,
-                                               kind: .folder, modified: machine.modified)])
-            }
             settle(app: app)
             return
         }
@@ -224,7 +217,7 @@ final class CleanupModel {
         pump(app: app)
     }
 
-    /// «Разрешить всё»: «да» на каждый вопрос, кроме машин — о каждой спрашиваю отдельно.
+    /// «Разрешить всё»: «да» на каждый вопрос, кроме установщиков — их удаляют только отдельным «да».
     /// Вопрос о сейфе ждёт, пока сейф закрыт; ответ — остался ли он ждать пароля.
     @discardableResult
     func answerAll(app: AppModel) -> Bool {
@@ -300,7 +293,6 @@ final class CleanupModel {
         switch question.kind {
         case .module(let module): return await performItems(question, action: module.action, app: app, token: token)
         case .docker: return await performDocker(question, app: app)
-        case .machine: return await performMachine(question)
         }
     }
 
@@ -489,33 +481,6 @@ final class CleanupModel {
         return outcome
     }
 
-    /// Машина — в Корзину целиком. Пока открыт UTM, не трогаем: машина может работать.
-    private func performMachine(_ question: CleanupQuestion) async -> Outcome? {
-        guard let machine = question.machine else { return Outcome() }
-        let kind = question.kind
-        answers[kind] = .running(Progress(index: 1, count: 1, item: machine.name, phase: "В Корзину", fraction: 0))
-        if Demo.isOn { return Outcome(done: 1, bytes: machine.bytes) }
-        if Self.runningApplications()[UTMMachines.bundleIdentifier] != nil {
-            hints[kind] = "UTM открыт: пока он работает, машину удалять нельзя. Закройте UTM и ответьте ещё раз."
-            return nil
-        }
-        record([DecisionStore.Decision(path: machine.url.path, action: .trash, bytes: machine.bytes, suggested: .trash,
-                                       kind: .folder, modified: machine.modified)])
-        var outcome = Outcome()
-        let url = machine.url
-        do {
-            let trashedAt = try await Task.detached(priority: .userInitiated) { try Self.trash(url) }.value
-            outcome.done = 1
-            outcome.bytes = machine.bytes
-            if let trashedAt {
-                outcome.trashedItems.append(TrashedItem(original: url, inTrash: trashedAt.url, bytes: machine.bytes, identity: trashedAt.identity))
-            }
-        } catch {
-            outcome.problems.append("«\(machine.name)» не удалось отправить в Корзину: \(error.localizedDescription)")
-        }
-        return outcome
-    }
-
     /// Ответили на всё и всё сделано — итог разбора запоминается.
     private func settle(app: AppModel) {
         guard isSettled else { return }
@@ -580,7 +545,7 @@ final class CleanupModel {
 
     /// Собирает заново вопросы, на которые ещё не ответили. На что ответили, то остаётся как было.
     private func rebuild() {
-        let fresh = CleanupQuestions.build(suggestions, docker: docker, machines: machines, keptMachines: keptMachines)
+        let fresh = CleanupQuestions.build(suggestions, docker: docker)
         questions = questions.compactMap { old in
             guard answer(for: old.kind) == .asking else { return old }
             return fresh.first { $0.kind == old.kind }
@@ -597,10 +562,8 @@ final class CleanupModel {
         let memory = (try? store?.lastDecisions()) ?? [:]
         let habits = (try? store?.history()).map { HabitModel(history: $0, home: rules.home) }
         let ignored = Set((try? store?.ignoredPaths()) ?? [])
-        keptMachines = Set(memory.filter { $0.value == .keep }.keys)
         if Demo.isOn {
-            show(Demo.cleanupSuggestions(memory: memory, habits: habits), docker: Demo.dockerUsage, idle: nil,
-                 machines: Demo.machines())
+            show(Demo.cleanupSuggestions(memory: memory, habits: habits), docker: Demo.dockerUsage, idle: nil)
             return
         }
         let token = CancelToken()
@@ -613,16 +576,15 @@ final class CleanupModel {
         let throttle = Throttle(interval: 0.2)
         let tally = ScanTally()
         Task {
-            // Docker и машины UTM — параллельно с поиском по папкам: docker system df думает десятки секунд.
-            async let apps = Task.detached(priority: .userInitiated) { () -> (usage: DockerUsage?, idle: Int64?, machines: [UTMMachine]) in
+            // Docker — параллельно с поиском по папкам: docker system df думает десятки секунд.
+            async let apps = Task.detached(priority: .userInitiated) { () -> (usage: DockerUsage?, idle: Int64?) in
                 let service = DockerService()
                 var usage: DockerUsage?
                 var idle: Int64?
                 if service.isInstalled {
                     if (try? service.ensureRunning()) != nil { usage = service.usage() } else { idle = service.rawDiskBytes() }
                 }
-                let machines = UTMMachines.list(in: UTMMachines.folder(home: rules.home), isCancelled: { token.isCancelled })
-                return (usage, idle, machines)
+                return (usage, idle)
             }.value
             let found = await Task.detached(priority: .userInitiated) { () -> [CleanupSuggestion] in
                 let regenerable = CleanupPlanner.regenerable(home: rules.home)
@@ -686,7 +648,7 @@ final class CleanupModel {
                 return planner.suggestions(collector.all, duplicates: result.groups)
             }.value
             if case .scanning(var progress) = stage, !token.isCancelled {
-                progress.current = "Docker и виртуальные машины UTM…"
+                progress.current = "Docker…"
                 stage = .scanning(progress)
             }
             let external = await apps
@@ -694,16 +656,15 @@ final class CleanupModel {
                 stage = .idle
                 return
             }
-            show(found, docker: external.usage, idle: external.idle, machines: external.machines)
+            show(found, docker: external.usage, idle: external.idle)
         }
     }
 
-    private func show(_ found: [CleanupSuggestion], docker: DockerUsage?, idle: Int64?, machines: [UTMMachine]) {
+    private func show(_ found: [CleanupSuggestion], docker: DockerUsage?, idle: Int64?) {
         suggestions = found
         self.docker = docker
         dockerIdle = idle
-        self.machines = machines
-        questions = CleanupQuestions.build(found, docker: docker, machines: machines, keptMachines: keptMachines)
+        questions = CleanupQuestions.build(found, docker: docker)
         stage = .review
     }
 
@@ -715,7 +676,6 @@ final class CleanupModel {
         suggestions = []
         docker = nil
         dockerIdle = nil
-        machines = []
         freeBefore = nil
         freeNow = nil
         erased = 0

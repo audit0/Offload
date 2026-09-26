@@ -69,7 +69,6 @@ extension CleanupQuestion {
         switch kind {
         case .module(let module): return module.symbol
         case .docker: return "shippingbox.fill"
-        case .machine: return "desktopcomputer"
         }
     }
 
@@ -77,7 +76,6 @@ extension CleanupQuestion {
         switch kind {
         case .module(let module): return module.tone
         case .docker: return .info
-        case .machine: return .caution
         }
     }
 
@@ -89,7 +87,6 @@ extension CleanupQuestion {
         case .module(.safe): return "Убрать в сейф крупное и старое?"
         case .module(.projects): return "Добавить проекты в бэкап?"
         case .docker: return "Очистить Docker?"
-        case .machine: return "Удалить виртуальную машину «\(machine?.name ?? "")»?"
         }
     }
 
@@ -102,7 +99,7 @@ extension CleanupQuestion {
             let groups = Set(items.compactMap(\.duplicateGroup)).count
             return "\(items.count) \(pluralRu(items.count, "лишняя копия", "лишние копии", "лишних копий")) одинаковых файлов (\(groups) \(pluralRu(groups, "группа", "группы", "групп"))): \(Self.list(labels, quoted: true)). У каждого файла останется одна копия — та, что лежит на своём месте, — и каждая лишняя перед удалением сверяется с ней байт в байт."
         case .module(.installers):
-            return "\(Self.list(labels, quoted: true)) — .dmg, .pkg и .xip старше недели. Если программа понадобится снова, установщик можно скачать."
+            return "\(Self.list(labels, quoted: true)) — .dmg, .pkg и .xip старше недели. Если программа понадобится снова, установщик можно скачать. Посмотрите список ниже: «Разрешить всё» установщики не удаляет, только ответ здесь."
         case .module(.safe):
             return "\(Self.list(labels, quoted: true)) — не менялось больше трёх месяцев. Перенесу в сейф со сверкой каждого файла и уберу с Mac; вернуть можно в «Перенесённом»."
         case .module(.projects):
@@ -110,12 +107,9 @@ extension CleanupQuestion {
         case .docker:
             var parts: [String] = []
             if let cache = docker[.buildCache] { parts.append("кеш сборки (\(Format.bytes(cache)))") }
-            if let images = docker[.images] { parts.append("образы, которые не нужны ни одному контейнеру (\(Format.bytes(images)))") }
+            if docker[.danglingImages] != nil { parts.append("образы без имени — остатки пересборок") }
             let what = parts.joined(separator: " и ")
-            return "\(what.prefix(1).uppercased() + what.dropFirst()). Docker скачает их снова, когда понадобятся. Тома с данными и контейнеры не трогаю."
-        case .machine:
-            let when = machine?.modified.map { "Последний раз её запускали \(Format.relative($0))." } ?? ""
-            return "\(when) Удалится вместе со всем, что внутри: системой, программами и файлами. Пока Корзина не очищена, машину можно вернуть."
+            return "\(what.prefix(1).uppercased() + what.dropFirst()). Кеш наберётся при следующей сборке. Образы с именем, тома с данными и контейнеры не трогаю; все неиспользуемые образы можно убрать в разделе «Docker»."
         }
     }
 
@@ -125,15 +119,11 @@ extension CleanupQuestion {
         case .module(.safe): return "Убрать в сейф"
         case .module(.projects): return "Добавить"
         case .docker: return "Очистить"
-        case .machine: return "Удалить машину"
         case .module: return "Удалить"
         }
     }
 
-    var noTitle: String {
-        if case .machine = kind { return "Оставить" }
-        return "Не сейчас"
-    }
+    var noTitle: String { "Не сейчас" }
 
     /// Размер справа: сколько освободится, у проектов — сколько папок.
     var amount: String {
@@ -216,18 +206,16 @@ struct CleanupView: View {
         ("arrow.down.circle", "Загрузки"), ("menubar.dock.rectangle", "Рабочий стол"), ("doc", "Документы"),
         ("film", "Фильмы"), ("music.note", "Музыка"), ("photo", "Изображения"),
         ("folder", "Свои папки в домашней"), ("hammer", "Кеши программ"), ("shippingbox", "Docker"),
-        ("desktopcomputer", "Машины UTM"),
     ]
 
     /// О чём спрошу и что будет по «да».
     private static let kinds: [(symbol: String, tone: Tone, title: String, detail: String, outcome: String)] = [
         ("trash.fill", .brand, "Мусор", "Кеши и скачанные пакеты — программы создадут их заново.", "в Корзину"),
-        ("shippingbox.fill", .info, "Docker", "Кеш сборки и образы без контейнеров. Тома с данными не трогаю.", "удалит Docker"),
+        ("shippingbox.fill", .info, "Docker", "Кеш сборки и образы без имени. Образы с именем и тома с данными не трогаю.", "удалит Docker"),
         ("doc.on.doc.fill", .caution, "Лишние копии", "Одинаковые файлы — одна копия каждого остаётся всегда.", "в Корзину"),
-        ("arrow.down.app.fill", .info, "Установщики", ".dmg, .pkg и .xip старше недели.", "в Корзину"),
+        ("arrow.down.app.fill", .info, "Установщики", ".dmg, .pkg и .xip старше недели — только отдельным «да».", "в Корзину"),
         ("lock.shield.fill", .good, "Крупное и старое", "Не менялось больше трёх месяцев — со сверкой каждого файла.", "в сейф"),
         ("externaldrive.badge.checkmark", .brand, "Проекты без бэкапа", "Папки с git — ничего не удаляется.", "в бэкап"),
-        ("desktopcomputer", .caution, "Виртуальные машины", "Которые не запускали месяц и дольше — о каждой отдельно.", "в Корзину"),
     ]
 
     private var start: some View {
@@ -302,7 +290,7 @@ struct CleanupView: View {
     private var learned: some View {
         let model = app.cleanup
         return CardSection(title: "Чему научился",
-                           footer: "Учусь только на этом Mac и только на ваших ответах. Что вы вернули из Корзины и машины, которые решили оставить, больше не предлагаю; похожее на то, что вы обычно убираете в сейф, добавляю в вопрос о сейфе. Сам ничего не делаю — только спрашиваю.") {
+                           footer: "Учусь только на этом Mac и только на ваших ответах. Что вы вернули из Корзины, больше не предлагаю; похожее на то, что вы обычно убираете в сейф, добавляю в вопрос о сейфе. Сам ничего не делаю — только спрашиваю.") {
             if model.habits.isEmpty {
                 HStack(alignment: .top, spacing: 12) {
                     IconTile(systemImage: "sparkles", tone: .neutral)
@@ -526,7 +514,7 @@ struct CleanupView: View {
                         .controlSize(.large)
                         .keyboardShortcut(.defaultAction)
                         .help(open.count > together.count
-                              ? "Ответить «да» на все вопросы, кроме виртуальных машин: о каждой спрашиваю отдельно"
+                              ? "Ответить «да» на все вопросы, кроме установщиков: их удаляю только по отдельному ответу"
                               : "Ответить «да» на все вопросы")
                     }
                     if !model.isSettled {
@@ -676,22 +664,12 @@ struct QuestionCard: View {
                     Label(hint, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
                 }
-                if case .machine = question.kind {
-                    Button("Показать в Finder") { if let url = question.machine?.url { revealInFinder(url) } }
-                        .buttonStyle(.link).font(.callout)
-                }
                 Spacer(minLength: 12)
                 Button(question.noTitle, action: no)
                     .controlSize(.large)
-                if case .machine = question.kind {
-                    Button(question.yesTitle, role: .destructive, action: yes)
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                } else {
-                    Button(question.yesTitle, action: yes)
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                }
+                Button(question.yesTitle, action: yes)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
             }
         case .queued:
             HStack(spacing: 10) {
@@ -737,7 +715,7 @@ struct QuestionCard: View {
             }
         case .declined:
             HStack(spacing: 10) {
-                Text(question.kind.isMachine ? "Оставляю — больше не спрошу." : "Не трогаю. Спрошу в следующий раз.")
+                Text("Не трогаю. Спрошу в следующий раз.")
                     .font(.callout).foregroundStyle(.secondary)
                 Spacer(minLength: 12)
                 Button("Передумал", action: reconsider).buttonStyle(.link)
@@ -756,9 +734,7 @@ struct QuestionCard: View {
             case .module(.safe):
                 parts.append("Убрано в сейф: \(Format.bytes(outcome.bytes)), \(outcome.done) из \(question.items.count)")
             case .docker:
-                parts.append("Docker удалил \(Format.bytes(outcome.bytes))")
-            case .machine:
-                parts.append("Машина в Корзине — \(Format.bytes(outcome.bytes))")
+                parts.append(outcome.bytes > 0 ? "Docker удалил \(Format.bytes(outcome.bytes))" : "Docker очищен")
             case .module:
                 parts.append("В Корзине: \(Format.bytes(outcome.bytes)), \(outcome.done) из \(question.items.count)")
             }
@@ -792,12 +768,6 @@ struct QuestionCard: View {
     }
 }
 
-extension CleanupQuestion.Kind {
-    var isMachine: Bool {
-        if case .machine = self { return true }
-        return false
-    }
-}
 
 /// Строка «Что именно»: что это, где лежит и почему попало в вопрос. Без флажков — решение одно на весь вопрос.
 struct FoundRow: View {

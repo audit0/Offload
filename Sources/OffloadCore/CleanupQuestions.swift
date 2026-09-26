@@ -6,34 +6,30 @@ public struct CleanupQuestion: Sendable, Identifiable, Hashable {
     public enum Kind: Sendable, Hashable {
         /// Найденное разбором: мусор, лишние копии, установщики, крупное и старое, проекты.
         case module(CleanupModule)
-        /// Кеш сборки и образы Docker, которые не нужны ни одному контейнеру.
+        /// Кеш сборки и образы Docker без имени (остатки пересборок).
         case docker
-        /// Виртуальная машина UTM, которую давно не запускали, — о каждой отдельно. Путь к пакету.
-        case machine(String)
     }
 
     public var kind: Kind
     public var id: Kind { kind }
-    /// С чем что-то произойдёт при «да». У Docker и машины пусто.
+    /// С чем что-то произойдёт при «да». У Docker пусто.
     public var items: [CleanupSuggestion]
     /// Копии, которые остаются: с ними лишние сверяются перед удалением.
     public var keepers: [CleanupSuggestion]
     /// Сколько освободится на Mac. Бэкап места на Mac не освобождает — у проектов ноль.
     public var bytes: Int64
-    /// Что уберёт Docker и сколько каждого.
+    /// Что уберёт Docker и сколько каждого (0 — Docker не сообщает размер, как у образов без имени).
     public var docker: [DockerPruneTarget: Int64]
-    public var machine: UTMMachine?
     /// Найдено, но в вопрос не вошло, — и почему (кеш открытой программы).
     public var notes: [String]
 
     public init(kind: Kind, items: [CleanupSuggestion] = [], keepers: [CleanupSuggestion] = [], bytes: Int64,
-                docker: [DockerPruneTarget: Int64] = [:], machine: UTMMachine? = nil, notes: [String] = []) {
+                docker: [DockerPruneTarget: Int64] = [:], notes: [String] = []) {
         self.kind = kind
         self.items = items
         self.keepers = keepers
         self.bytes = bytes
         self.docker = docker
-        self.machine = machine
         self.notes = notes
     }
 
@@ -41,15 +37,14 @@ public struct CleanupQuestion: Sendable, Identifiable, Hashable {
     public var action: CleanupAction {
         switch kind {
         case .module(let module): return module.action
-        case .docker, .machine: return .trash
+        case .docker: return .trash
         }
     }
 
-    /// Отвечается вместе со всеми по «Разрешить всё». Машина — целый компьютер с системой и файлами:
-    /// о каждой спрашиваем отдельно.
+    /// Отвечается вместе со всеми по «Разрешить всё». Установщики — нет: удалить их решает человек,
+    /// глядя на список (правило владельца), поэтому только отдельным «да» на их вопрос.
     public var answeredTogether: Bool {
-        if case .machine = kind { return false }
-        return true
+        kind != .module(.installers)
     }
 
     /// Короткие названия того, что в вопросе, для одной строки: «Кеш npm», «Отпуск 2023.mov».
@@ -62,28 +57,24 @@ public struct CleanupQuestion: Sendable, Identifiable, Hashable {
             }
         case .module:
             return items.map(\.url.lastPathComponent)
-        case .docker, .machine:
+        case .docker:
             return []
         }
     }
 }
 
 public enum CleanupQuestions {
-    /// Машину, которую не запускали столько дней, предлагаем удалить.
-    public static let machineStaleDays: Double = 30
-    /// О машинах меньше этого не спрашиваем: места почти не освободится.
-    public static let machineMinimumBytes: Int64 = 1_000_000_000
     /// О Docker спрашиваем, если он отдаст хотя бы столько.
     public static let dockerMinimumBytes: Int64 = 100_000_000
-    /// Что убирает Docker по «да». Остановленных контейнеров здесь нет: в них бывают данные без тома.
-    public static let dockerTargets: [DockerPruneTarget] = [.buildCache, .images]
+    /// Что убирает Docker по «да»: только то, что точно не нужно. Все неиспользуемые образы — нет:
+    /// собранный человеком и никуда не отправленный образ не скачать заново. Остановленных
+    /// контейнеров тоже нет: в них бывают данные без тома.
+    public static let dockerTargets: [DockerPruneTarget] = [.buildCache, .danglingImages]
 
-    /// Вопросы в том порядке, в котором их задавать: сначала то, что пересоздаётся само,
-    /// потом личное, машины — последними и каждая отдельно.
-    ///
-    /// `keptMachines` — машины, которые вы уже решили оставить: о них больше не спрашиваем.
-    public static func build(_ suggestions: [CleanupSuggestion], docker: DockerUsage? = nil, machines: [UTMMachine] = [],
-                             keptMachines: Set<String> = [], now: Date = Date()) -> [CleanupQuestion] {
+    /// Вопросы в том порядке, в котором их задавать: сначала то, что пересоздаётся само, потом личное.
+    /// Виртуальные машины UTM здесь не удаляются: удалять и переносить их нужно в самом UTM,
+    /// иначе он их потеряет (см. «Освободить место» → «Как освободить…»).
+    public static func build(_ suggestions: [CleanupSuggestion], docker: DockerUsage? = nil) -> [CleanupQuestion] {
         func found(_ module: CleanupModule) -> [CleanupSuggestion] { suggestions.filter { $0.module == module } }
         func total(_ items: [CleanupSuggestion]) -> Int64 { items.reduce(0) { $0 + $1.bytes } }
         var questions: [CleanupQuestion] = []
@@ -99,6 +90,8 @@ public enum CleanupQuestions {
         if let docker {
             var parts: [DockerPruneTarget: Int64] = [:]
             for target in dockerTargets {
+                // Образы без имени: сколько они занимают, docker system df не сообщает, а чистить их надо всё равно.
+                if target == .danglingImages { parts[target] = 0; continue }
                 if let bytes = docker.part(target)?.reclaimable, bytes > 0 { parts[target] = bytes }
             }
             let bytes = parts.values.reduce(0, +)
@@ -127,12 +120,6 @@ public enum CleanupQuestions {
 
         let projects = found(.projects).filter { $0.action == .backup }
         if !projects.isEmpty { questions.append(CleanupQuestion(kind: .module(.projects), items: projects, bytes: 0)) }
-
-        for machine in machines.sorted(by: { ($0.bytes, $1.url.path) > ($1.bytes, $0.url.path) })
-        where machine.bytes >= machineMinimumBytes && !keptMachines.contains(machine.url.path) {
-            guard let modified = machine.modified, now.timeIntervalSince(modified) >= machineStaleDays * 86_400 else { continue }
-            questions.append(CleanupQuestion(kind: .machine(machine.url.path), bytes: machine.bytes, machine: machine))
-        }
         return questions
     }
 }
