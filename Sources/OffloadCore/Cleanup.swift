@@ -160,7 +160,8 @@ public struct CleanupPlanner: Sendable {
         for suggestion in top where byPath[suggestion.id] == nil { byPath[suggestion.id] = suggestion }
         var copies: [CleanupSuggestion] = []
         for group in duplicates {
-            // Установщик или кеш и так уходят в Корзину по своему правилу — в группе им делать нечего.
+            // Установщик и кеш удаляются по своим правилам (установщик — если так решите вы), и в группе
+            // им делать нечего: там последнюю копию удалить было бы нельзя.
             let rest = group.copies.filter { byPath[$0.url.path]?.allowed.contains(.trash) != true }
             guard rest.count > 1 else { continue }
             copies += duplicateSuggestions(DuplicateGroup(id: group.id, bytes: group.bytes, copies: rest), topLevel: byPath)
@@ -256,6 +257,13 @@ extension CleanupPlanner {
         if copy.sharesData { return "Клон другой копии: данные у них общие, и удаление места не освободит." }
         if let folder = managedFolder(copy.url) {
             return "Файл медиатеки в ~/\(folder): приложение найдёт его только на этом месте."
+        }
+        // Как и сами образы в разборе: зашифрованный .dmg — личные данные, к .iso бывает подключена виртуальная машина.
+        if copy.isEncryptedImage {
+            return "Зашифрованный образ диска — похоже, в нём ваши данные. Удалить его из разбора нельзя."
+        }
+        if copy.url.pathExtension.lowercased() == "iso" {
+            return "Образ .iso: к нему бывает подключена виртуальная машина. Удалить его из разбора нельзя."
         }
         return nil
     }
