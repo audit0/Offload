@@ -37,6 +37,11 @@ struct UTMSheet: View {
         utmApp = NSWorkspace.shared.urlForApplication(withBundleIdentifier: UTMMachines.bundleIdentifier)
         let home = app.rules.home
         let focus = item.url
+        // В демонстрации настоящие машины не показываются.
+        if Demo.isOn {
+            machines = Demo.utmMachines
+            return
+        }
         machines = await Task.detached(priority: .userInitiated) {
             var machines = UTMMachines.list(in: UTMMachines.folder(home: home))
             // Машину, открытую в UTM из другой папки, в его папке не найти — покажем и её.

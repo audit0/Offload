@@ -229,7 +229,8 @@ extension DockerPruneTarget {
     var title: String {
         switch self {
         case .buildCache: return "Кеш сборки"
-        case .images: return "Неиспользуемые образы"
+        case .danglingImages: return "Образы без имени"
+        case .images: return "Все неиспользуемые образы"
         case .containers: return "Остановленные контейнеры"
         }
     }
@@ -238,8 +239,10 @@ extension DockerPruneTarget {
         switch self {
         case .buildCache:
             return "Промежуточные слои от docker build. Следующая сборка пойдёт дольше, пока кеш не наберётся заново."
+        case .danglingImages:
+            return "Остатки пересборок с именем <none>: запустить их не по чему, ни один контейнер их не использует."
         case .images:
-            return "Образы, которые не нужны ни одному контейнеру. Docker скачает их заново, когда понадобятся; собранные вами и никуда не отправленные придётся собрать снова."
+            return "Образы, которые не нужны ни одному контейнеру. Docker скачает их заново, когда понадобятся; собранные вами и никуда не отправленные придётся собрать снова. Отмечайте сами."
         case .containers:
             return "Всё, что записано внутри контейнера, а не в томе, пропадёт вместе с ним. Образы удалённых контейнеров тоже освободятся."
         }
@@ -250,10 +253,12 @@ extension DockerPruneTarget {
 struct DockerPruneSheet: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
-    /// Остановленные контейнеры по умолчанию не отмечены: в них могут быть данные без тома.
-    @State private var targets: Set<DockerPruneTarget> = [.buildCache, .images]
+    /// Сразу отмечено только то, что точно не нужно: кеш сборки и образы без имени. Все неиспользуемые
+    /// образы — нет: собранный вами и никуда не отправленный образ не скачать. Остановленные
+    /// контейнеры — тоже нет: в них могут быть данные без тома.
+    @State private var targets: Set<DockerPruneTarget> = [.buildCache, .danglingImages]
 
-    private static let order: [DockerPruneTarget] = [.buildCache, .images, .containers]
+    private static let order: [DockerPruneTarget] = [.buildCache, .danglingImages, .images, .containers]
 
     var body: some View {
         let model = app.docker

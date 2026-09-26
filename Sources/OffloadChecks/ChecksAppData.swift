@@ -37,6 +37,14 @@ func checksAppData() {
               "очистка никогда не трогает тома")
         check(arguments.allSatisfy { $0.contains("--force") }, "docker не ждёт подтверждения, которого никто не даст")
         check(DockerPruneTarget.allCases.first == .containers, "контейнеры чистятся первыми — иначе их образы ещё заняты")
+        check(!DockerService.pruneArguments(.danglingImages).contains("--all"),
+              "образы без имени чистятся без --all: образы с именем, собранные человеком, остаются")
+        check(DockerService.pruneArguments(.images).contains("--all"), "все неиспользуемые образы — только по отдельной галочке")
+        check(DockerService.pruneOrder([.buildCache, .danglingImages]) == [.danglingImages, .buildCache],
+              "сразу отмеченное: образы без имени и кеш сборки")
+        check(DockerService.pruneOrder([.images, .danglingImages, .containers]) == [.containers, .images],
+              "отмечены все образы — образы без имени второй раз не чистятся")
+        check(DockerUsage().reclaimable([.danglingImages]) == 0, "размер образов без имени неизвестен — в оценку не входит")
     }
 
     section("Данные Docker и UTM: чьи это строки") {

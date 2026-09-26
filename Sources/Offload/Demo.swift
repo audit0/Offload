@@ -162,4 +162,43 @@ enum Demo {
     static var backupSources: [URL] {
         ["Projects", "Documents", "Desktop"].map { home.appendingPathComponent($0, isDirectory: true) }
     }
+
+    // MARK: - Docker и UTM
+
+    static let dockerRawBytes: Int64 = 64 * gigabyte
+
+    static var dockerVolumes: [DockerVolume] {
+        func volume(_ name: String, _ gb: Double, daysAgo: Double, usedBy: [String] = []) -> DockerVolume {
+            DockerVolume(name: name, createdAt: Date().addingTimeInterval(-daysAgo * 86_400),
+                         sizeBytes: Int64(gb * Double(gigabyte)), usedBy: usedBy)
+        }
+        return [
+            volume("postgres-data", 12.4, daysAgo: 40, usedBy: ["shop-db"]),
+            volume("ml-datasets", 9.8, daysAgo: 120),
+            volume("redis-cache", 0.6, daysAgo: 40, usedBy: ["shop-cache"]),
+            volume("old-wordpress", 3.2, daysAgo: 400),
+            volume("minio-storage", 5.1, daysAgo: 200),
+        ]
+    }
+
+    static var dockerUsage: DockerUsage {
+        DockerUsage(images: .init(count: 24, active: 6, bytes: 18 * gigabyte, reclaimable: 11 * gigabyte),
+                    containers: .init(count: 9, active: 3, bytes: 400_000_000, reclaimable: 250_000_000),
+                    volumes: .init(count: 5, active: 2, bytes: 31 * gigabyte, reclaimable: 18 * gigabyte),
+                    buildCache: .init(count: 140, active: 0, bytes: 9 * gigabyte, reclaimable: 9 * gigabyte))
+    }
+
+    static var utmMachines: [UTMMachine] {
+        let folder = home.appendingPathComponent("Library/Containers/com.utmapp.UTM/Data/Documents", isDirectory: true)
+        func machine(_ name: String, _ gb: Double, logical: Double, daysAgo: Double) -> UTMMachine {
+            UTMMachine(url: folder.appendingPathComponent("\(name).utm", isDirectory: true), bytes: Int64(gb * Double(gigabyte)),
+                       logicalBytes: Int64(logical * Double(gigabyte)), largestFile: Int64(gb * 0.95 * Double(gigabyte)),
+                       modified: Date().addingTimeInterval(-daysAgo * 86_400))
+        }
+        return [
+            machine("Windows 11", 38.2, logical: 64, daysAgo: 3),
+            machine("Ubuntu 24.04", 11.5, logical: 32, daysAgo: 45),
+            machine("macOS Sequoia", 24.9, logical: 80, daysAgo: 210),
+        ]
+    }
 }
