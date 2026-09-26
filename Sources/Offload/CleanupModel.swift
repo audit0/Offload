@@ -2,33 +2,31 @@ import AppKit
 import Observation
 import OffloadCore
 
-/// Разбор Mac одной кнопкой — по образцу Smart Care в CleanMyMac: «Начать» → плитки → «Выполнить».
+/// Разбор Mac: поиск → вопросы → ответы. Человек не выбирает по файлам и не ходит по папкам:
+/// Offload сам раскладывает найденное по вопросам («Удалить мусор — 12 ГБ?», «Очистить Docker?»,
+/// «Удалить машину «Windows 11»?»), а на каждый отвечают «да» или «не сейчас». Сделанное по «да»
+/// видно сразу у вопроса (`CleanupQuestions`).
 ///
-/// Сразу отмечено только то, что программы создадут заново (мусор), и то, что ничего не удаляет
-/// (проекты — в список бэкапа). Личное — крупное и старое, лишние копии, установщики — Offload
-/// находит и объясняет, а отмечаете вы. Ваш выбор запоминается: тот же объект в следующий раз
-/// будет отмечен так же, а похожее — так, как вы обычно решаете (привычки, `HabitModel`).
-///
-/// Удаление — только в Корзину, и после разбора всё ушедшее туда можно вернуть одной кнопкой
-/// или удалить насовсем, чтобы место освободилось сразу. Перенос в сейф — тот же, что
-/// в «Освободить место», со сверкой; лишняя копия перед удалением сверяется с остающейся байт в байт.
+/// Удаление — только в Корзину (образы Docker удаляет сам Docker), и ушедшее туда можно вернуть
+/// у своего вопроса или удалить насовсем в конце, чтобы место освободилось сразу. Перенос в сейф —
+/// тот же, что в «Освободить место», со сверкой; лишняя копия перед удалением сверяется
+/// с остающейся байт в байт.
 @MainActor
 @Observable
 final class CleanupModel {
     enum Stage: Equatable {
         case idle
         case scanning(ScanProgress)
+        /// Найденное разложено по вопросам: человек отвечает, Offload делает.
         case review
-        case running(Progress)
-        case done(Report)
     }
 
-    /// Поиск: сколько просмотрено, что сейчас и что уже нашлось по плиткам.
+    /// Поиск: сколько просмотрено, что сейчас и что уже нашлось по видам.
     struct ScanProgress: Equatable {
         var done = 0
         var total = 0
         var current = ""
-        /// Сколько нашлось по плиткам: байты, у проектов — штуки.
+        /// Сколько нашлось по видам: байты, у проектов — штуки.
         var found: [CleanupModule: Int64] = [:]
         /// Второй этап — поиск одинаковых файлов. Сколько их всего, заранее неизвестно.
         var duplicates = false
@@ -41,7 +39,6 @@ final class CleanupModel {
         var item: String
         var phase: String
         var fraction: Double
-        var module: CleanupModule?
     }
 
     /// Что ушло в Корзину в этот раз: откуда и где лежит теперь.
@@ -57,41 +54,45 @@ final class CleanupModel {
         var isStillInTrash: Bool { identity != nil && FileIdentity.of(inTrash) == identity }
     }
 
-    struct Report: Equatable {
-        var trashed = 0
-        var trashedBytes: Int64 = 0
-        var moved = 0
-        var movedBytes: Int64 = 0
-        var addedToBackup = 0
-        /// Сколько из ушедшего в Корзину — лишние копии одинаковых файлов.
+    /// Что сделано по одному вопросу.
+    struct Outcome: Equatable {
+        /// Сколько объектов сделано.
+        var done = 0
+        var bytes: Int64 = 0
+        /// Сколько из сделанного — лишние копии, сверенные с остающейся.
         var duplicates = 0
-        var duplicateBytes: Int64 = 0
-        /// Что не сделано и почему — каждое отдельной строкой.
-        var problems: [String] = []
-        var cancelled = false
-        /// Свободно на диске Mac до разбора и сейчас: столько освободилось на самом деле.
-        var freeBefore: Int64?
-        var freeNow: Int64?
         /// То, что можно вернуть из Корзины или удалить насовсем.
         var trashedItems: [TrashedItem] = []
         var restored = 0
-        var erased = 0
-        var erasedBytes: Int64 = 0
+        /// Что не сделано и почему — каждое отдельной строкой.
+        var problems: [String] = []
+        var cancelled = false
+    }
 
-        /// Сколько освободилось на диске Mac: по замеру, а не по сумме размеров.
-        var freed: Int64? {
-            guard let freeBefore, let freeNow else { return nil }
-            return freeNow - freeBefore
-        }
+    /// Где вопрос сейчас.
+    enum Answer: Equatable {
+        case asking
+        case queued
+        case running(Progress)
+        case done(Outcome)
+        case declined
     }
 
     private(set) var stage: Stage = .idle
-    private(set) var suggestions: [CleanupSuggestion] = []
-    /// Выбор человека поверх того, что отмечено сразу. Меняется через `setChecked`, чтобы
-    /// у каждой группы одинаковых файлов оставалась хотя бы одна копия.
-    private(set) var choices: [String: CleanupAction] = [:]
-    /// Группы одинаковых файлов в порядке списка: сначала те, где освободится больше.
-    private(set) var duplicateGroups: [String] = []
+    private(set) var questions: [CleanupQuestion] = []
+    private(set) var answers: [CleanupQuestion.Kind: Answer] = [:]
+    /// Почему «да» пока не выполнено (например, открыт UTM) — видно под вопросом.
+    private(set) var hints: [CleanupQuestion.Kind: String] = [:]
+    /// Docker стоит, но не запущен: столько занимает его диск, а что в нём можно убрать, не узнать.
+    private(set) var dockerIdle: Int64?
+    /// Свободно на Mac перед первым «да» и после последнего сделанного — по замеру, а не по сумме размеров.
+    private(set) var freeBefore: Int64?
+    private(set) var freeNow: Int64?
+    /// Удалено насовсем из Корзины в конце разбора.
+    private(set) var erased = 0
+    private(set) var erasedBytes: Int64 = 0
+    /// Что не получилось у «Вернуть» и «Удалить насовсем».
+    private(set) var trashProblems: [String] = []
     private(set) var lastRun: DecisionStore.Run?
     /// База решений не открылась: разбор работает, но ничего не запоминает.
     private(set) var storeProblem: String?
@@ -103,14 +104,21 @@ final class CleanupModel {
     /// Что человек просил больше не предлагать.
     private(set) var ignored: [String] = []
     private(set) var ignoreProblem: String?
-    /// Что делается с ушедшим в Корзину после разбора («Возвращаю…»): пока не nil, кнопки заблокированы.
+    /// Что делается с ушедшим в Корзину («Возвращаю…»): пока не nil, кнопки заблокированы.
     private(set) var finishing: String?
 
     @ObservationIgnored private var store: DecisionStore?
-    @ObservationIgnored private var token = CancelToken()
-    /// Копии каждой группы и папки из списка, в которых лежат копии: считаются один раз на список.
-    @ObservationIgnored private var copiesByGroup: [String: [CleanupSuggestion]] = [:]
-    @ObservationIgnored private var containers: [String: CleanupSuggestion] = [:]
+    @ObservationIgnored private var scanToken = CancelToken()
+    @ObservationIgnored private var workToken = CancelToken()
+    /// Вопросы, на которые ответили «да», по очереди: диск работает над одним.
+    @ObservationIgnored private var queue: [CleanupQuestion.Kind] = []
+    @ObservationIgnored private var working = false
+    /// Всё найденное: из него вопросы собираются заново, когда человек просит что-то не предлагать.
+    @ObservationIgnored private var suggestions: [CleanupSuggestion] = []
+    @ObservationIgnored private var docker: DockerUsage?
+    @ObservationIgnored private var machines: [UTMMachine] = []
+    @ObservationIgnored private var keptMachines: Set<String> = []
+    @ObservationIgnored private var runRecorded = false
 
     init() {
         do {
@@ -145,132 +153,402 @@ final class CleanupModel {
     }
 
     var isBusy: Bool {
-        switch stage {
-        case .scanning, .running: return true
-        default: return finishing != nil
+        if case .scanning = stage { return true }
+        return working || finishing != nil
+    }
+
+    // MARK: - Вопросы и ответы
+
+    func question(_ kind: CleanupQuestion.Kind) -> CleanupQuestion? { questions.first { $0.kind == kind } }
+
+    func answer(for kind: CleanupQuestion.Kind) -> Answer { answers[kind] ?? .asking }
+
+    /// На что ещё не ответили.
+    var asking: [CleanupQuestion] { questions.filter { answer(for: $0.kind) == .asking } }
+
+    /// Сколько освободится, если на всё неотвеченное сказать «да».
+    var pendingBytes: Int64 { asking.reduce(0) { $0 + $1.bytes } }
+
+    /// Всё ушедшее в Корзину в этом разборе.
+    var trashedItems: [TrashedItem] {
+        questions.flatMap { question -> [TrashedItem] in
+            if case .done(let outcome) = answer(for: question.kind) { return outcome.trashedItems }
+            return []
         }
     }
 
-    // MARK: - Выбор
-
-    func choice(for suggestion: CleanupSuggestion) -> CleanupAction {
-        choices[suggestion.id] ?? suggestion.defaultChoice
+    /// По «да» что-нибудь уже сделано.
+    var hasDone: Bool {
+        questions.contains { if case .done = answer(for: $0.kind) { return true } else { return false } }
     }
 
-    /// Отмечен ли объект: с ним что-то произойдёт при выполнении.
-    func isChecked(_ suggestion: CleanupSuggestion) -> Bool { choice(for: suggestion) != .keep }
-
-    /// Можно ли отметить: действие плитки разрешено, а у копии — если останется другая.
-    func canCheck(_ suggestion: CleanupSuggestion) -> Bool {
-        guard let action = suggestion.module?.action else { return false }
-        return options(for: suggestion).contains(action)
-    }
-
-    func setChecked(_ checked: Bool, for suggestion: CleanupSuggestion) {
-        guard let action = suggestion.module?.action else { return }
-        if checked, !canCheck(suggestion) { return }
-        choices[suggestion.id] = checked ? action : .keep
-        keepOneCopyEach()
-    }
-
-    /// Отметить или снять всю плитку. У одинаковых файлов «всё» — это все лишние копии:
-    /// первая копия группы — та, что остаётся, — не отмечается.
-    func setChecked(_ checked: Bool, module: CleanupModule) {
-        for suggestion in items(module) {
-            if checked {
-                guard suggestion.allowed.contains(module.action) else { continue }
-                if let group = suggestion.duplicateGroup, copies(in: group).first?.id == suggestion.id { continue }
-            }
-            choices[suggestion.id] = checked ? module.action : .keep
-        }
-        keepOneCopyEach()
-    }
-
-    /// Что станет с объектом при выполнении. Копия, выбранная в Корзину, но лежащая в папке,
-    /// которая уезжает в сейф, едет вместе с папкой: удалить её до переноса значило бы
-    /// поменять папку, и перенос остановился бы на свежем изменении.
-    func effectiveChoice(for suggestion: CleanupSuggestion) -> CleanupAction {
-        let chosen = choice(for: suggestion)
-        return chosen == .trash && carrier(of: suggestion) != nil ? .keep : chosen
-    }
-
-    /// Папка из списка, выбранная в сейф, внутри которой лежит копия.
-    func carrier(of suggestion: CleanupSuggestion) -> CleanupSuggestion? {
-        guard let container = containers[suggestion.id], choice(for: container) == .safe else { return nil }
-        return container
-    }
-
-    /// Всё, что показано в плитке.
-    func items(_ module: CleanupModule) -> [CleanupSuggestion] {
-        suggestions.filter { $0.module == module }
-    }
-
-    /// Что в плитке отмечено и будет сделано.
-    func selected(_ module: CleanupModule) -> [CleanupSuggestion] {
-        items(module).filter { effectiveChoice(for: $0) == module.action }
-    }
-
-    func bytes(_ list: [CleanupSuggestion]) -> Int64 { list.reduce(0) { $0 + $1.bytes } }
-
-    /// Сколько освободится на Mac из отмеченного: удаляемое и то, что уезжает в сейф.
-    var selectedBytes: Int64 {
-        CleanupModule.allCases.filter { $0.action != .backup }.reduce(0) { $0 + bytes(selected($1)) }
-    }
-
-    var hasSelection: Bool { CleanupModule.allCases.contains { !selected($0).isEmpty } }
-
-    func copies(in group: String) -> [CleanupSuggestion] { copiesByGroup[group] ?? [] }
-
-    /// Что можно выбрать для объекта: у последней остающейся копии группы Корзины нет.
-    func options(for suggestion: CleanupSuggestion) -> [CleanupAction] {
-        guard let group = suggestion.duplicateGroup else { return suggestion.allowed }
-        return CleanupPlanner.options(for: suggestion, in: copies(in: group), effective: { self.effectiveChoice(for: $0) })
-    }
-
-    /// Сколько освободится в группе при нынешнем выборе.
-    func freedBytes(in group: String) -> Int64 {
-        copies(in: group).filter { effectiveChoice(for: $0) == .trash }.reduce(0) { $0 + $1.bytes }
-    }
-
-    /// Выбор у папки мог оставить группу без остающейся копии (копия ехала в сейф вместе с папкой) —
-    /// тогда первая копия группы снова остаётся.
-    private func keepOneCopyEach() {
-        for group in duplicateGroups {
-            let copies = copies(in: group)
-            if let first = copies.first, copies.allSatisfy({ effectiveChoice(for: $0) == .trash }) {
-                choices[first.id] = .keep
+    /// На всё ответили, и ничего не делается.
+    var isSettled: Bool {
+        !working && questions.allSatisfy {
+            switch answer(for: $0.kind) {
+            case .done, .declined: return true
+            default: return false
             }
         }
     }
 
-    /// Раскладывает найденное: группы одинаковых файлов, папки, в которых лежат копии.
-    /// Группа, от которой осталась одна копия (остальные просили не предлагать), не показывается.
-    private func show(_ found: [CleanupSuggestion]) {
-        var groups: [String: [CleanupSuggestion]] = [:]
-        for suggestion in found {
-            if let group = suggestion.duplicateGroup { groups[group, default: []].append(suggestion) }
+    /// Освободилось на Mac — по замеру свободного места.
+    var freed: Int64? {
+        guard let freeBefore, let freeNow else { return nil }
+        return freeNow - freeBefore
+    }
+
+    /// «Да» на вопрос о сейфе требует открытого сейфа: сначала спросить пароль.
+    func needsSafe(_ kind: CleanupQuestion.Kind, app: AppModel) -> Bool {
+        kind == .module(.safe) && app.safeVolume == nil && !Demo.isOn
+    }
+
+    /// Ответ на вопрос. «Да» ставит его в очередь, и он выполняется, как только дойдёт черёд;
+    /// «не сейчас» ничего не запоминает — в следующий раз спрошу снова. Кроме машины: решили
+    /// оставить — больше не спрашиваю.
+    func answer(_ kind: CleanupQuestion.Kind, yes: Bool, app: AppModel) {
+        guard stage == .review, let question = question(kind), answer(for: kind) == .asking else { return }
+        hints[kind] = nil
+        guard yes else {
+            answers[kind] = .declined
+            if case .machine(let path) = kind, let machine = question.machine {
+                record([DecisionStore.Decision(path: path, action: .keep, bytes: machine.bytes, suggested: .trash,
+                                               kind: .folder, modified: machine.modified)])
+            }
+            settle(app: app)
+            return
         }
-        let lonely = Set(groups.filter { $0.value.count < 2 }.keys)
-        let list = found.filter { $0.duplicateGroup.map { !lonely.contains($0) } ?? true }
-        suggestions = list
-        var order: [String] = []
-        var inside: [String: CleanupSuggestion] = [:]
-        let folders = list.filter { $0.isDirectory && $0.duplicateGroup == nil }
-        for suggestion in list {
-            guard let group = suggestion.duplicateGroup else { continue }
-            if !order.contains(group) { order.append(group) }
-            if let container = CleanupPlanner.container(of: suggestion, in: folders) { inside[suggestion.id] = container }
+        guard !needsSafe(kind, app: app) else { return }
+        answers[kind] = .queued
+        queue.append(kind)
+        pump(app: app)
+    }
+
+    /// «Разрешить всё»: «да» на каждый вопрос, кроме машин — о каждой спрашиваю отдельно.
+    /// Вопрос о сейфе ждёт, пока сейф закрыт; ответ — остался ли он ждать пароля.
+    @discardableResult
+    func answerAll(app: AppModel) -> Bool {
+        for question in asking where question.answeredTogether && !needsSafe(question.kind, app: app) {
+            answer(question.kind, yes: true, app: app)
         }
-        copiesByGroup = groups.filter { !lonely.contains($0.key) }
-        containers = inside
-        duplicateGroups = order
-        choices = choices.filter { id, _ in list.contains { $0.id == id } }
-        keepOneCopyEach()
+        return asking.contains { $0.kind == .module(.safe) }
+    }
+
+    /// Передумал: спросить снова после «не сейчас» или убрать из очереди, пока не начато.
+    func reconsider(_ kind: CleanupQuestion.Kind) {
+        switch answer(for: kind) {
+        case .declined:
+            answers[kind] = .asking
+        case .queued:
+            queue.removeAll { $0 == kind }
+            answers[kind] = .asking
+        default:
+            break
+        }
+    }
+
+    /// Остановить то, что делается сейчас. Сделанное до остановки остаётся.
+    func stop() { workToken.cancel() }
+
+    private func record(_ decisions: [DecisionStore.Decision]) {
+        do {
+            try store?.record(decisions)
+        } catch {
+            storeProblem = error.localizedDescription
+        }
+    }
+
+    // MARK: - Очередь
+
+    private func pump(app: AppModel) {
+        guard !working, !queue.isEmpty else { return }
+        let kind = queue.removeFirst()
+        guard let question = question(kind) else { return pump(app: app) }
+        working = true
+        let token = CancelToken()
+        workToken = token
+        // Выход во время работы спросит и доведёт остановку до конца, как при переносе.
+        let operation = app.beginOperation { token.cancel() }
+        answers[kind] = .running(Progress(index: 0, count: max(question.items.count, 1), item: "", phase: "Подготовка", fraction: 0))
+        let home = app.rules.home
+        Task {
+            if freeBefore == nil { freeBefore = await Self.freeSpace(home: home) }
+            if let outcome = await perform(question, app: app, token: token) {
+                answers[kind] = .done(outcome)
+            } else {
+                answers[kind] = .asking
+            }
+            // «Остановить» или выход из программы останавливает и очередь: ждавшие своего черёда
+            // снова ждут ответа, а не начинаются сами.
+            if token.isCancelled {
+                for waiting in queue { answers[waiting] = .asking }
+                queue = []
+            }
+            freeNow = await Self.freeSpace(home: home)
+            working = false
+            app.endOperation(operation)
+            app.space.invalidateAll()
+            app.refreshVolumes()
+            if question.action == .safe { app.history.reload(volumes: app.historyVolumes) }
+            settle(app: app)
+            pump(app: app)
+        }
+    }
+
+    /// nil — не выполнено и спросить надо снова (причина — в `hints`).
+    private func perform(_ question: CleanupQuestion, app: AppModel, token: CancelToken) async -> Outcome? {
+        switch question.kind {
+        case .module(let module): return await performItems(question, action: module.action, app: app, token: token)
+        case .docker: return await performDocker(question, app: app)
+        case .machine: return await performMachine(question)
+        }
+    }
+
+    private func performItems(_ question: CleanupQuestion, action: CleanupAction, app: AppModel,
+                              token: CancelToken) async -> Outcome {
+        let kind = question.kind
+        // «Да» — решение по каждому объекту вопроса. Запоминается сразу, даже если выполнение
+        // потом остановят: выбор человек сделал. На этом учатся привычки.
+        record(question.items.map {
+            DecisionStore.Decision(path: $0.id, action: action, bytes: $0.bytes, suggested: action, kind: $0.kind, modified: $0.modified)
+        })
+        let rules = app.rules
+        let throttle = Throttle()
+        let items = question.items
+        var outcome = Outcome()
+        items: for (index, item) in items.enumerated() {
+            if token.isCancelled {
+                outcome.cancelled = true
+                break
+            }
+            let name = item.url.lastPathComponent
+            answers[kind] = .running(Progress(index: index + 1, count: items.count, item: name, phase: Self.phase(action), fraction: 0))
+            switch action {
+            case .keep:
+                break
+            case .backup:
+                // Сравниваем пути, а не URL: «папка» и «папка/» — одно и то же.
+                let path = item.url.standardizedFileURL.path
+                if !app.backup.sources.contains(where: { $0.standardizedFileURL.path == path }) {
+                    app.backup.sources.append(item.url)
+                }
+                outcome.done += 1
+            case .trash where item.duplicateGroup != nil:
+                if Demo.isOn {
+                    outcome.done += 1
+                    outcome.bytes += item.bytes
+                    outcome.duplicates += 1
+                    continue items
+                }
+                // Сверяем с копией, которая остаётся и всё ещё на месте (папку с ней могли убрать в сейф).
+                guard let reference = question.keepers.first(where: {
+                    $0.duplicateGroup == item.duplicateGroup && FileManager.default.fileExists(atPath: $0.url.path)
+                }) else {
+                    outcome.problems.append("«\(name)» осталось на месте: копии, с которой его можно сверить, на месте уже нет.")
+                    continue items
+                }
+                answers[kind] = .running(Progress(index: index + 1, count: items.count, item: name, phase: "Сверка с копией", fraction: 0))
+                let url = item.url
+                let total = max(item.bytes, 1)
+                let compared = Counter()
+                do {
+                    // Сверяется содержимое, а не отпечаток из поиска: файл могли изменить после него.
+                    let trashedAt = try await Task.detached(priority: .userInitiated) { () -> (url: URL, identity: FileIdentity?)?? in
+                        let same = try DuplicateFinder.sameContent(url, reference.url, isCancelled: { token.isCancelled }) { read in
+                            let done = compared.add(Int64(read))
+                            guard throttle.ready() else { return }
+                            Task { @MainActor in
+                                if case .running(var current) = self.answers[kind], current.item == name {
+                                    current.fraction = min(1, Double(done) / Double(total))
+                                    self.answers[kind] = .running(current)
+                                }
+                            }
+                        }
+                        guard same else { return .none }
+                        return .some(try Self.trash(url))
+                    }.value
+                    guard let trashedAt else {
+                        outcome.problems.append("«\(name)» осталось на месте: после поиска оно изменилось и больше не совпадает с «\(reference.url.lastPathComponent)».")
+                        continue items
+                    }
+                    outcome.done += 1
+                    outcome.bytes += item.bytes
+                    outcome.duplicates += 1
+                    if let trashedAt {
+                        outcome.trashedItems.append(TrashedItem(original: url, inTrash: trashedAt.url, bytes: item.bytes, identity: trashedAt.identity))
+                    }
+                } catch is CancellationError {
+                    outcome.cancelled = true
+                    break items
+                } catch {
+                    outcome.problems.append("«\(name)» не удалось отправить в Корзину: \(error.localizedDescription)")
+                }
+            case .trash:
+                if Demo.isOn {
+                    outcome.done += 1
+                    outcome.bytes += item.bytes
+                    continue items
+                }
+                let url = item.url
+                // Программу могли открыть уже после поиска: кеш занятой программы на ходу не удаляем.
+                if let busy = CleanupPlanner.busy(home: rules.home, running: Self.runningApplications())[url.path] {
+                    outcome.problems.append("«\(name)» осталось на месте. \(busy)")
+                    continue items
+                }
+                do {
+                    let trashedAt = try await Task.detached(priority: .userInitiated) { try Self.trash(url) }.value
+                    outcome.done += 1
+                    outcome.bytes += item.bytes
+                    if let trashedAt {
+                        outcome.trashedItems.append(TrashedItem(original: url, inTrash: trashedAt.url, bytes: item.bytes, identity: trashedAt.identity))
+                    }
+                } catch {
+                    outcome.problems.append("«\(name)» не удалось отправить в Корзину: \(error.localizedDescription)")
+                }
+            case .safe:
+                guard let volume = app.safeVolume ?? (Demo.isOn ? Demo.safeVolume : nil) else {
+                    outcome.problems.append("«\(name)»: сейф закрыт — осталось на месте.")
+                    continue items
+                }
+                if Demo.isOn {
+                    outcome.done += 1
+                    outcome.bytes += item.bytes
+                    continue items
+                }
+                let source = item.url
+                let shown = Set(item.cautions)
+                let plan = await Task.detached(priority: .userInitiated) {
+                    SafeMover(rules: rules).plan(source: source, volume: volume, isCancelled: { token.isCancelled })
+                }.value
+                if token.isCancelled {
+                    outcome.cancelled = true
+                    break items
+                }
+                guard plan.canProceed else {
+                    let reason = (plan.verdict.isBlocked ? plan.verdict.notes : plan.check.blockers).first ?? "перенос невозможен"
+                    outcome.problems.append("«\(name)»: \(reason)")
+                    continue items
+                }
+                // Оговорки, которых человек не видел, когда разрешал (например, что папку меняли вчера), —
+                // повод спросить отдельно, а не перенести молча.
+                if case .caution(let notes) = plan.verdict, let unseen = notes.first(where: { !shown.contains($0) }) {
+                    outcome.problems.append("«\(name)» осталось на месте: \(unseen) Перенесите вручную в «Освободить место», если уверены.")
+                    continue items
+                }
+                do {
+                    let moved = try await Task.detached(priority: .userInitiated) {
+                        try SafeMover(rules: rules).execute(plan, deleteOriginal: true, acceptCautions: true,
+                                                            isCancelled: { token.isCancelled }) { progress in
+                            guard throttle.ready() else { return }
+                            Task { @MainActor in
+                                if case .running(var current) = self.answers[kind], current.item == name {
+                                    current.phase = progress.phase.rawValue
+                                    current.fraction = progress.fraction
+                                    self.answers[kind] = .running(current)
+                                }
+                            }
+                        }
+                    }.value
+                    outcome.done += 1
+                    outcome.bytes += moved.bytes
+                } catch is CancellationError {
+                    outcome.cancelled = true
+                    break items
+                } catch {
+                    outcome.problems.append("«\(name)»: \(error.localizedDescription)")
+                }
+            }
+        }
+        return outcome
+    }
+
+    /// Кеш сборки и образы без контейнеров. Тома не трогаются.
+    private func performDocker(_ question: CleanupQuestion, app: AppModel) async -> Outcome {
+        let kind = question.kind
+        var outcome = Outcome()
+        answers[kind] = .running(Progress(index: 1, count: 1, item: "Docker", phase: "Очистка", fraction: 0))
+        if Demo.isOn {
+            outcome.done = 1
+            outcome.bytes = question.bytes
+            return outcome
+        }
+        let service = DockerService()
+        let rawBefore = service.rawDiskBytes()
+        let targets = Set(question.docker.keys)
+        do {
+            let reclaimed = try await Task.detached(priority: .userInitiated) { try service.prune(targets) }.value
+            answers[kind] = .running(Progress(index: 1, count: 1, item: "Docker", phase: "Жду, пока Docker вернёт место Mac", fraction: 1))
+            _ = await DockerModel.settle(service, before: rawBefore)
+            outcome.done = 1
+            outcome.bytes = reclaimed ?? question.bytes
+        } catch {
+            outcome.problems.append("Docker: \(error.localizedDescription)")
+        }
+        // Раздел «Docker» показывал размеры до очистки.
+        if app.docker.status == .ready { app.docker.reload(app: app) }
+        return outcome
+    }
+
+    /// Машина — в Корзину целиком. Пока открыт UTM, не трогаем: машина может работать.
+    private func performMachine(_ question: CleanupQuestion) async -> Outcome? {
+        guard let machine = question.machine else { return Outcome() }
+        let kind = question.kind
+        answers[kind] = .running(Progress(index: 1, count: 1, item: machine.name, phase: "В Корзину", fraction: 0))
+        if Demo.isOn { return Outcome(done: 1, bytes: machine.bytes) }
+        if Self.runningApplications()[UTMMachines.bundleIdentifier] != nil {
+            hints[kind] = "UTM открыт: пока он работает, машину удалять нельзя. Закройте UTM и ответьте ещё раз."
+            return nil
+        }
+        record([DecisionStore.Decision(path: machine.url.path, action: .trash, bytes: machine.bytes, suggested: .trash,
+                                       kind: .folder, modified: machine.modified)])
+        var outcome = Outcome()
+        let url = machine.url
+        do {
+            let trashedAt = try await Task.detached(priority: .userInitiated) { try Self.trash(url) }.value
+            outcome.done = 1
+            outcome.bytes = machine.bytes
+            if let trashedAt {
+                outcome.trashedItems.append(TrashedItem(original: url, inTrash: trashedAt.url, bytes: machine.bytes, identity: trashedAt.identity))
+            }
+        } catch {
+            outcome.problems.append("«\(machine.name)» не удалось отправить в Корзину: \(error.localizedDescription)")
+        }
+        return outcome
+    }
+
+    /// Ответили на всё и всё сделано — итог разбора запоминается.
+    private func settle(app: AppModel) {
+        guard isSettled else { return }
+        recordRun(home: app.rules.home)
+    }
+
+    /// Итог разбора — один раз и только если что-то сделано.
+    private func recordRun(home: URL) {
+        guard hasDone, !runRecorded else { return }
+        runRecorded = true
+        var trashed: Int64 = 0
+        var moved: Int64 = 0
+        var added = 0
+        var failures = 0
+        for question in questions {
+            guard case .done(let outcome) = answer(for: question.kind) else { continue }
+            failures += outcome.problems.count
+            switch question.action {
+            case .trash: trashed += outcome.bytes
+            case .safe: moved += outcome.bytes
+            case .backup: added += outcome.done
+            case .keep: break
+            }
+        }
+        let run = DecisionStore.Run(trashedBytes: trashed, movedBytes: moved, addedToBackup: added, failures: failures)
+        try? store?.recordRun(run)
+        lastRun = run
+        loadHabits(home: home)
     }
 
     // MARK: - Не предлагать
 
-    /// Больше не предлагать объект (папку — вместе со всем, что внутри). Из нынешнего списка он уходит сразу.
+    /// Больше не предлагать объект (папку — вместе со всем, что внутри). Из вопроса он уходит сразу.
     func ignore(_ suggestion: CleanupSuggestion) {
         let path = suggestion.id
         do {
@@ -281,7 +559,12 @@ final class CleanupModel {
             return
         }
         ignored = (try? store?.ignoredPaths()) ?? ignored
-        show(suggestions.filter { $0.id != path && !$0.id.hasPrefix(path + "/") })
+        suggestions.removeAll { $0.id == path || $0.id.hasPrefix(path + "/") }
+        // Лишняя копия без остающейся стала бы последней копией файла — такие группы уходят целиком.
+        var groups: [String: Int] = [:]
+        for suggestion in suggestions { if let group = suggestion.duplicateGroup { groups[group, default: 0] += 1 } }
+        suggestions.removeAll { $0.duplicateGroup.map { (groups[$0] ?? 0) < 2 } ?? false }
+        rebuild()
     }
 
     /// Снова предлагать — со следующего разбора.
@@ -295,30 +578,52 @@ final class CleanupModel {
         ignored = (try? store?.ignoredPaths()) ?? ignored
     }
 
+    /// Собирает заново вопросы, на которые ещё не ответили. На что ответили, то остаётся как было.
+    private func rebuild() {
+        let fresh = CleanupQuestions.build(suggestions, docker: docker, machines: machines, keptMachines: keptMachines)
+        questions = questions.compactMap { old in
+            guard answer(for: old.kind) == .asking else { return old }
+            return fresh.first { $0.kind == old.kind }
+        }
+    }
+
     // MARK: - Поиск
 
     func scan(app: AppModel) {
         guard !isBusy else { return }
-        choices = [:]
+        recordRun(home: app.rules.home)
+        clear()
         let rules = app.rules
         let memory = (try? store?.lastDecisions()) ?? [:]
         let habits = (try? store?.history()).map { HabitModel(history: $0, home: rules.home) }
         let ignored = Set((try? store?.ignoredPaths()) ?? [])
+        keptMachines = Set(memory.filter { $0.value == .keep }.keys)
         if Demo.isOn {
-            show(Demo.cleanupSuggestions(memory: memory, habits: habits))
-            stage = .review
+            show(Demo.cleanupSuggestions(memory: memory, habits: habits), docker: Demo.dockerUsage, idle: nil,
+                 machines: Demo.machines())
             return
         }
         let token = CancelToken()
-        self.token = token
+        scanToken = token
         let sources = app.backup.sources.map(\.standardizedFileURL.path)
-        // Кеш открытой программы сам не отмечается: удалять его на ходу не стоит.
+        // Кеш открытой программы в вопрос не входит: удалять его на ходу не стоит.
         let busy = CleanupPlanner.busy(home: rules.home, running: Self.runningApplications())
         let store = store
         stage = .scanning(ScanProgress())
         let throttle = Throttle(interval: 0.2)
         let tally = ScanTally()
         Task {
+            // Docker и машины UTM — параллельно с поиском по папкам: docker system df думает десятки секунд.
+            async let apps = Task.detached(priority: .userInitiated) { () -> (usage: DockerUsage?, idle: Int64?, machines: [UTMMachine]) in
+                let service = DockerService()
+                var usage: DockerUsage?
+                var idle: Int64?
+                if service.isInstalled {
+                    if (try? service.ensureRunning()) != nil { usage = service.usage() } else { idle = service.rawDiskBytes() }
+                }
+                let machines = UTMMachines.list(in: UTMMachines.folder(home: rules.home), isCancelled: { token.isCancelled })
+                return (usage, idle, machines)
+            }.value
             let found = await Task.detached(priority: .userInitiated) { () -> [CleanupSuggestion] in
                 let regenerable = CleanupPlanner.regenerable(home: rules.home)
                 let roots = CleanupPlanner.roots(home: rules.home)
@@ -344,7 +649,7 @@ final class CleanupModel {
                         isEncryptedImage: !item.isDirectory && item.url.pathExtension.lowercased() == "dmg"
                             && SecretsVault.isEncryptedImage(item.url, attached: attached))
                     collector.append(observation)
-                    // Промежуточный итог — по тем же правилам, что и плитки: видно, что поиск чего-то стоит.
+                    // Промежуточный итог — по тем же правилам, что и вопросы: видно, что поиск чего-то стоит.
                     var progress = planner.isIgnored(path) ? tally.skip() : tally.add(planner.suggest(observation), counted: planner.isWorthShowing)
                     guard throttle.ready() else { return }
                     progress.total = urls.count
@@ -380,209 +685,43 @@ final class CleanupModel {
                 }
                 return planner.suggestions(collector.all, duplicates: result.groups)
             }.value
+            if case .scanning(var progress) = stage, !token.isCancelled {
+                progress.current = "Docker и виртуальные машины UTM…"
+                stage = .scanning(progress)
+            }
+            let external = await apps
             guard !token.isCancelled else {
                 stage = .idle
                 return
             }
-            show(found)
-            stage = .review
+            show(found, docker: external.usage, idle: external.idle, machines: external.machines)
         }
     }
 
-    // MARK: - Выполнение
+    private func show(_ found: [CleanupSuggestion], docker: DockerUsage?, idle: Int64?, machines: [UTMMachine]) {
+        suggestions = found
+        self.docker = docker
+        dockerIdle = idle
+        self.machines = machines
+        questions = CleanupQuestions.build(found, docker: docker, machines: machines, keptMachines: keptMachines)
+        stage = .review
+    }
 
-    /// `skippingSafe` — выполнить остальное, а отмеченное для сейфа оставить на месте:
-    /// сейф не открыт, а человек не хочет открывать его сейчас.
-    func run(app: AppModel, skippingSafe: Bool = false) {
-        guard stage == .review else { return }
-        // Отложенное ради закрытого сейфа — не решение «оставить», и запоминать его так нельзя.
-        let skipped = skippingSafe ? Set(selected(.safe).map(\.id)) : []
-        if skippingSafe {
-            for id in skipped { choices[id] = .keep }
-            keepOneCopyEach()
-        }
-        let work = suggestions.map { (item: $0, action: choice(for: $0)) }
-        // Решения запоминаются сразу, даже если выполнение потом отменят: выбор человек сделал.
-        // Вместе с решением — каким был объект и что было отмечено: на этом учатся привычки.
-        // Не тронутое человеком неотмеченное — не выбор, и такое не записывается: молчание не учит.
-        do {
-            try store?.record(work.filter { !skipped.contains($0.item.id) }.map {
-                DecisionStore.Decision(path: $0.item.id, action: $0.action, bytes: $0.item.bytes, suggested: $0.item.defaultChoice,
-                                       kind: $0.item.kind, modified: $0.item.modified)
-            }.filter(\.isChoice))
-        } catch {
-            storeProblem = error.localizedDescription
-        }
-        // Сначала лишние копии: пока ни одна папка не уехала в сейф, каждую есть с чем сверить.
-        // Копия внутри папки, которая уезжает в сейф, едет вместе с ней и не удаляется.
-        let redundant = work.filter { $0.item.duplicateGroup != nil && effectiveChoice(for: $0.item) == .trash }
-            .map { entry in (item: entry.item, action: entry.action, reference: entry.item.duplicateGroup.flatMap { group in
-                CleanupPlanner.reference(for: entry.item, in: copies(in: group), effective: { self.effectiveChoice(for: $0) })
-            }) }
-        let rest = work.filter { $0.action != .keep && $0.item.duplicateGroup == nil }
-            .map { (item: $0.item, action: $0.action, reference: CleanupSuggestion?.none) }
-        let todo = redundant + rest
-        let token = CancelToken()
-        self.token = token
-        let rules = app.rules
-        let throttle = Throttle()
-        let operationID = app.beginOperation { token.cancel() }
-        Task {
-            var report = Report()
-            report.freeBefore = await Self.freeSpace(home: rules.home)
-            items: for (index, entry) in todo.enumerated() {
-                if token.isCancelled {
-                    report.cancelled = true
-                    break
-                }
-                let item = entry.item
-                let name = item.url.lastPathComponent
-                stage = .running(Progress(index: index + 1, count: todo.count, item: name,
-                                          phase: Self.phase(entry.action), fraction: 0, module: item.module))
-                switch entry.action {
-                case .keep:
-                    break
-                case .backup:
-                    // Сравниваем пути, а не URL: «папка» и «папка/» — одно и то же.
-                    let path = item.url.standardizedFileURL.path
-                    if !app.backup.sources.contains(where: { $0.standardizedFileURL.path == path }) {
-                        app.backup.sources.append(item.url)
-                    }
-                    report.addedToBackup += 1
-                case .trash where item.duplicateGroup != nil:
-                    guard let reference = entry.reference else {
-                        report.problems.append("«\(name)» осталось на месте: не остаётся ни одной копии, с которой его можно сверить.")
-                        continue items
-                    }
-                    if Demo.isOn {
-                        report.trashed += 1
-                        report.trashedBytes += item.bytes
-                        report.duplicates += 1
-                        report.duplicateBytes += item.bytes
-                        continue items
-                    }
-                    stage = .running(Progress(index: index + 1, count: todo.count, item: name, phase: "Сверка с копией",
-                                              fraction: 0, module: item.module))
-                    let url = item.url
-                    let total = max(item.bytes, 1)
-                    let compared = Counter()
-                    do {
-                        // Сверяется содержимое, а не отпечаток из поиска: файл могли изменить после него.
-                        let trashedAt = try await Task.detached(priority: .userInitiated) { () -> (url: URL, identity: FileIdentity?)?? in
-                            let same = try DuplicateFinder.sameContent(url, reference.url, isCancelled: { token.isCancelled }) { read in
-                                let done = compared.add(Int64(read))
-                                guard throttle.ready() else { return }
-                                Task { @MainActor in
-                                    if case .running(var current) = self.stage, current.item == name {
-                                        current.fraction = min(1, Double(done) / Double(total))
-                                        self.stage = .running(current)
-                                    }
-                                }
-                            }
-                            guard same else { return .none }
-                            return .some(try Self.trash(url))
-                        }.value
-                        guard let trashedAt else {
-                            report.problems.append("«\(name)» осталось на месте: после поиска оно изменилось и больше не совпадает с «\(reference.url.lastPathComponent)».")
-                            continue items
-                        }
-                        report.trashed += 1
-                        report.trashedBytes += item.bytes
-                        report.duplicates += 1
-                        report.duplicateBytes += item.bytes
-                        if let trashedAt { report.trashedItems.append(TrashedItem(original: url, inTrash: trashedAt.url, bytes: item.bytes, identity: trashedAt.identity)) }
-                    } catch is CancellationError {
-                        report.cancelled = true
-                        break items
-                    } catch {
-                        report.problems.append("«\(name)» не удалось отправить в Корзину: \(error.localizedDescription)")
-                    }
-                case .trash:
-                    if Demo.isOn {
-                        report.trashed += 1
-                        report.trashedBytes += item.bytes
-                        continue items
-                    }
-                    let url = item.url
-                    // Программу могли открыть уже после поиска: кеш занятой программы на ходу не удаляем.
-                    if let busy = CleanupPlanner.busy(home: rules.home, running: Self.runningApplications())[url.path] {
-                        report.problems.append("«\(name)» осталось на месте. \(busy)")
-                        continue items
-                    }
-                    do {
-                        let trashedAt = try await Task.detached(priority: .userInitiated) { try Self.trash(url) }.value
-                        report.trashed += 1
-                        report.trashedBytes += item.bytes
-                        if let trashedAt { report.trashedItems.append(TrashedItem(original: url, inTrash: trashedAt.url, bytes: item.bytes, identity: trashedAt.identity)) }
-                    } catch {
-                        report.problems.append("«\(name)» не удалось отправить в Корзину: \(error.localizedDescription)")
-                    }
-                case .safe:
-                    guard let volume = app.safeVolume else {
-                        report.problems.append("«\(name)»: сейф закрыт — осталось на месте.")
-                        continue items
-                    }
-                    if Demo.isOn {
-                        report.moved += 1
-                        report.movedBytes += item.bytes
-                        continue items
-                    }
-                    let source = item.url
-                    let shown = Set(item.cautions)
-                    let plan = await Task.detached(priority: .userInitiated) {
-                        SafeMover(rules: rules).plan(source: source, volume: volume, isCancelled: { token.isCancelled })
-                    }.value
-                    if token.isCancelled {
-                        report.cancelled = true
-                        break items
-                    }
-                    guard plan.canProceed else {
-                        let reason = (plan.verdict.isBlocked ? plan.verdict.notes : plan.check.blockers).first ?? "перенос невозможен"
-                        report.problems.append("«\(name)»: \(reason)")
-                        continue items
-                    }
-                    // Оговорки, которых человек не видел, когда отмечал «в сейф» (например, что папку
-                    // меняли вчера), — повод спросить отдельно, а не перенести молча.
-                    if case .caution(let notes) = plan.verdict, let unseen = notes.first(where: { !shown.contains($0) }) {
-                        report.problems.append("«\(name)» осталось на месте: \(unseen) Перенесите вручную в «Освободить место», если уверены.")
-                        continue items
-                    }
-                    do {
-                        let record = try await Task.detached(priority: .userInitiated) {
-                            try SafeMover(rules: rules).execute(plan, deleteOriginal: true, acceptCautions: true,
-                                                                isCancelled: { token.isCancelled }) { progress in
-                                guard throttle.ready() else { return }
-                                Task { @MainActor in
-                                    if case .running(var current) = self.stage, current.item == name {
-                                        current.phase = progress.phase.rawValue
-                                        current.fraction = progress.fraction
-                                        self.stage = .running(current)
-                                    }
-                                }
-                            }
-                        }.value
-                        report.moved += 1
-                        report.movedBytes += record.bytes
-                    } catch is CancellationError {
-                        report.cancelled = true
-                        break items
-                    } catch {
-                        report.problems.append("«\(name)»: \(error.localizedDescription)")
-                    }
-                }
-            }
-            report.freeNow = await Self.freeSpace(home: rules.home)
-            let run = DecisionStore.Run(trashedBytes: report.trashedBytes, movedBytes: report.movedBytes,
-                                        addedToBackup: report.addedToBackup, failures: report.problems.count)
-            try? store?.recordRun(run)
-            lastRun = run
-            loadHabits(home: rules.home)
-            stage = .done(report)
-            app.endOperation(operationID)
-            app.history.reload(volumes: app.historyVolumes)
-            app.space.invalidateAll()
-            app.refreshVolumes()
-        }
+    private func clear() {
+        questions = []
+        answers = [:]
+        hints = [:]
+        queue = []
+        suggestions = []
+        docker = nil
+        dockerIdle = nil
+        machines = []
+        freeBefore = nil
+        freeNow = nil
+        erased = 0
+        erasedBytes = 0
+        trashProblems = []
+        runRecorded = false
     }
 
     /// Открытые программы: идентификатор → название.
@@ -616,54 +755,25 @@ final class CleanupModel {
         }.value
     }
 
-    // MARK: - После выполнения: вернуть или удалить насовсем
+    // MARK: - Вернуть или удалить насовсем
 
-    /// Возвращает из Корзины всё, что туда отправил этот разбор, на прежние места.
-    /// Для вернутого запоминается «оставить»: в следующий раз оно не будет отмечено.
-    func restoreTrashed(app: AppModel) {
-        guard case .done(var report) = stage, finishing == nil, !report.trashedItems.isEmpty else { return }
+    /// Возвращает из Корзины на прежние места то, что туда отправил ответ на этот вопрос.
+    /// Для вернутого запоминается «оставить»: о нём больше не спрошу.
+    func restore(_ kind: CleanupQuestion.Kind, app: AppModel) {
+        guard case .done(var outcome) = answer(for: kind), finishing == nil, !outcome.trashedItems.isEmpty else { return }
         finishing = "Возвращаю из Корзины…"
-        let items = report.trashedItems
+        let items = outcome.trashedItems
         let home = app.rules.home
         Task {
-            let (back, problems) = await Task.detached(priority: .userInitiated) { () -> ([TrashedItem], [String]) in
-                let fm = FileManager.default
-                var back: [TrashedItem] = []
-                var problems: [String] = []
-                for item in items {
-                    let name = item.original.lastPathComponent
-                    guard fm.fileExists(atPath: item.inTrash.path) else {
-                        problems.append("«\(name)»: в Корзине его уже нет.")
-                        continue
-                    }
-                    guard item.isStillInTrash else {
-                        problems.append("«\(name)»: в Корзине под этим именем теперь другой файл — его не трогаю.")
-                        continue
-                    }
-                    guard !fm.fileExists(atPath: item.original.path) else {
-                        problems.append("«\(name)»: на прежнем месте уже есть файл с таким именем — оставил в Корзине.")
-                        continue
-                    }
-                    do {
-                        try fm.createDirectory(at: item.original.deletingLastPathComponent(), withIntermediateDirectories: true)
-                        try fm.moveItem(at: item.inTrash, to: item.original)
-                        back.append(item)
-                    } catch {
-                        problems.append("«\(name)»: \(error.localizedDescription)")
-                    }
-                }
-                return (back, problems)
-            }.value
-            try? store?.record(back.map {
-                DecisionStore.Decision(path: $0.original.path, action: .keep, bytes: $0.bytes, suggested: .trash)
-            })
+            let (back, problems) = await Self.putBack(items)
+            record(back.map { DecisionStore.Decision(path: $0.original.path, action: .keep, bytes: $0.bytes, suggested: .trash) })
             let returned = Set(back.map(\.inTrash))
-            report.trashedItems.removeAll { returned.contains($0.inTrash) }
-            report.restored += back.count
-            report.problems += problems
-            report.freeNow = await Self.freeSpace(home: home)
+            outcome.trashedItems.removeAll { returned.contains($0.inTrash) }
+            outcome.restored += back.count
+            outcome.problems += problems
+            answers[kind] = .done(outcome)
+            freeNow = await Self.freeSpace(home: home)
             finishing = nil
-            stage = .done(report)
             loadHabits(home: home)
             app.space.invalidateAll()
         }
@@ -672,50 +782,89 @@ final class CleanupModel {
     /// Удаляет насовсем из Корзины ровно то, что туда отправил этот разбор: место освобождается сразу.
     /// Остальное в Корзине не трогается.
     func eraseTrashed(app: AppModel) {
-        guard case .done(var report) = stage, finishing == nil, !report.trashedItems.isEmpty else { return }
+        let items = trashedItems
+        guard finishing == nil, !items.isEmpty else { return }
         finishing = "Удаляю из Корзины…"
-        let items = report.trashedItems
         let home = app.rules.home
         Task {
-            let (gone, problems) = await Task.detached(priority: .userInitiated) { () -> ([TrashedItem], [String]) in
-                var gone: [TrashedItem] = []
-                var problems: [String] = []
-                for item in items {
-                    do {
-                        // Удаляется насовсем, поэтому только то самое, что туда отправил разбор: файл,
-                        // выброшенный потом с тем же именем, мог лечь на тот же путь.
-                        if FileManager.default.fileExists(atPath: item.inTrash.path) {
-                            guard item.isStillInTrash else {
-                                problems.append("«\(item.original.lastPathComponent)»: в Корзине под этим именем теперь другой файл — его не трогаю.")
-                                continue
-                            }
-                            try FileManager.default.removeItem(at: item.inTrash)
-                        }
-                        gone.append(item)
-                    } catch {
-                        problems.append("«\(item.original.lastPathComponent)»: \(error.localizedDescription)")
-                    }
-                }
-                return (gone, problems)
-            }.value
-            let erased = Set(gone.map(\.inTrash))
-            report.trashedItems.removeAll { erased.contains($0.inTrash) }
-            report.erased += gone.count
-            report.erasedBytes += gone.reduce(0) { $0 + $1.bytes }
-            report.problems += problems
-            report.freeNow = await Self.freeSpace(home: home)
+            let (gone, problems) = await Self.erase(items)
+            let erasedPaths = Set(gone.map(\.inTrash))
+            for question in questions {
+                guard case .done(var outcome) = answer(for: question.kind) else { continue }
+                outcome.trashedItems.removeAll { erasedPaths.contains($0.inTrash) }
+                answers[question.kind] = .done(outcome)
+            }
+            erased += gone.count
+            erasedBytes += gone.reduce(0) { $0 + $1.bytes }
+            trashProblems += problems
+            freeNow = await Self.freeSpace(home: home)
             finishing = nil
-            stage = .done(report)
         }
     }
 
-    func cancel() { token.cancel() }
+    nonisolated private static func putBack(_ items: [TrashedItem]) async -> ([TrashedItem], [String]) {
+        await Task.detached(priority: .userInitiated) { () -> ([TrashedItem], [String]) in
+            let fm = FileManager.default
+            var back: [TrashedItem] = []
+            var problems: [String] = []
+            for item in items {
+                let name = item.original.lastPathComponent
+                guard fm.fileExists(atPath: item.inTrash.path) else {
+                    problems.append("«\(name)»: в Корзине его уже нет.")
+                    continue
+                }
+                guard item.isStillInTrash else {
+                    problems.append("«\(name)»: в Корзине под этим именем теперь другой файл — его не трогаю.")
+                    continue
+                }
+                guard !fm.fileExists(atPath: item.original.path) else {
+                    problems.append("«\(name)»: на прежнем месте уже есть файл с таким именем — оставил в Корзине.")
+                    continue
+                }
+                do {
+                    try fm.createDirectory(at: item.original.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try fm.moveItem(at: item.inTrash, to: item.original)
+                    back.append(item)
+                } catch {
+                    problems.append("«\(name)»: \(error.localizedDescription)")
+                }
+            }
+            return (back, problems)
+        }.value
+    }
 
-    /// К началу: после отчёта или чтобы бросить разбор, не выполняя.
-    func reset() {
+    nonisolated private static func erase(_ items: [TrashedItem]) async -> ([TrashedItem], [String]) {
+        await Task.detached(priority: .userInitiated) { () -> ([TrashedItem], [String]) in
+            var gone: [TrashedItem] = []
+            var problems: [String] = []
+            for item in items {
+                do {
+                    // Удаляется насовсем, поэтому только то самое, что туда отправил разбор: файл,
+                    // выброшенный потом с тем же именем, мог лечь на тот же путь.
+                    if FileManager.default.fileExists(atPath: item.inTrash.path) {
+                        guard item.isStillInTrash else {
+                            problems.append("«\(item.original.lastPathComponent)»: в Корзине под этим именем теперь другой файл — его не трогаю.")
+                            continue
+                        }
+                        try FileManager.default.removeItem(at: item.inTrash)
+                    }
+                    gone.append(item)
+                } catch {
+                    problems.append("«\(item.original.lastPathComponent)»: \(error.localizedDescription)")
+                }
+            }
+            return (gone, problems)
+        }.value
+    }
+
+    /// Остановить поиск.
+    func cancel() { scanToken.cancel() }
+
+    /// К началу: после ответов или чтобы бросить разбор.
+    func reset(app: AppModel) {
         guard !isBusy else { return }
-        show([])
-        choices = [:]
+        recordRun(home: app.rules.home)
+        clear()
         stage = .idle
     }
 

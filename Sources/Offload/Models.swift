@@ -606,17 +606,8 @@ final class DockerModel {
                         }
                     }
                 }.value
-                // Docker.raw — разрежённый файл: освобождённое внутри Docker Desktop отдаёт Mac
-                // обычно за секунды. Ждём, пока размер перестанет меняться, но не дольше 12 секунд.
                 busy = "Жду, пока Docker вернёт место Mac"
-                var rawAfter = service.rawDiskBytes()
-                for _ in 0..<6 {
-                    try? await Task.sleep(for: .seconds(2))
-                    let now = service.rawDiskBytes()
-                    let settled = now == rawAfter && (now ?? 0) < (rawBefore ?? 0)
-                    rawAfter = now
-                    if settled { break }
-                }
+                let rawAfter = await Self.settle(service, before: rawBefore)
                 messages.append(Self.pruneReport(reclaimed: reclaimed, rawBefore: rawBefore, rawAfter: rawAfter))
             } catch {
                 messages.append("✗ \(error.localizedDescription)")
@@ -626,6 +617,20 @@ final class DockerModel {
             app.refreshVolumes()
             reload(app: app)
         }
+    }
+
+    /// Docker.raw — разрежённый файл: освобождённое внутри Docker Desktop отдаёт Mac обычно за секунды.
+    /// Ждёт, пока размер перестанет меняться, но не дольше 12 секунд; ответ — размер после.
+    static func settle(_ service: DockerService, before: Int64?) async -> Int64? {
+        var after = service.rawDiskBytes()
+        for _ in 0..<6 {
+            try? await Task.sleep(for: .seconds(2))
+            let now = service.rawDiskBytes()
+            let settled = now == after && (now ?? 0) < (before ?? 0)
+            after = now
+            if settled { break }
+        }
+        return after
     }
 
     static func pruneReport(reclaimed: Int64?, rawBefore: Int64?, rawAfter: Int64?) -> String {

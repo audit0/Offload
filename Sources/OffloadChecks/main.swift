@@ -652,6 +652,7 @@ checksHardenLocal()
 checksHardenRestore()
 checksSafe()
 checksCleanup()
+checksQuestions()
 section("Разбор: в Корзине — тот самый файл") { try checksTrashIdentity() }
 if env["OFFLOAD_SKIP_INTEGRATION"] != "1" {
     section("Разбор: зашифрованные образы .dmg") { try checksCleanupImages() }
