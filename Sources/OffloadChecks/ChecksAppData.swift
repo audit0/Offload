@@ -57,6 +57,11 @@ func checksAppData() {
         check(kind("Downloads/vms/Debian.utm") == .utm, "машина, открытая в UTM из другой папки")
         check(kind("Library/Caches/com.utmapp.UTM") == nil, "кеш UTM — не машина, хоть и оканчивается на «.UTM»")
         check(kind("Library/Group Containers/WDNLXAD4W8.com.utmapp.UTM") == nil, "группа приложений UTM — не машина")
+        let rules = SafetyRules(home: home)
+        func blocked(_ relative: String) -> Bool { rules.verdict(for: home.appendingPathComponent(relative), content: nil).isBlocked }
+        check(blocked("Library/Logs/my.test.utm"), "машина с именем-идентификатором в Logs не переносится: исключение — только для папок приложений")
+        check(!blocked("Library/Logs/app.log"), "обычный лог в Logs переносить по-прежнему можно")
+        check(blocked("Library/Containers/com.utmapp.UTM"), "папка UTM по-прежнему не переносится")
         check(kind("Library/Containers/com.docker.docker-helper") == nil, "похожее имя — не Docker")
         check(kind("Library/Containers") == nil && kind("Downloads") == nil, "обычные папки — ничьи")
     }
