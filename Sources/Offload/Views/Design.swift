@@ -5,6 +5,9 @@ import SwiftUI
 
 /// Общий язык интерфейса: отступы, скругления и цвета.
 ///
+/// Стиль — белое стекло, как у Dock и строки меню: фон окна — размытый рабочий стол под белой дымкой,
+/// карточки — полупрозрачные белые пластины со светлой кромкой и мягкой тенью.
+///
 /// Цвет здесь сообщает, а не украшает: зелёный — зашифровано и готово, оранжевый — лежит
 /// открыто или требует внимания, красный — ошибка, серый — трогать нельзя или делать нечего.
 /// Бирюзовый из иконки — только для действий и шкал, чтобы он не спорил с цветами состояний.
@@ -12,7 +15,7 @@ enum Theme {
     static let pagePadding: CGFloat = 24
     static let sectionSpacing: CGFloat = 20
     static let cardPadding: CGFloat = 16
-    static let cardRadius: CGFloat = 12
+    static let cardRadius: CGFloat = 16
     /// Шире колонка страницы не растягивается: на большом мониторе строки иначе читались бы с трудом.
     static let contentWidth: CGFloat = 980
 
@@ -20,9 +23,16 @@ enum Theme {
     /// белый текст на кнопке остаётся читаемым в обеих темах.
     static let brand = dynamic(light: NSColor(srgbRed: 0.05, green: 0.52, blue: 0.48, alpha: 1),
                                dark: NSColor(srgbRed: 0.06, green: 0.60, blue: 0.55, alpha: 1))
-    /// Подложка карточки: белая в светлой теме, едва светлее фона — в тёмной.
-    static let cardFill = dynamic(light: NSColor(white: 1, alpha: 0.92), dark: NSColor(white: 1, alpha: 0.05))
-    static let cardStroke = dynamic(light: NSColor(white: 0, alpha: 0.09), dark: NSColor(white: 1, alpha: 0.09))
+    /// Стекло карточки: белое и полупрозрачное в светлой теме, едва светлее фона — в тёмной.
+    static let cardFill = dynamic(light: NSColor(white: 1, alpha: 0.74), dark: NSColor(white: 1, alpha: 0.07))
+    static let cardStroke = dynamic(light: NSColor(white: 0, alpha: 0.08), dark: NSColor(white: 1, alpha: 0.09))
+    /// Кромка стекла: светлый блик сверху, едва заметная граница снизу.
+    static let glassEdgeTop = dynamic(light: NSColor(white: 1, alpha: 0.95), dark: NSColor(white: 1, alpha: 0.2))
+    static let glassEdgeBottom = dynamic(light: NSColor(white: 0, alpha: 0.07), dark: NSColor(white: 1, alpha: 0.05))
+    /// Тень под стеклом: мягкая, чтобы карточка висела над фоном, а не лежала на нём.
+    static let glassShadow = dynamic(light: NSColor(white: 0, alpha: 0.07), dark: NSColor(white: 0, alpha: 0.35))
+    /// Белая дымка поверх размытого рабочего стола: страница светлая при любых обоях, текст на ней читается.
+    static let pageWash = dynamic(light: NSColor(white: 1, alpha: 0.42), dark: NSColor(white: 0, alpha: 0.12))
     /// Дорожка шкал и колец.
     static let track = dynamic(light: NSColor(white: 0, alpha: 0.08), dark: NSColor(white: 1, alpha: 0.12))
 
@@ -46,6 +56,55 @@ enum Tone {
         case .brand: return Theme.brand
         case .info: return .blue
         }
+    }
+}
+
+// MARK: - Стекло
+
+/// Фон окна, как у Dock: рабочий стол просвечивает сквозь размытие. Размытие не гаснет,
+/// когда окно не в фокусе, — стекло остаётся стеклом.
+struct WindowGlass: NSViewRepresentable {
+    var material: NSVisualEffectView.Material = .underWindowBackground
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = .behindWindow
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {
+        view.material = material
+    }
+}
+
+/// Подложка из белого стекла: полупрозрачная пластина, светлая кромка сверху и мягкая тень.
+/// Тень — только у подложки: текст поверх неё не размывается.
+struct GlassSurface<S: InsettableShape>: View {
+    let shape: S
+    /// Подкрашенное стекло — для предупреждений, которые не должны теряться среди прочих.
+    var tint: Color?
+
+    var body: some View {
+        shape.fill(Theme.cardFill)
+            .overlay {
+                if let tint {
+                    shape.fill(tint.opacity(0.08))
+                    shape.strokeBorder(tint.opacity(0.28))
+                } else {
+                    shape.strokeBorder(LinearGradient(colors: [Theme.glassEdgeTop, Theme.glassEdgeBottom],
+                                                      startPoint: .top, endPoint: .bottom))
+                }
+            }
+            .shadow(color: Theme.glassShadow, radius: 14, y: 5)
+    }
+}
+
+extension View {
+    /// Белое стекло под представлением.
+    func glass<S: InsettableShape>(in shape: S, tint: Color? = nil) -> some View {
+        background { GlassSurface(shape: shape, tint: tint) }
     }
 }
 
@@ -79,14 +138,12 @@ struct Card<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous)
         VStack(alignment: .leading, spacing: spacing) {
             content
         }
         .padding(padding)
         .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil, alignment: .topLeading)
-        .background(tint.map { $0.opacity(0.08) } ?? Theme.cardFill, in: shape)
-        .overlay { shape.strokeBorder(tint.map { $0.opacity(0.28) } ?? Theme.cardStroke) }
+        .glass(in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous), tint: tint)
     }
 }
 
@@ -235,11 +292,15 @@ struct IconTile: View {
     var size: CGFloat = 28
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
         Image(systemName: systemImage)
             .font(.system(size: size * 0.46, weight: .semibold))
             .foregroundStyle(tone.color)
             .frame(width: size, height: size)
-            .background(tone.color.opacity(0.14), in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
+            // Как значок в Dock: цветное стекло, светлее сверху, с бликом по кромке.
+            .background(LinearGradient(colors: [tone.color.opacity(0.10), tone.color.opacity(0.2)],
+                                       startPoint: .top, endPoint: .bottom), in: shape)
+            .overlay { shape.strokeBorder(Theme.glassEdgeTop.opacity(0.7), lineWidth: 0.5) }
             .accessibilityHidden(true)
     }
 }
@@ -298,7 +359,7 @@ struct Chip: View {
             .font(.callout.monospaced())
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(Color.primary.opacity(0.06), in: Capsule())
+            .background(Theme.cardFill, in: Capsule())
             .overlay { Capsule().strokeBorder(Theme.cardStroke) }
     }
 }

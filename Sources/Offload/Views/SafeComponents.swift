@@ -159,7 +159,7 @@ struct SafeStatusPanel: View {
 
     var body: some View {
         @Bindable var app = app
-        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Внешний диск").font(.caption).foregroundStyle(.secondary)
@@ -202,8 +202,7 @@ struct SafeStatusPanel: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.045), in: shape)
-        .overlay { shape.strokeBorder(Theme.cardStroke) }
+        .glass(in: shape)
     }
 
     @ViewBuilder

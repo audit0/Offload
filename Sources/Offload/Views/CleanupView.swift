@@ -233,7 +233,8 @@ struct CleanupView: View {
                                 .font(.callout)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 5)
-                                .background(Color.primary.opacity(0.06), in: Capsule())
+                                .background(Theme.cardFill, in: Capsule())
+                                .overlay { Capsule().strokeBorder(Theme.cardStroke) }
                         }
                     }
                 }
@@ -242,9 +243,12 @@ struct CleanupView: View {
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(LinearGradient(colors: [Theme.brand.opacity(0.20), Theme.brand.opacity(0.04)],
-                                       startPoint: .topLeading, endPoint: .bottomTrailing), in: shape)
-            .overlay { shape.strokeBorder(Theme.brand.opacity(0.25)) }
+            .background {
+                GlassSurface(shape: shape)
+                // Бирюзовый отсвет от кнопки «Начать» — единственный цвет на белом стекле.
+                RadialGradient(colors: [Theme.brand.opacity(0.16), .clear], center: .trailing, startRadius: 20, endRadius: 420)
+                    .clipShape(shape)
+            }
 
             if let run = model.lastRun {
                 CardSection(title: "Прошлый разбор — \(run.date.formatted(date: .abbreviated, time: .shortened))") {

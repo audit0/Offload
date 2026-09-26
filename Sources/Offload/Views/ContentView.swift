@@ -33,6 +33,11 @@ struct ContentView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            // Как у Dock: рабочий стол просвечивает сквозь размытое стекло под белой дымкой.
+            .background {
+                WindowGlass().ignoresSafeArea()
+                Theme.pageWash.ignoresSafeArea()
+            }
         }
         .tint(Theme.brand)
         // Сменили диск — перечитываем, есть ли на нём сейф и открыт ли он.
