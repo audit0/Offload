@@ -16,6 +16,57 @@ public struct DockerVolume: Sendable, Identifiable, Hashable {
     }
 }
 
+/// Что Docker пересоздаст сам, если понадобится. Тома сюда не входят: в них данные.
+/// Порядок случаев — порядок очистки: сначала контейнеры, иначе их образы ещё считаются занятыми.
+public enum DockerPruneTarget: String, CaseIterable, Sendable, Hashable {
+    case containers, images, buildCache
+}
+
+/// Сколько места внутри Docker занимают образы, контейнеры, тома и кеш сборки — по `docker system df`.
+public struct DockerUsage: Sendable, Equatable {
+    public struct Part: Sendable, Equatable {
+        public var count: Int
+        public var active: Int
+        public var bytes: Int64
+        /// Сколько Docker готов отдать: у образов — не нужные ни одному контейнеру,
+        /// у контейнеров — остановленные, у кеша — не занятый идущей сборкой.
+        public var reclaimable: Int64
+
+        public init(count: Int, active: Int, bytes: Int64, reclaimable: Int64) {
+            self.count = count
+            self.active = active
+            self.bytes = bytes
+            self.reclaimable = reclaimable
+        }
+    }
+
+    public var images: Part?
+    public var containers: Part?
+    public var volumes: Part?
+    public var buildCache: Part?
+
+    public init(images: Part? = nil, containers: Part? = nil, volumes: Part? = nil, buildCache: Part? = nil) {
+        self.images = images
+        self.containers = containers
+        self.volumes = volumes
+        self.buildCache = buildCache
+    }
+
+    public func part(_ target: DockerPruneTarget) -> Part? {
+        switch target {
+        case .containers: return containers
+        case .images: return images
+        case .buildCache: return buildCache
+        }
+    }
+
+    /// Сколько уйдёт, если очистить выбранное. Оценка снизу: образы остановленных контейнеров
+    /// освобождаются, только когда удалены и сами контейнеры.
+    public func reclaimable(_ targets: Set<DockerPruneTarget>) -> Int64 {
+        targets.reduce(0) { $0 + (part($1)?.reclaimable ?? 0) }
+    }
+}
+
 public enum DockerError: LocalizedError, Equatable {
     case notInstalled
     case notRunning
@@ -186,6 +237,74 @@ public struct DockerService: Sendable {
             }
         }
         return sizes
+    }
+
+    // MARK: - Место внутри Docker
+
+    static let usageFormat = "{{.Type}}\t{{.TotalCount}}\t{{.Active}}\t{{.Size}}\t{{.Reclaimable}}"
+
+    /// Docker, как и для размеров томов, считает это десятки секунд.
+    public func usage() -> DockerUsage? {
+        guard let result = try? Runner.run("docker", ["system", "df", "--format", Self.usageFormat], timeout: 180),
+              result.succeeded else { return nil }
+        return Self.parseUsage(result.output)
+    }
+
+    /// Строки `docker system df` в формате `usageFormat`: «Images⇥25⇥3⇥12.34GB⇥10.2GB (82%)».
+    /// У кеша сборки доля в скобках не пишется.
+    public static func parseUsage(_ text: String) -> DockerUsage? {
+        var usage = DockerUsage()
+        var found = false
+        for line in text.split(separator: "\n") {
+            let fields = line.split(separator: "\t", omittingEmptySubsequences: false)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+            guard fields.count == 5, let count = Int(fields[1]), let active = Int(fields[2]),
+                  let bytes = parseSize(fields[3]),
+                  let reclaimable = parseSize(fields[4].split(separator: "(").first.map(String.init) ?? "") else { continue }
+            let part = DockerUsage.Part(count: count, active: active, bytes: bytes, reclaimable: reclaimable)
+            switch fields[0] {
+            case "Images": usage.images = part
+            case "Containers": usage.containers = part
+            case "Local Volumes": usage.volumes = part
+            case "Build Cache": usage.buildCache = part
+            default: continue
+            }
+            found = true
+        }
+        return found ? usage : nil
+    }
+
+    public static func pruneArguments(_ target: DockerPruneTarget) -> [String] {
+        switch target {
+        case .containers: return ["container", "prune", "--force"]
+        case .images: return ["image", "prune", "--all", "--force"]
+        case .buildCache: return ["builder", "prune", "--all", "--force"]
+        }
+    }
+
+    /// Итог очистки: «Total reclaimed space: 1.2GB» у `docker image prune` и `docker container prune`,
+    /// «Total:⇥5.6GB» у `docker builder prune` (buildx).
+    public static func parseReclaimed(_ output: String) -> Int64? {
+        for line in output.split(separator: "\n").reversed() {
+            let text = line.trimmingCharacters(in: .whitespaces)
+            for prefix in ["Total reclaimed space:", "Total:"] where text.hasPrefix(prefix) {
+                return parseSize(String(text.dropFirst(prefix.count)))
+            }
+        }
+        return nil
+    }
+
+    /// Удаляет выбранное из того, что Docker пересоздаст сам. Тома не трогаются никогда.
+    /// Возвращает, сколько места Docker назвал освободившимся, или nil, если он не сказал.
+    public func prune(_ targets: Set<DockerPruneTarget>, status: (DockerPruneTarget) -> Void = { _ in }) throws -> Int64? {
+        try ensureRunning()
+        var reclaimed: Int64?
+        for target in DockerPruneTarget.allCases where targets.contains(target) {
+            status(target)
+            let result = try Runner.check("docker", Self.pruneArguments(target), timeout: 1800)
+            if let bytes = Self.parseReclaimed(result.output) { reclaimed = (reclaimed ?? 0) + bytes }
+        }
+        return reclaimed
     }
 
     public func containers(using name: String) throws -> [String] {

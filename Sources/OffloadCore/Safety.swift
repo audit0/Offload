@@ -109,11 +109,13 @@ public struct SafetyRules: Sendable {
         }
         guard let first = parts.first else { return .blocked("Домашнюю папку целиком переносить нельзя.") }
 
-        if let bundle = parts.first(where: Self.isRegisteredBundle) { return Self.bundleBlocked(bundle) }
         if parts.count == 1, Self.standardFolders.contains(first) {
             return .blocked("«\(first)» — стандартная папка macOS. Переносите её содержимое, а не саму папку.")
         }
+        // У ~/Library свои правила и свой поиск пакетов: здесь папки приложений названы
+        // идентификаторами, а «com.utmapp.UTM» оканчивается на «.UTM», как пакет виртуальной машины.
         if first == "Library" { return libraryVerdict(parts) }
+        if let bundle = parts.first(where: Self.isRegisteredBundle) { return Self.bundleBlocked(bundle) }
         if first.hasPrefix(".") {
             if Self.pinnedHiddenFolders.contains(first) {
                 return .blocked("«~/\(first)» — настройки, ключи или инструменты разработки. Им нужно оставаться на месте.")
@@ -124,6 +126,11 @@ public struct SafetyRules: Sendable {
             return .caution(["Приложение, которому принадлежит «~/\(first)», будет искать эти данные по старому пути. Переносите, только если в нём можно указать новую папку (как папку моделей в LM Studio)."])
         }
         return .safe
+    }
+
+    /// Идентификатор приложения или группы: «com.utmapp.UTM», «WDNLXAD4W8.com.utmapp.UTM».
+    static func isIdentifier(_ name: String) -> Bool {
+        !name.contains(" ") && name.split(separator: ".", omittingEmptySubsequences: false).count >= 3
     }
 
     static func bundleBlocked(_ bundle: String) -> Verdict {
@@ -138,16 +145,23 @@ public struct SafetyRules: Sendable {
 
         // Известные крупные места — с объяснением, как освободить их правильно.
         if under(["Library", "Containers", "com.docker.docker"]) {
-            return .blocked("Диск Docker. Место здесь освобождается в разделе «Docker» — архивацией неиспользуемых томов.")
+            return .blocked("Диск Docker. Место в нём освобождается в разделе «Docker»: очисткой образов и кеша сборки и архивацией неиспользуемых томов.")
         }
         if under(["Library", "Containers", "com.utmapp.UTM"]) {
-            return .blocked("Виртуальные машины UTM. Переносите их средствами самого UTM, иначе он их потеряет.")
+            return .blocked("Виртуальные машины UTM. Удаляйте и переносите их через сам UTM, иначе он их потеряет.")
         }
         if parts.count >= 3, parts[1] == "Group Containers", parts[2].hasSuffix(".ru.keepcoder.Telegram") {
             return .blocked("База и кеш Telegram. Кеш очищается в самом Telegram: Настройки → Данные и память → Использование памяти.")
         }
         if under(["Library", "Application Support", "Claude", "vm_bundles"]) {
             return .blocked("Виртуальная машина приложения Claude — она нужна ему для работы.")
+        }
+        // Пакеты в ~/Library запрещены, как и везде. Кроме имени сразу под Containers, Caches
+        // и т. п., похожего на идентификатор: это папка приложения, а не пакет.
+        if let bundle = parts.indices.first(where: { index in
+            Self.isRegisteredBundle(parts[index]) && !(index == 2 && Self.isIdentifier(parts[index]))
+        }) {
+            return Self.bundleBlocked(parts[bundle])
         }
 
         if inside(["Library", "iTunes", "iPhone Software Updates"]) || inside(["Library", "iTunes", "iPad Software Updates"]) {

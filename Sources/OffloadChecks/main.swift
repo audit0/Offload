@@ -95,6 +95,18 @@ section("Правила безопасности: пути") {
           "файл внутри пакета UTM запрещён")
     check(isBlocked(verdict("Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw"), containing: "Docker"),
           "Docker.raw — с подсказкой про раздел Docker")
+    // «com.utmapp.UTM» оканчивается на «.UTM», как пакет машины: раньше у папки UTM была подпись
+    // «зарегистрирован в приложении» вместо подсказки, как освободить место.
+    check(isBlocked(verdict("Library/Containers/com.utmapp.UTM"), containing: "Виртуальные машины UTM"),
+          "папка UTM — с подсказкой про UTM, а не про «зарегистрированный пакет»")
+    check(isBlocked(verdict("Library/Containers/com.utmapp.UTM/Data/Documents/Linux.utm"), containing: "Виртуальные машины UTM"),
+          "машина в папке UTM — с той же подсказкой")
+    check(isBlocked(verdict("Library/Caches/com.utmapp.UTM"), containing: "Данные приложений"),
+          "папка UTM в кешах — данные приложения, а не пакет машины")
+    check(isBlocked(verdict("Library/Logs/Old.utm"), containing: "«Old.utm» зарегистрирован"),
+          "машина сразу под папкой в Library — по-прежнему пакет")
+    check(isBlocked(verdict("Library/Mobile Documents/com~apple~CloudDocs/VMs/Debian.utm"), containing: "«Debian.utm» зарегистрирован"),
+          "машина в iCloud Drive — пакет")
     check(isBlocked(verdict("Library/Group Containers/6N38VWS5BX.ru.keepcoder.Telegram/stable"), containing: "Telegram"),
           "кеш Telegram — с подсказкой")
     check(isBlocked(verdict("Library/Application Support/Claude/vm_bundles/claudevm.bundle")), "виртуалка Claude запрещена")
@@ -603,6 +615,9 @@ if env["OFFLOAD_SKIP_INTEGRATION"] != "1" {
 if env["OFFLOAD_SKIP_DOCKER"] != "1", (try? DockerService().ensureRunning()) != nil {
     section("Docker: архивация тома и возврат") {
         let docker = DockerService()
+        // Только чтение: очистку в проверках не запускаем — она удалила бы образы и кеш человека.
+        let usage = docker.usage()
+        check(usage?.images != nil, "docker system df разбирается: \(String(describing: usage))")
         let name = "offload-check-\(UUID().uuidString.prefix(8).lowercased())"
         try Runner.check("docker", ["volume", "create", name], timeout: 60)
         defer { _ = try? Runner.run("docker", ["volume", "rm", "-f", name], timeout: 60) }
@@ -631,6 +646,7 @@ if env["OFFLOAD_SKIP_DOCKER"] != "1", (try? DockerService().ensureRunning()) != 
 
 checksRestore()
 checksContainer()
+checksAppData()
 checksInterface()
 checksHardenLocal()
 checksHardenRestore()
