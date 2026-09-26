@@ -107,7 +107,6 @@ final class CleanupModel {
         let tally = ScanTally()
         Task {
             let found = await Task.detached(priority: .userInitiated) { () -> [CleanupSuggestion] in
-                let fm = FileManager.default
                 let regenerable = CleanupPlanner.regenerable(home: rules.home)
                 var seen = Set<String>()
                 let urls = (CleanupPlanner.roots(home: rules.home).flatMap { SpaceScanner.children(of: $0) }
@@ -121,8 +120,12 @@ final class CleanupModel {
                     let observation = CleanupObservation(
                         url: item.url, bytes: item.bytes, modified: item.modified, isDirectory: item.isDirectory,
                         verdict: item.verdict,
-                        isProject: item.isDirectory && fm.fileExists(atPath: item.url.appendingPathComponent(".git").path),
-                        inBackup: sources.contains { path == $0 || path.hasPrefix($0 + "/") })
+                        isProject: item.isDirectory
+                            && FileManager.default.fileExists(atPath: item.url.appendingPathComponent(".git").path),
+                        inBackup: sources.contains { path == $0 || path.hasPrefix($0 + "/") },
+                        // `hdiutil isencrypted` отвечает без пароля и окон не открывает (в отличие от imageinfo).
+                        isEncryptedImage: !item.isDirectory && item.url.pathExtension.lowercased() == "dmg"
+                            && SecretsVault.encryptionInfo(of: item.url)?.encrypted == true)
                     collector.append(observation)
                     // Промежуточный итог — по тем же правилам, что и список: видно, что поиск чего-то стоит.
                     var progress = tally.add(planner.suggest(observation), counted: planner.isWorthShowing)

@@ -24,9 +24,11 @@ public struct CleanupObservation: Sendable, Hashable {
     public var isProject: Bool
     /// Уже лежит в одной из папок бэкапа.
     public var inBackup: Bool
+    /// Зашифрованный образ диска: такой человек делает сам для своих данных, это не установщик.
+    public var isEncryptedImage: Bool
 
     public init(url: URL, bytes: Int64, modified: Date?, isDirectory: Bool, verdict: Verdict,
-                isProject: Bool = false, inBackup: Bool = false) {
+                isProject: Bool = false, inBackup: Bool = false, isEncryptedImage: Bool = false) {
         self.url = url
         self.bytes = bytes
         self.modified = modified
@@ -34,6 +36,7 @@ public struct CleanupObservation: Sendable, Hashable {
         self.verdict = verdict
         self.isProject = isProject
         self.inBackup = inBackup
+        self.isEncryptedImage = isEncryptedImage
     }
 }
 
@@ -87,7 +90,10 @@ public struct CleanupPlanner: Sendable {
     /// Меньше этого (кроме удаляемого) в список не попадает.
     public var minimumBytes: Int64 = 100_000_000
 
-    public static let installerExtensions: Set<String> = ["dmg", "pkg", "mpkg", "xip", "iso"]
+    /// Похоже на установщик. `.iso` сюда не входит: к нему часто подключена виртуальная машина.
+    /// Образ `.dmg` может оказаться и личным — поэтому установщик в Корзину сам не предлагается,
+    /// только разрешается выбрать, а зашифрованный образ не разрешается вовсе.
+    public static let installerExtensions: Set<String> = ["dmg", "pkg", "mpkg", "xip"]
 
     public init(now: Date = Date(), regenerable: [String: String] = [:], memory: [String: CleanupAction] = [:]) {
         self.now = now
@@ -99,7 +105,8 @@ public struct CleanupPlanner: Sendable {
         let path = item.url.path
         let days = item.modified.map { max(0, now.timeIntervalSince($0)) / 86_400 }
         let regenerableReason = regenerable[path]
-        let isInstaller = !item.isDirectory && Self.installerExtensions.contains(item.url.pathExtension.lowercased())
+        let isInstaller = !item.isDirectory && !item.isEncryptedImage
+            && Self.installerExtensions.contains(item.url.pathExtension.lowercased())
 
         var allowed: [CleanupAction] = []
         if regenerableReason != nil || (isInstaller && (days ?? 0) >= installerDays) { allowed.append(.trash) }
@@ -116,15 +123,18 @@ public struct CleanupPlanner: Sendable {
             return make(remembered, "В прошлый раз вы выбрали это же.", learned: true)
         }
         if let regenerableReason { return make(.trash, regenerableReason) }
-        if allowed.contains(.trash) {
-            return make(.trash, "Установщик: если программа уже стоит, он не нужен, а скачать его можно снова.")
-        }
         if case .blocked(let reason) = item.verdict { return make(.keep, reason) }
         if item.isProject, allowed.contains(.backup) {
             return make(.backup, "Похоже на проект (внутри git): его лучше держать в бэкапе, а не переносить.")
         }
         if item.bytes >= bigBytes, let days, days >= staleDays, item.verdict == .safe {
             return make(.safe, "Большое и давно не менялось — в сейфе не мешает, а вернуть можно в любой момент.")
+        }
+        if allowed.contains(.trash) {
+            return make(.keep, "Похоже на установщик. Если программа уже стоит и его можно скачать снова, выберите «В Корзину».")
+        }
+        if item.isEncryptedImage {
+            return make(.keep, "Зашифрованный образ диска — похоже, в нём ваши данные. Удалить его из разбора нельзя.")
         }
         if let days, days < 30 { return make(.keep, "Менялось недавно — похоже, вы этим пользуетесь.") }
         if item.bytes < bigBytes { return make(.keep, "Места занимает немного.") }
