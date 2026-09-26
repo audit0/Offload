@@ -640,6 +640,7 @@ if env["OFFLOAD_SKIP_INTEGRATION"] != "1" {
     section("Разбор: зашифрованные образы .dmg") { try checksCleanupImages() }
 }
 checksDuplicates()
+checksHabits()
 
 try? fm.removeItem(at: scratch)
 print("")

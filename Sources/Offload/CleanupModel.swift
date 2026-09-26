@@ -7,7 +7,8 @@ import OffloadCore
 /// Ничего не делается без подтверждения. Удаление — только в Корзину и только для того,
 /// что пересоздаётся само, и для лишних копий одинаковых файлов (одна копия всегда остаётся
 /// и сверяется с удаляемой байт в байт); перенос в сейф — тот же, что в «Освободить место», со сверкой.
-/// Решения человека запоминаются, и в следующий раз предложение начинается с них.
+/// Решения человека запоминаются: по тому же объекту в следующий раз предлагается то же,
+/// а для похожего — то, что человек обычно выбирает (привычки, `HabitModel`).
 @MainActor
 @Observable
 final class CleanupModel {
@@ -63,6 +64,11 @@ final class CleanupModel {
     private(set) var lastRun: DecisionStore.Run?
     /// База решений не открылась: разбор работает, но ничего не запоминает.
     private(set) var storeProblem: String?
+    /// Чему Offload научился: самые подкреплённые привычки и по скольким объектам решения
+    /// в памяти — столько забудет «Забыть мои решения».
+    private(set) var habits: [HabitModel.Prediction] = []
+    private(set) var remembered = 0
+    private(set) var forgetProblem: String?
 
     @ObservationIgnored private var store: DecisionStore?
     @ObservationIgnored private var token = CancelToken()
@@ -74,10 +80,30 @@ final class CleanupModel {
         do {
             // В демонстрации база в памяти: вымышленные решения не должны попасть в настоящую.
             store = try DecisionStore(url: Demo.isOn ? nil : DecisionStore.defaultURL)
+            if Demo.isOn { try store?.record(Demo.decisions()) }
             lastRun = try store?.lastRun()
         } catch {
             storeProblem = error.localizedDescription
         }
+    }
+
+    /// Перечитывает, чему научился Offload: при открытии раздела, после разбора и после «Забыть».
+    func loadHabits(home: URL) {
+        guard let store, let history = try? store.history() else { return }
+        habits = HabitModel(history: history, home: home).habits()
+        remembered = (try? store.lastDecisions().count) ?? 0
+    }
+
+    /// Забывает все решения — и «как в прошлый раз», и привычки. Итоги прошлых разборов остаются.
+    func forgetDecisions(home: URL) {
+        guard !isBusy else { return }
+        do {
+            try store?.forgetDecisions()
+            forgetProblem = nil
+        } catch {
+            forgetProblem = error.localizedDescription
+        }
+        loadHabits(home: home)
     }
 
     var isBusy: Bool {
@@ -177,6 +203,7 @@ final class CleanupModel {
         let rules = app.rules
         let sources = app.backup.sources.map(\.standardizedFileURL.path)
         let memory = (try? store?.lastDecisions()) ?? [:]
+        let habits = (try? store?.history()).map { HabitModel(history: $0, home: rules.home) }
         let store = store
         stage = .scanning(ScanProgress())
         let throttle = Throttle(interval: 0.2)
@@ -190,7 +217,7 @@ final class CleanupModel {
                             + regenerable.keys.sorted().map { URL(fileURLWithPath: $0, isDirectory: true) })
                     .filter { seen.insert($0.standardizedFileURL.path).inserted }
                 await MainActor.run { if !token.isCancelled { self.stage = .scanning(ScanProgress(total: urls.count)) } }
-                let planner = CleanupPlanner(home: rules.home, regenerable: regenerable, memory: memory)
+                let planner = CleanupPlanner(home: rules.home, regenerable: regenerable, memory: memory, habits: habits)
                 let collector = Collector<CleanupObservation>()
                 await SpaceScanner.scan(urls, rules: rules, isCancelled: { token.isCancelled }) { item in
                     let path = item.url.standardizedFileURL.path
@@ -255,8 +282,13 @@ final class CleanupModel {
         guard stage == .review else { return }
         let work = suggestions.map { (item: $0, action: choice(for: $0)) }
         // Решения запоминаются сразу, даже если выполнение потом отменят: выбор человек сделал.
+        // Вместе с решением — каким был объект и что предлагалось: на этом учатся привычки.
+        // «Оставить» там, где оставить и предлагалось, — не выбор, и такое не записывается.
         do {
-            try store?.record(work.map { (path: $0.item.id, action: $0.action, bytes: $0.item.bytes) })
+            try store?.record(work.map {
+                DecisionStore.Decision(path: $0.item.id, action: $0.action, bytes: $0.item.bytes, suggested: $0.item.action,
+                                       kind: $0.item.kind, modified: $0.item.modified)
+            }.filter(\.isChoice))
         } catch {
             storeProblem = error.localizedDescription
         }
@@ -413,6 +445,7 @@ final class CleanupModel {
                                         addedToBackup: report.addedToBackup, failures: report.problems.count)
             try? store?.recordRun(run)
             lastRun = run
+            loadHabits(home: rules.home)
             stage = .done(report)
             app.endOperation(operationID)
             app.history.reload(volumes: app.historyVolumes)

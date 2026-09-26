@@ -59,9 +59,14 @@ public struct CleanupSuggestion: Sendable, Identifiable, Hashable {
     public var cautions: [String]
     /// Одна из одинаковых копий: SHA-256 содержимого, общий для всей группы.
     public var duplicateGroup: String?
+    /// Предложение взято из привычек человека: похожее он обычно решает так, а правила советовали другое.
+    public var habit: Bool
+    /// Что это за объект — пишется вместе с решением, на этом учатся привычки.
+    public var kind: DecisionFeatures.Kind
 
     public init(url: URL, bytes: Int64, modified: Date?, isDirectory: Bool, action: CleanupAction, reason: String,
-                allowed: [CleanupAction], learned: Bool, cautions: [String], duplicateGroup: String? = nil) {
+                allowed: [CleanupAction], learned: Bool, cautions: [String], duplicateGroup: String? = nil,
+                habit: Bool = false, kind: DecisionFeatures.Kind? = nil) {
         self.url = url
         self.bytes = bytes
         self.modified = modified
@@ -72,6 +77,8 @@ public struct CleanupSuggestion: Sendable, Identifiable, Hashable {
         self.learned = learned
         self.cautions = cautions
         self.duplicateGroup = duplicateGroup
+        self.habit = habit
+        self.kind = kind ?? (duplicateGroup != nil ? .copy : isDirectory ? .folder : .file)
     }
 }
 
@@ -90,6 +97,8 @@ public struct CleanupPlanner: Sendable {
     public var regenerable: [String: String]
     /// Последнее решение человека по каждому пути.
     public var memory: [String: CleanupAction]
+    /// Что человек обычно выбирает для похожего. Решает там, где правила советуют другое.
+    public var habits: HabitModel?
     /// От этого размера большое и давно не менявшееся предлагается убрать в сейф.
     public var bigBytes: Int64 = 1_000_000_000
     public var staleDays: Double = 90
@@ -104,11 +113,12 @@ public struct CleanupPlanner: Sendable {
     public static let installerExtensions: Set<String> = ["dmg", "pkg", "mpkg", "xip"]
 
     public init(now: Date = Date(), home: URL = FileManager.default.homeDirectoryForCurrentUser,
-                regenerable: [String: String] = [:], memory: [String: CleanupAction] = [:]) {
+                regenerable: [String: String] = [:], memory: [String: CleanupAction] = [:], habits: HabitModel? = nil) {
         self.now = now
         self.home = home
         self.regenerable = regenerable
         self.memory = memory
+        self.habits = habits
     }
 
     public func suggest(_ item: CleanupObservation) -> CleanupSuggestion {
@@ -124,14 +134,27 @@ public struct CleanupPlanner: Sendable {
         if regenerableReason == nil, item.isDirectory, !item.verdict.isBlocked, !item.inBackup { allowed.append(.backup) }
         allowed.append(.keep)
 
-        func make(_ action: CleanupAction, _ reason: String, learned: Bool = false) -> CleanupSuggestion {
+        let kind: DecisionFeatures.Kind = item.isProject ? .project : item.isDirectory ? .folder : .file
+        func make(_ action: CleanupAction, _ reason: String, learned: Bool = false, habit: Bool = false) -> CleanupSuggestion {
             CleanupSuggestion(url: item.url, bytes: item.bytes, modified: item.modified, isDirectory: item.isDirectory,
-                              action: action, reason: reason, allowed: allowed, learned: learned, cautions: item.verdict.notes)
+                              action: action, reason: reason, allowed: allowed, learned: learned, cautions: item.verdict.notes,
+                              habit: habit, kind: kind)
         }
 
         if let remembered = memory[path], allowed.contains(remembered) {
             return make(remembered, "В прошлый раз вы выбрали это же.", learned: true)
         }
+        let rule = byRules(item, allowed: allowed, days: days, regenerableReason: regenerableReason, make: { make($0, $1) })
+        // Привычка решает, только когда расходится с правилом: иначе объяснение правила полезнее.
+        let features = DecisionFeatures.of(path: path, home: home, kind: kind, bytes: item.bytes, modified: item.modified, at: now)
+        if let prediction = habits?.predict(features, allowed: allowed), prediction.action != rule.action {
+            return make(prediction.action, prediction.reason, habit: true)
+        }
+        return rule
+    }
+
+    private func byRules(_ item: CleanupObservation, allowed: [CleanupAction], days: Double?, regenerableReason: String?,
+                         make: (CleanupAction, String) -> CleanupSuggestion) -> CleanupSuggestion {
         if let regenerableReason { return make(.trash, regenerableReason) }
         if case .blocked(let reason) = item.verdict { return make(.keep, reason) }
         if item.isProject, allowed.contains(.backup) {
@@ -325,6 +348,7 @@ extension CleanupPlanner {
             allowed.append(.keep)
             var action: CleanupAction
             var reason: String
+            var habit = false
             if index == 0 {
                 action = top?.action == .safe ? .safe : .keep
                 reason = keeperReason(copy, others: Array(ordered.dropFirst()))
@@ -334,16 +358,26 @@ extension CleanupPlanner {
             } else {
                 action = .trash
                 reason = "Лишняя копия: содержимое то же, что у копии, которая остаётся."
+                // Привычка может лишнюю копию только оставить (или убрать в сейф), но не удалить:
+                // какую копию удалить, решают правила, а та, что остаётся, привычкам не подчиняется.
+                let features = DecisionFeatures.of(path: copy.url.path, home: home, kind: .copy, bytes: copy.allocated,
+                                                   modified: copy.modified, at: now)
+                if let prediction = habits?.predict(features, allowed: allowed.filter { $0 != .trash }) {
+                    action = prediction.action
+                    reason = prediction.reason
+                    habit = true
+                }
             }
             var learned = false
             if let remembered = memory[copy.url.path], allowed.contains(remembered) {
                 action = remembered
                 reason = "В прошлый раз вы выбрали это же."
                 learned = true
+                habit = false
             }
             return CleanupSuggestion(url: copy.url, bytes: copy.allocated, modified: copy.modified, isDirectory: false,
                                      action: action, reason: reason, allowed: allowed, learned: learned,
-                                     cautions: top?.cautions ?? copy.verdict.notes, duplicateGroup: group.id)
+                                     cautions: top?.cautions ?? copy.verdict.notes, duplicateGroup: group.id, habit: habit)
         }
         // Прошлые решения не должны отправить в Корзину все копии разом.
         if result.allSatisfy({ $0.action == .trash }) {

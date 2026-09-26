@@ -46,6 +46,7 @@ struct CleanupView: View {
     @State private var showKept = false
     @State private var showAllDuplicates = false
     @State private var growingSafe = false
+    @State private var forgetting = false
 
     var body: some View {
         let model = app.cleanup
@@ -78,8 +79,11 @@ struct CleanupView: View {
             }
         }
         .navigationTitle("Разобрать")
-        // В демонстрации сразу показываем предложения — снимку экрана нечего ждать.
-        .task { if Demo.isOn, model.stage == .idle { model.scan(app: app) } }
+        .task {
+            model.loadHabits(home: app.rules.home)
+            // В демонстрации сразу показываем предложения — снимку экрана нечего ждать.
+            if Demo.isOn, model.stage == .idle { model.scan(app: app) }
+        }
         .sheet(isPresented: $growingSafe) { GrowSafeSheet(needed: model.bytes(.safe)) }
         .confirmationDialog("Выполнить разбор?", isPresented: $confirming) {
             Button("Выполнить") { model.run(app: app) }
@@ -116,7 +120,7 @@ struct CleanupView: View {
                         .shadow(color: Theme.brand.opacity(0.35), radius: 10, y: 4)
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Разобрать Mac").font(.title.weight(.bold))
-                        Text("Offload посмотрит, что занимает место, найдёт одинаковые файлы и предложит: что удалить, что убрать в сейф, что добавить в бэкап. Вы поправите, где не согласны, — и только потом что-то произойдёт.")
+                        Text("Offload посмотрит, что занимает место, найдёт одинаковые файлы и предложит: что удалить, что убрать в сейф, что добавить в бэкап, — учитывая, что вы обычно выбираете. Вы поправите, где не согласны, — и только потом что-то произойдёт.")
                             .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -154,6 +158,9 @@ struct CleanupView: View {
                     .padding(Theme.cardPadding)
                 }
             }
+            if model.storeProblem == nil {
+                learned
+            }
             CardSection(title: "Как раскладывается") {
                 ForEach([CleanupAction.trash, .safe, .backup, .keep], id: \.self) { action in
                     HStack(alignment: .top, spacing: 12) {
@@ -180,7 +187,56 @@ struct CleanupView: View {
         case .backup:
             return "Проекты с git — в список папок бэкапа. Сам бэкап запускается в разделе «Бэкап»."
         case .keep:
-            return "То, чем вы пользуетесь, и то, что трогать нельзя. Ваши решения запоминаются: в следующий раз Offload предложит то же, что вы выбрали."
+            return "То, чем вы пользуетесь, и то, что трогать нельзя. Ваш выбор запоминается: для того же объекта Offload в следующий раз предложит то же, а для похожего — то, что вы обычно выбираете."
+        }
+    }
+
+    /// Чему Offload научился на решениях человека — и кнопка, чтобы всё это забыть.
+    private var learned: some View {
+        let model = app.cleanup
+        return CardSection(title: "Чему научился",
+                           footer: "Учусь только на этом Mac и только на вашем выборе: «оставить» там, где оставить и предлагалось, не считается. Привычка лишь меняет предложение и никогда не предлагает удалить — решаете всё равно вы.") {
+            if model.habits.isEmpty {
+                HStack(alignment: .top, spacing: 12) {
+                    IconTile(systemImage: "sparkles", tone: .neutral)
+                    Text("Пока привычек нет. Привычка появляется, когда вы хотя бы трижды одинаково решаете похожее — например, оставляете старые папки в «Документах», хотя Offload предлагал убрать их в сейф.")
+                        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                .rowPadding()
+            }
+            ForEach(model.habits, id: \.self) { habit in
+                HStack(spacing: 12) {
+                    IconTile(systemImage: habit.action.symbol, tone: habit.action.tone)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(habit.scope.prefix(1).uppercased() + habit.scope.dropFirst()).fontWeight(.medium)
+                        Text("обычно \(HabitModel.Prediction.verb(habit.action))").font(.callout).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 12)
+                    Text("\(habit.agreeing) из \(habit.total)").font(.callout).foregroundStyle(.secondary).monospacedDigit()
+                        .help("Столько похожих решений за это действие из всех похожих")
+                }
+                .rowPadding()
+                if habit != model.habits.last || model.remembered > 0 { RowDivider(inset: 54) }
+            }
+            if model.remembered > 0 {
+                if model.habits.isEmpty { RowDivider(inset: 54) }
+                HStack(spacing: 12) {
+                    Text("Помню ваш выбор для \(model.remembered) \(pluralRu(model.remembered, "объекта", "объектов", "объектов"))")
+                        .font(.callout).foregroundStyle(.secondary)
+                    Spacer(minLength: 12)
+                    Button("Забыть мои решения…") { forgetting = true }
+                }
+                .rowPadding()
+            }
+            if let problem = model.forgetProblem {
+                Notice(.warning, "Забыть не получилось: \(problem)").padding(Theme.cardPadding)
+            }
+        }
+        .confirmationDialog("Забыть ваши решения?", isPresented: $forgetting) {
+            Button("Забыть", role: .destructive) { model.forgetDecisions(home: app.rules.home) }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text("Offload забудет, что вы выбирали для каждой папки и файла, и привычки, выученные на этом. Итоги прошлых разборов останутся.")
         }
     }
 
@@ -291,7 +347,15 @@ struct CleanupView: View {
             duplicates
             section(.safe)
             section(.backup)
-            let kept = model.suggestions.filter { $0.duplicateGroup == nil && $0.action == .keep }
+            // Правила предложили бы другое, а привычка — оставить: такое видно сразу, не в свёрнутом списке.
+            let habitual = model.suggestions.filter { $0.duplicateGroup == nil && $0.action == .keep && $0.habit }
+            if !habitual.isEmpty {
+                CardSection(title: "Оставить, как вы обычно — \(Format.bytes(habitual.reduce(0) { $0 + $1.bytes }))",
+                            footer: "Правила предложили бы другое, но похожее вы обычно оставляете. Не согласны — выберите действие в строке: Offload учтёт и это.") {
+                    rows(habitual)
+                }
+            }
+            let kept = model.suggestions.filter { $0.duplicateGroup == nil && $0.action == .keep && !$0.habit }
             if !kept.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Button {
@@ -452,7 +516,7 @@ struct CleanupView: View {
                     Text(report.cancelled ? "Разбор остановлен" : "Разбор выполнен").font(.title2.weight(.semibold))
                     Text(report.cancelled
                          ? "Сделанное до остановки сохранено, остальное осталось как было. Незаконченная копия убрана."
-                         : "Решения запомнены: в следующий раз Offload начнёт с них.")
+                         : "Решения запомнены: в следующий раз Offload начнёт с них и учтёт их для похожего.")
                         .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -513,6 +577,8 @@ struct CleanupRow: View {
                     Text(suggestion.url.lastPathComponent).fontWeight(.medium).lineLimit(1).truncationMode(.middle)
                     if suggestion.learned {
                         StatusPill(title: "как в прошлый раз", systemImage: "clock.arrow.circlepath", tone: .brand)
+                    } else if suggestion.habit {
+                        StatusPill(title: "как вы обычно", systemImage: "sparkles", tone: .brand)
                     }
                 }
                 Text(relativeToHome(suggestion.url.path, home: home)).font(.caption).foregroundStyle(.secondary)
