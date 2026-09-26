@@ -547,6 +547,17 @@ final class DockerModel {
     }
 
     func reload(archiveVolumes: [VolumeInfo]) {
+        // В демонстрации настоящий Docker не спрашивается: на снимке не должно быть томов человека.
+        if Demo.isOn {
+            status = .ready
+            volumes = Demo.dockerVolumes
+            rawBytes = Demo.dockerRawBytes
+            usage = Demo.dockerUsage
+            archives = []
+            sizing = false
+            measuringUsage = false
+            return
+        }
         status = .checking
         sizing = false
         measuringUsage = false
@@ -592,6 +603,11 @@ final class DockerModel {
     /// Удаляет выбранное из того, что Docker пересоздаст сам, и ждёт, пока Docker.raw вернёт место Mac.
     func prune(_ targets: Set<DockerPruneTarget>, app: AppModel) {
         guard !targets.isEmpty, busy == nil else { return }
+        // В демонстрации кнопки ничего не удаляют: демо запускают, чтобы посмотреть, а Docker настоящий.
+        guard !Demo.isOn else {
+            messages = ["Демонстрация: Docker не тронут."]
+            return
+        }
         let service = service
         let rawBefore = service.rawDiskBytes()
         busy = "Очистка: подготовка"
@@ -643,6 +659,7 @@ final class DockerModel {
     }
 
     func checkActivity(_ names: [String]) {
+        guard !Demo.isOn else { return }
         let service = service
         for name in names where !checking.contains(name) {
             checking.insert(name)
@@ -657,6 +674,10 @@ final class DockerModel {
     func archiveSelected(to volume: VolumeInfo, app: AppModel) {
         let names = volumes.filter { selection.contains($0.name) }.map(\.name)
         guard !names.isEmpty else { return }
+        guard !Demo.isOn else {
+            messages = ["Демонстрация: тома не упакованы, Docker не тронут."]
+            return
+        }
         let token = CancelToken()
         // Упаковка и возврат тома — та же долгая работа, что перенос: выход во время неё
         // должен спросить и довести отмену до конца, а не оборвать docker на полпути.
@@ -697,6 +718,10 @@ final class DockerModel {
     }
 
     func restore(_ archive: URL, name: String, app: AppModel) {
+        guard !Demo.isOn else {
+            messages = ["Демонстрация: Docker не тронут."]
+            return
+        }
         let token = CancelToken()
         // Упаковка и возврат тома — та же долгая работа, что перенос: выход во время неё
         // должен спросить и довести отмену до конца, а не оборвать docker на полпути.

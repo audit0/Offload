@@ -18,8 +18,13 @@ public struct DockerVolume: Sendable, Identifiable, Hashable {
 
 /// Что Docker пересоздаст сам, если понадобится. Тома сюда не входят: в них данные.
 /// Порядок случаев — порядок очистки: сначала контейнеры, иначе их образы ещё считаются занятыми.
+///
+/// `danglingImages` — образы без имени (`<none>`), остатки пересборок: их не пересобрать и не скачать,
+/// но они и не нужны — у них нет имени, по которому их можно запустить. `images` — все образы,
+/// не нужные ни одному контейнеру: из реестра Docker скачает их снова, а собранные вами
+/// и никуда не отправленные придётся собрать заново, поэтому сами они не отмечаются.
 public enum DockerPruneTarget: String, CaseIterable, Sendable, Hashable {
-    case containers, images, buildCache
+    case containers, danglingImages, images, buildCache
 }
 
 /// Сколько места внутри Docker занимают образы, контейнеры, тома и кеш сборки — по `docker system df`.
@@ -55,6 +60,8 @@ public struct DockerUsage: Sendable, Equatable {
     public func part(_ target: DockerPruneTarget) -> Part? {
         switch target {
         case .containers: return containers
+        // Сколько занимают образы без имени, docker system df не сообщает.
+        case .danglingImages: return nil
         case .images: return images
         case .buildCache: return buildCache
         }
@@ -274,9 +281,16 @@ public struct DockerService: Sendable {
         return found ? usage : nil
     }
 
+    /// Что и в каком порядке чистить: сначала контейнеры, иначе их образы ещё заняты.
+    /// Все неиспользуемые образы включают и образы без имени — второй раз их не чистим.
+    public static func pruneOrder(_ targets: Set<DockerPruneTarget>) -> [DockerPruneTarget] {
+        DockerPruneTarget.allCases.filter { targets.contains($0) && !($0 == .danglingImages && targets.contains(.images)) }
+    }
+
     public static func pruneArguments(_ target: DockerPruneTarget) -> [String] {
         switch target {
         case .containers: return ["container", "prune", "--force"]
+        case .danglingImages: return ["image", "prune", "--force"]
         case .images: return ["image", "prune", "--all", "--force"]
         case .buildCache: return ["builder", "prune", "--all", "--force"]
         }
@@ -299,7 +313,7 @@ public struct DockerService: Sendable {
     public func prune(_ targets: Set<DockerPruneTarget>, status: (DockerPruneTarget) -> Void = { _ in }) throws -> Int64? {
         try ensureRunning()
         var reclaimed: Int64?
-        for target in DockerPruneTarget.allCases where targets.contains(target) {
+        for target in Self.pruneOrder(targets) {
             status(target)
             let result = try Runner.check("docker", Self.pruneArguments(target), timeout: 1800)
             if let bytes = Self.parseReclaimed(result.output) { reclaimed = (reclaimed ?? 0) + bytes }
