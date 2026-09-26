@@ -13,6 +13,7 @@ struct OffloadApp: App {
         WindowGroup("Offload") {
             ContentView()
                 .environment(model)
+                .preferredColorScheme(.light)
                 .frame(minWidth: 960, minHeight: 620)
                 .onAppear { delegate.model = model }
         }
@@ -61,6 +62,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Нужно при запуске через `swift run`, без пакета .app.
         NSApp.setActivationPolicy(.regular)
+        // Тема одна — светлая, как у «Панели агентов»: чёрно-белый вид при любой теме macOS,
+        // в том числе у листов, меню и предупреждений.
+        NSApp.appearance = NSAppearance(named: .aqua)
         NSApp.activate()
         if let directory = ProcessInfo.processInfo.environment["OFFLOAD_SNAPSHOT_DIR"], !directory.isEmpty {
             Task { await Snapshots.run(into: URL(fileURLWithPath: directory, isDirectory: true), delegate: self) }

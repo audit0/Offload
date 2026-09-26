@@ -3,49 +3,174 @@ import SwiftUI
 
 // MARK: - Тема
 
-/// Общий язык интерфейса: отступы, скругления и цвета.
+/// Общий язык интерфейса: отступы, скругления, цвета и стекло.
 ///
-/// Цвет здесь сообщает, а не украшает: зелёный — зашифровано и готово, оранжевый — лежит
-/// открыто или требует внимания, красный — ошибка, серый — трогать нельзя или делать нечего.
-/// Бирюзовый из иконки — только для действий и шкал, чтобы он не спорил с цветами состояний.
+/// Стиль — чёрно-белое стекло, как в iOS 27: окно — размытый рабочий стол под приглушающей дымкой,
+/// карточки и кнопки — полупрозрачные стеклянные пластины с бликом по кромке, текст тёмный и чёткий,
+/// шрифт SF. Главные кнопки — тёмные, их видно всегда. Цветом ничего не украшается: состояния различаются значками и словами,
+/// красный — только ошибка. Тема одна — светлая, при любой теме macOS.
+///
+/// Стекло своё (NSVisualEffectView и материалы SwiftUI), а не системные стеклянные кнопки: те в неактивном
+/// окне бледнели до вида выключенных. Это размытие не гаснет, когда окно не в фокусе.
 enum Theme {
-    static let pagePadding: CGFloat = 24
-    static let sectionSpacing: CGFloat = 20
-    static let cardPadding: CGFloat = 16
-    static let cardRadius: CGFloat = 12
+    static let pagePadding: CGFloat = 32
+    static let sectionSpacing: CGFloat = 28
+    static let cardPadding: CGFloat = 18
+    static let cardRadius: CGFloat = 18
     /// Шире колонка страницы не растягивается: на большом мониторе строки иначе читались бы с трудом.
     static let contentWidth: CGFloat = 980
 
-    /// В тёмной теме чуть светлее, чтобы шкалы и кнопки не тонули в фоне;
-    /// белый текст на кнопке остаётся читаемым в обеих темах.
-    static let brand = dynamic(light: NSColor(srgbRed: 0.05, green: 0.52, blue: 0.48, alpha: 1),
-                               dark: NSColor(srgbRed: 0.06, green: 0.60, blue: 0.55, alpha: 1))
-    /// Подложка карточки: белая в светлой теме, едва светлее фона — в тёмной.
-    static let cardFill = dynamic(light: NSColor(white: 1, alpha: 0.92), dark: NSColor(white: 1, alpha: 0.05))
-    static let cardStroke = dynamic(light: NSColor(white: 0, alpha: 0.09), dark: NSColor(white: 1, alpha: 0.09))
-    /// Дорожка шкал и колец.
-    static let track = dynamic(light: NSColor(white: 0, alpha: 0.08), dark: NSColor(white: 1, alpha: 0.12))
+    /// Дымка поверх стекла окна: приглушает яркость, но рабочий стол размыто просвечивает.
+    static let background = Color(red: 0.84, green: 0.84, blue: 0.87).opacity(0.4)
+    /// Сплошная светлая поверхность — листы и то, что не лежит на стекле окна.
+    static let panel = hex(0xF4F4F7)
+    /// Стекло карточки: полупрозрачное белое поверх размытия.
+    static let glassFill = Color.white.opacity(0.42)
+    /// Кромка стекла: светлый блик сверху, почти прозрачная снизу.
+    static let glassEdge = LinearGradient(colors: [Color.white.opacity(0.85), Color.white.opacity(0.15)],
+                                          startPoint: .top, endPoint: .bottom)
+    static let glassShadow = Color.black.opacity(0.07)
+    /// Подложка значков, ярлыков, выделенной строки — матовое белое стекло.
+    static let soft = Color.white.opacity(0.55)
+    static let ink = hex(0x111111)
+    /// Второстепенный текст — тёмно-серый: читается так же уверенно, как в Telegram.
+    static let muted = hex(0x55555A)
+    static let faint = hex(0x6E6E73)
+    static let line = hex(0xD8D8DE)
+    static let lineSoft = hex(0xE8E8ED)
 
-    private static func dynamic(light: NSColor, dark: NSColor) -> Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
-        })
+    /// Состояния — тем же чёрным: различает их значок (галочка, треугольник), а не цвет.
+    static let ok = ink
+    static let warn = ink
+    static let bad = hex(0xD70015)
+    static let badSoft = hex(0xFFF1F1)
+
+    static let brand = ink
+    static let cardFill = panel
+    static let cardStroke = Color.clear
+    /// Дорожка шкал и колец.
+    static let track = lineSoft
+
+    /// Крупный текст — SF, плотный и жирный, как заголовки Apple.
+    static func display(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
+        .system(size: size, weight: weight)
+    }
+
+    private static func hex(_ value: UInt32) -> Color {
+        Color(red: Double((value >> 16) & 0xFF) / 255, green: Double((value >> 8) & 0xFF) / 255,
+              blue: Double(value & 0xFF) / 255)
     }
 }
 
-/// Что сообщает цвет. Один набор на всё приложение, чтобы оранжевое везде значило одно и то же.
+/// Что сообщает строка. Цвет у всего один — чёрный; красный только у ошибки.
 enum Tone {
     case good, caution, danger, neutral, brand, info
 
     var color: Color {
         switch self {
-        case .good: return .green
-        case .caution: return .orange
-        case .danger: return .red
-        case .neutral: return .secondary
-        case .brand: return Theme.brand
-        case .info: return .blue
+        case .danger: return Theme.bad
+        case .neutral: return Theme.faint
+        case .good, .caution, .brand, .info: return Theme.ink
         }
+    }
+
+    /// Подложка значка и плашки: белая на серой карточке, розоватая — у ошибки.
+    var soft: Color { self == .danger ? Theme.badSoft : Theme.soft }
+}
+
+// MARK: - Стекло
+
+extension View {
+    /// Liquid Glass на macOS 26 и новее, ровная заливка — на более старых.
+    @ViewBuilder
+    func glassSurface<S: Shape>(in shape: S, fallback: Color = Theme.lineSoft, interactive: Bool = false) -> some View {
+        if #available(macOS 26.0, *) {
+            glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
+        } else {
+            background(fallback, in: shape)
+        }
+    }
+
+    /// Главная кнопка — сплошная чёрная капсула с белым текстом.
+    func prominentButton() -> some View { buttonStyle(PillButtonStyle(prominent: true)) }
+
+    /// Обычные кнопки всего окна — светло-серые капсулы с чёрным текстом.
+    func glassButtons() -> some View { buttonStyle(PillButtonStyle()) }
+}
+
+/// Кнопка-капсула, как «Подключить» и «Открыть» в Telegram: видна одинаково в активном
+/// и неактивном окне. Главная — чёрная, обычная — светло-серая.
+struct PillButtonStyle: ButtonStyle {
+    var prominent = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        Pill(configuration: configuration, prominent: prominent)
+    }
+
+    private struct Pill: View {
+        let configuration: ButtonStyleConfiguration
+        let prominent: Bool
+        @Environment(\.isEnabled) private var isEnabled
+        @Environment(\.controlSize) private var controlSize
+        @State private var hovering = false
+
+        var body: some View {
+            let large = controlSize == .large
+            let small = controlSize == .small || controlSize == .mini
+            configuration.label
+                .font(.system(size: large ? 14 : small ? 12 : 13, weight: .semibold))
+                .foregroundStyle(prominent ? Color.white : Theme.ink)
+                .lineLimit(1)
+                .fixedSize()
+                .padding(.horizontal, large ? 18 : small ? 10 : 14)
+                .padding(.vertical, large ? 8 : small ? 3 : 5)
+                .background {
+                    if prominent {
+                        Capsule().fill(fill)
+                    } else {
+                        Capsule().fill(.ultraThinMaterial)
+                        Capsule().fill(fill)
+                        Capsule().strokeBorder(Theme.glassEdge, lineWidth: 0.8)
+                    }
+                }
+                .contentShape(Capsule())
+                .opacity(isEnabled ? 1 : 0.4)
+                .onHover { hovering = $0 }
+        }
+
+        private var fill: Color {
+            if prominent { return configuration.isPressed ? Color.black.opacity(0.65) : hovering ? Color.black.opacity(0.92) : Theme.ink.opacity(0.86) }
+            return Color.white.opacity(configuration.isPressed ? 0.25 : hovering ? 0.7 : 0.5)
+        }
+    }
+}
+
+// MARK: - Стекло окна и пластины
+
+/// Фон окна: рабочий стол размыто просвечивает сквозь стекло. Размытие активно всегда,
+/// и когда окно не в фокусе, — стекло остаётся стеклом.
+struct WindowGlass: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .underWindowBackground
+        view.blendingMode = .behindWindow
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+}
+
+extension View {
+    /// Стеклянная пластина: размытие того, что под ней, полупрозрачная белая заливка,
+    /// блик по кромке и мягкая тень — как карточки iOS 27.
+    func glassPlate<S: InsettableShape>(in shape: S, tint: Color? = nil) -> some View {
+        background {
+            shape.fill(.ultraThinMaterial)
+            shape.fill(tint ?? Theme.glassFill)
+            shape.strokeBorder(Theme.glassEdge, lineWidth: 0.8)
+        }
+        .shadow(color: Theme.glassShadow, radius: 12, y: 4)
     }
 }
 
@@ -64,6 +189,7 @@ struct PageScroll<Content: View>: View {
             .frame(maxWidth: Theme.contentWidth)
             .frame(maxWidth: .infinity)
         }
+        .scrollContentBackground(.hidden)
     }
 }
 
@@ -85,8 +211,11 @@ struct Card<Content: View>: View {
         }
         .padding(padding)
         .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil, alignment: .topLeading)
-        .background(tint.map { $0.opacity(0.08) } ?? Theme.cardFill, in: shape)
-        .overlay { shape.strokeBorder(tint.map { $0.opacity(0.28) } ?? Theme.cardStroke) }
+        .glassPlate(in: shape, tint: tint == Theme.bad ? Theme.badSoft.opacity(0.7) : nil)
+        // Выделенная карточка (предупреждение) — с тёмной рамкой: заметна без цвета.
+        .overlay {
+            if let tint { shape.strokeBorder(tint == Theme.bad ? Theme.bad.opacity(0.4) : Theme.ink.opacity(0.7), lineWidth: 1.2) }
+        }
     }
 }
 
@@ -99,9 +228,9 @@ struct CardTitle<Accessory: View>: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: systemImage)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.faint)
                 .frame(width: 18)
-            Text(title).font(.headline)
+            Text(title).font(.headline).foregroundStyle(Theme.ink)
             Spacer(minLength: 8)
             accessory
         }
@@ -125,28 +254,42 @@ struct CardSection<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                if let number {
-                    Text("\(number)")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 18, height: 18)
-                        .background(Theme.brand, in: Circle())
-                }
-                Text(title).font(.headline)
-            }
-            .padding(.horizontal, 4)
+            SectionHeader(title: title, number: number)
             Card(padding: 0, spacing: 0) {
                 content
             }
             if let footer {
                 Text(footer)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.muted)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 4)
             }
         }
+    }
+}
+
+/// Заголовок раздела над карточкой: коротко и жирно, без линий и заглавных.
+struct SectionHeader: View {
+    let title: String
+    var number: Int?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if let number {
+                Text("\(number)")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 17, height: 17)
+                    .background(Theme.ink, in: Circle())
+            }
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 2)
     }
 }
 
@@ -179,7 +322,7 @@ struct FormRow<Trailing: View>: View {
                 if let detail {
                     Text(detail)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -213,7 +356,7 @@ struct InfoRow<Value: View>: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(title).foregroundStyle(.secondary)
+            Text(title).foregroundStyle(Theme.muted)
             Spacer(minLength: 12)
             value
         }
@@ -239,7 +382,7 @@ struct IconTile: View {
             .font(.system(size: size * 0.46, weight: .semibold))
             .foregroundStyle(tone.color)
             .frame(width: size, height: size)
-            .background(tone.color.opacity(0.14), in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
+            .background(tone.soft, in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
             .accessibilityHidden(true)
     }
 }
@@ -261,7 +404,7 @@ struct StatusPill: View {
         .foregroundStyle(tone.color)
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .background(tone.color.opacity(0.13), in: Capsule())
+        .background(tone.soft, in: Capsule())
     }
 }
 
@@ -278,11 +421,11 @@ struct StatTile: View {
             IconTile(systemImage: systemImage, tone: tone)
             VStack(alignment: .leading, spacing: 2) {
                 Text(value)
-                    .font(.system(.title2, design: .rounded, weight: .semibold))
+                    .font(Theme.display(24))
                     .monospacedDigit()
-                Text(title).font(.callout).foregroundStyle(.secondary)
+                Text(title).font(.callout).foregroundStyle(Theme.muted)
                 if let detail {
-                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                    Text(detail).font(.caption).foregroundStyle(Theme.faint)
                 }
             }
         }
@@ -298,7 +441,8 @@ struct Chip: View {
             .font(.callout.monospaced())
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(Color.primary.opacity(0.06), in: Capsule())
+            .background(Theme.soft, in: Capsule())
+            .overlay { Capsule().strokeBorder(Theme.glassEdge, lineWidth: 0.6) }
             .overlay { Capsule().strokeBorder(Theme.cardStroke) }
     }
 }
@@ -460,13 +604,13 @@ struct SheetLayout<Content: View, Actions: View>: View {
                     IconTile(systemImage: systemImage, tone: tone, size: 40)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(title)
-                            .font(.title3.weight(.semibold))
+                            .font(Theme.display(20))
                             .lineLimit(2)
                             .truncationMode(.middle)
                         if let subtitle {
                             Text(subtitle)
                                 .font(.callout)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.muted)
                                 .lineLimit(2)
                                 .truncationMode(.middle)
                         }
@@ -485,5 +629,28 @@ struct SheetLayout<Content: View, Actions: View>: View {
             .padding(.vertical, 14)
         }
         .frame(width: width)
+        .background(Theme.panel)
+    }
+}
+
+/// Кнопка-ссылка: чёрным, подчёркивается при наведении — вместо системной синей ссылки.
+struct InkLinkStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        InkLink(configuration: configuration)
+    }
+
+    private struct InkLink: View {
+        let configuration: ButtonStyleConfiguration
+        @State private var hovering = false
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            configuration.label
+                .foregroundStyle(isEnabled ? Theme.ink : Theme.faint)
+                .underline(hovering && isEnabled)
+                .opacity(configuration.isPressed ? 0.6 : 1)
+                .contentShape(Rectangle())
+                .onHover { hovering = $0 }
+        }
     }
 }

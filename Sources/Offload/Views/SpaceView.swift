@@ -26,7 +26,7 @@ struct SpaceView: View {
                     }
                     if model.hiddenSmallCount > 0, !model.isScanning {
                         Text("И ещё \(model.hiddenSmallCount) объектов меньше 1 МБ")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Theme.muted)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 12)
@@ -83,11 +83,11 @@ struct SpaceView: View {
                     .help("Наверх")
                 VStack(alignment: .leading, spacing: 1) {
                     Text(model.title(home: app.rules.home))
-                        .font(.title3.weight(.semibold))
+                        .font(Theme.display(19))
                         .lineLimit(1).truncationMode(.middle)
                     Text(!model.isScanning ? "\(Format.bytes(total)) · \(model.items.count) \(pluralRu(model.items.count, "объект", "объекта", "объектов"))"
                          : model.items.isEmpty ? "Считаю…" : "Считаю: \(measured.count) из \(model.items.count)")
-                        .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                        .font(.caption).foregroundStyle(Theme.muted).monospacedDigit()
                 }
                 Spacer()
                 if model.isScanning {
@@ -98,14 +98,14 @@ struct SpaceView: View {
             if total > 0 {
                 VStack(alignment: .leading, spacing: 8) {
                     StackedBar(parts: [
-                        StackedBar.Part(fraction: Double(movable) / Double(total), color: .green),
-                        StackedBar.Part(fraction: Double(caution) / Double(total), color: .orange),
-                        StackedBar.Part(fraction: Double(blocked) / Double(total), color: Color.secondary.opacity(0.45)),
+                        StackedBar.Part(fraction: Double(movable) / Double(total), color: Theme.ink),
+                        StackedBar.Part(fraction: Double(caution) / Double(total), color: Theme.faint),
+                        StackedBar.Part(fraction: Double(blocked) / Double(total), color: Theme.line),
                     ])
                     HStack(spacing: 18) {
-                        legend("Можно перенести", bytes: movable, color: .green)
-                        legend("С оговорками", bytes: caution, color: .orange)
-                        legend("Не трогать", bytes: blocked, color: Color.secondary.opacity(0.45))
+                        legend("Можно перенести", bytes: movable, color: Theme.ink)
+                        legend("С оговорками", bytes: caution, color: Theme.faint)
+                        legend("Не трогать", bytes: blocked, color: Theme.line)
                         Spacer(minLength: 0)
                     }
                 }
@@ -118,7 +118,7 @@ struct SpaceView: View {
     private func legend(_ title: String, bytes: Int64, color: Color) -> some View {
         HStack(spacing: 6) {
             Circle().fill(color).frame(width: 8, height: 8)
-            Text(title).foregroundStyle(.secondary)
+            Text(title).foregroundStyle(Theme.muted)
             Text(Format.bytes(bytes)).fontWeight(.medium).monospacedDigit()
         }
         .font(.caption)
@@ -155,7 +155,7 @@ struct SpaceRow: View {
                 }
                 CapacityBar(fraction: Double(item.bytes) / Double(largest), height: 5).frame(maxWidth: 320)
                 if let note = item.verdict.notes.first, item.verdict != .safe {
-                    Text(note).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    Text(note).font(.caption).foregroundStyle(Theme.muted).lineLimit(2)
                 }
             }
             Spacer(minLength: 12)
@@ -166,7 +166,7 @@ struct SpaceRow: View {
                     ProgressView().controlSize(.small)
                 }
                 if let modified = item.modified {
-                    Text(Format.relative(modified)).font(.caption).foregroundStyle(.secondary)
+                    Text(Format.relative(modified)).font(.caption).foregroundStyle(Theme.muted)
                 }
             }
             .frame(width: 130, alignment: .trailing)
@@ -179,14 +179,14 @@ struct SpaceRow: View {
                     .opacity(hovering ? 1 : 0)
                 if let appData {
                     Button("Как освободить…", action: onFree)
-                        .buttonStyle(.bordered)
+                        .buttonStyle(PillButtonStyle())
                         .controlSize(.small)
                         .help(appData == .docker
                               ? "Открыть раздел «Docker»: очистка образов и кеша сборки, архивация томов"
                               : "Сколько занимает каждая машина и как освободить место через UTM")
                 } else if !item.verdict.isBlocked {
                     Button("Перенести…", action: onMove)
-                        .buttonStyle(.bordered)
+                        .buttonStyle(PillButtonStyle())
                         .controlSize(.small)
                 }
                 Button(action: onOpen) { Image(systemName: "chevron.right") }
@@ -238,7 +238,7 @@ struct MoveSheet: View {
                 // Сейф закрыт — открываем прямо здесь, не уходя из окна переноса.
                 SafeUnlockRow()
                 Button("Всё-таки положить открыто на диск «\(app.destination?.name ?? "")»") { app.storeMode = .open }
-                    .buttonStyle(.link).font(.caption)
+                    .buttonStyle(InkLinkStyle()).font(.caption)
             }
         } actions: {
             switch model.stage {
@@ -272,7 +272,7 @@ struct MoveSheet: View {
         case .idle, .inspecting:
             HStack(spacing: 10) {
                 ProgressView().controlSize(.small)
-                Text("Проверяю содержимое, открытые файлы и диск «\(volume.name)»…").foregroundStyle(.secondary)
+                Text("Проверяю содержимое, открытые файлы и диск «\(volume.name)»…").foregroundStyle(Theme.muted)
             }
         case .ready(let plan):
             VStack(alignment: .leading, spacing: 12) {
@@ -304,7 +304,7 @@ struct MoveSheet: View {
                     Text(model.deleteOriginal
                          ? "Оригинал удаляется только после того, как каждый файл копии перечитан с диска и сверен по SHA-256."
                          : "Останется копия на диске, место на Mac не освободится.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Theme.muted)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.leading, 20)
                 }
@@ -315,10 +315,10 @@ struct MoveSheet: View {
                     Text(progress.phase.rawValue).fontWeight(.medium)
                     Spacer()
                     Text("\(Format.bytes(progress.bytesDone)) из \(Format.bytes(progress.bytesTotal))")
-                        .font(.callout).foregroundStyle(.secondary).monospacedDigit()
+                        .font(.callout).foregroundStyle(Theme.muted).monospacedDigit()
                 }
                 ProgressView(value: progress.fraction)
-                Text(progress.item).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                Text(progress.item).font(.caption).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.middle)
             }
         case .done(let record):
             VStack(alignment: .leading, spacing: 10) {
@@ -326,11 +326,11 @@ struct MoveSheet: View {
                        ? "Перенесено и сверено: \(record.files) файлов, \(Format.bytes(record.bytes)). Оригинал удалён, место на Mac освободилось."
                        : "Скопировано и сверено: \(record.files) файлов, \(Format.bytes(record.bytes)). Оригинал на месте.")
                 if record.isEncrypted {
-                    Label("Лежит в сейфе — зашифровано.", systemImage: "lock.fill").foregroundStyle(.green).font(.callout)
+                    Label("Лежит в сейфе — зашифровано.", systemImage: "lock.fill").foregroundStyle(Theme.ok).font(.callout)
                 }
                 HStack {
                     Button("Показать на диске") { revealInFinder(URL(fileURLWithPath: record.archivedPath)) }
-                    Text("Вернуть обратно можно в разделе «Перенесённое».").font(.caption).foregroundStyle(.secondary)
+                    Text("Вернуть обратно можно в разделе «Перенесённое».").font(.caption).foregroundStyle(Theme.muted)
                 }
             }
         case .failed(let message):
