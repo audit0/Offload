@@ -6,37 +6,35 @@ struct OverviewView: View {
 
     var body: some View {
         let model = app.overview
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                if !app.hasFullDiskAccess { FullDiskAccessBanner() }
-                ScenarioCard(macDisk: model.disk)
-                HStack(alignment: .top, spacing: 16) {
-                    DiskCard(volume: model.disk)
-                    MemoryCard(snapshot: model.memory)
-                }
-                if !model.advice.isEmpty {
-                    GroupBox {
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach(model.advice, id: \.self) { tip in
-                                Label(tip, systemImage: "lightbulb").fixedSize(horizontal: false, vertical: true)
-                            }
+        PageScroll {
+            if !app.hasFullDiskAccess { FullDiskAccessBanner() }
+            // Три карточки одной высоты: fixedSize по вертикали отдаёт ряду высоту самой высокой,
+            // а карточки с fillsHeight растягиваются до неё.
+            HStack(alignment: .top, spacing: 16) {
+                DiskCard(volume: model.disk)
+                ExternalDiskCard()
+                MemoryCard(snapshot: model.memory)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            ScenarioCard(macDisk: model.disk)
+            if !model.advice.isEmpty {
+                Card {
+                    CardTitle("Что стоит сделать", systemImage: "lightbulb")
+                    ForEach(model.advice, id: \.self) { tip in
+                        Label {
+                            Text(tip).fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: "lightbulb.fill").foregroundStyle(.orange)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(6)
-                    } label: {
-                        Text("Что стоит сделать").font(.headline)
-                    }
-                }
-                if let memory = model.memory {
-                    GroupBox {
-                        AppMemoryList(apps: memory.apps, physical: memory.physicalBytes)
-                    } label: {
-                        Text("Память по приложениям").font(.headline)
                     }
                 }
             }
-            .padding(24)
-            .frame(maxWidth: 1000, alignment: .leading)
+            if let memory = model.memory, !memory.apps.isEmpty {
+                Card {
+                    CardTitle("Память по приложениям", systemImage: "square.stack.3d.up")
+                    AppMemoryList(apps: memory.apps, physical: memory.physicalBytes)
+                }
+            }
         }
         .navigationTitle("Обзор")
         .task { await model.poll() }
@@ -47,26 +45,76 @@ struct DiskCard: View {
     let volume: VolumeInfo?
 
     var body: some View {
-        GroupBox {
+        Card(spacing: 14, fillsHeight: true) {
+            CardTitle("Диск Mac", systemImage: "internaldrive")
             if let volume, volume.totalBytes > 0 {
                 let used = Double(volume.totalBytes - volume.availableBytes) / Double(volume.totalBytes)
-                VStack(alignment: .leading, spacing: 10) {
-                    Gauge(value: used) { EmptyView() }
-                        .gaugeStyle(.linearCapacity)
-                        .tint(used > 0.9 ? .red : used > 0.8 ? .orange : .accentColor)
-                    Text("Свободно \(Format.bytes(volume.availableBytes)) из \(Format.bytes(volume.totalBytes))")
-                        .font(.title3.weight(.semibold))
-                    Text("Занято \(Int((used * 100).rounded()))%").foregroundStyle(.secondary)
+                // Те же пороги, что у шага «Освободите место» и у совета: меньше 15% свободно — мало.
+                let low = used > 0.85
+                let tint = used > 0.9 ? Color.red : low ? Color.orange : Theme.brand
+                HStack(spacing: 14) {
+                    RingGauge(fraction: used, tint: tint) {
+                        Text("\(Int((used * 100).rounded()))%")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                    }
+                    .frame(width: 60, height: 60)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Format.bytes(volume.availableBytes))
+                            .font(.system(size: 22, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                        Text("свободно из \(Format.bytes(volume.totalBytes))")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(6)
+                Spacer(minLength: 0)
+                Label(low ? "Мало места" : "Места достаточно",
+                      systemImage: low ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(low ? tint : Color.green)
             } else {
-                ProgressView().frame(maxWidth: .infinity)
+                ProgressView().controlSize(.small).frame(maxWidth: .infinity, minHeight: 60)
             }
-        } label: {
-            Label("Диск Mac", systemImage: "internaldrive").font(.headline)
         }
-        .frame(maxWidth: .infinity)
+    }
+}
+
+/// Внешний диск и сейф на нём: куда Offload переносит и в каком состоянии замок.
+struct ExternalDiskCard: View {
+    @Environment(AppModel.self) private var app
+
+    var body: some View {
+        Card(spacing: 14, fillsHeight: true) {
+            CardTitle("Внешний диск", systemImage: "externaldrive")
+            if let disk = app.destination {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(disk.name)
+                        .font(.system(size: 17, weight: .semibold))
+                        .lineLimit(1).truncationMode(.middle)
+                    if disk.totalBytes > 0 {
+                        CapacityBar(fraction: Double(disk.totalBytes - disk.availableBytes) / Double(disk.totalBytes))
+                    }
+                    Text("\(disk.fsDisplayName) · свободно \(Format.bytes(disk.availableBytes)) из \(Format.bytes(disk.totalBytes))")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                let summary = app.safe.summary
+                Label(summary.title, systemImage: summary.systemImage)
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(summary.tone.color)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Не подключён")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Text("На него Offload переносит то, что не нужно держать на Mac, и там же живёт сейф.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+        }
     }
 }
 
@@ -74,26 +122,32 @@ struct MemoryCard: View {
     let snapshot: MemorySnapshot?
 
     var body: some View {
-        GroupBox {
-            if let snapshot {
-                VStack(alignment: .leading, spacing: 8) {
-                    LabeledContent("Давление памяти") { Text(snapshot.pressure.title).foregroundStyle(color(snapshot.pressure)) }
-                    LabeledContent("Swap") {
-                        Text("\(Format.memory(snapshot.swapUsedBytes)) из \(Format.memory(snapshot.swapTotalBytes))")
-                    }
-                    LabeledContent("Сжато") { Text(Format.memory(snapshot.compressedBytes)) }
-                    LabeledContent("Свободно") { Text(Format.memory(snapshot.freeBytes)) }
-                    LabeledContent("Без перезагрузки") { Text(uptime(snapshot.uptime)) }
+        Card(spacing: 14, fillsHeight: true) {
+            CardTitle(title: "Память", systemImage: "memorychip") {
+                if let snapshot {
+                    Text(Format.memory(snapshot.physicalBytes)).font(.callout).foregroundStyle(.secondary)
                 }
-                .padding(6)
-            } else {
-                ProgressView().frame(maxWidth: .infinity)
             }
-        } label: {
-            Label("Оперативная память" + (snapshot.map { " · \(Format.memory($0.physicalBytes))" } ?? ""),
-                  systemImage: "memorychip").font(.headline)
+            if let snapshot {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 8) {
+                        Circle().fill(color(snapshot.pressure)).frame(width: 10, height: 10)
+                        Text(snapshot.pressure.title).font(.system(size: 17, weight: .semibold))
+                    }
+                    Text("давление памяти").font(.caption).foregroundStyle(.secondary)
+                }
+                VStack(spacing: 5) {
+                    InfoRow("Swap", value: "\(Format.memory(snapshot.swapUsedBytes)) из \(Format.memory(snapshot.swapTotalBytes))")
+                    InfoRow("Сжато", value: Format.memory(snapshot.compressedBytes))
+                    InfoRow("Свободно", value: Format.memory(snapshot.freeBytes))
+                    InfoRow("Без перезагрузки", value: uptime(snapshot.uptime))
+                }
+                .font(.caption)
+                .monospacedDigit()
+            } else {
+                ProgressView().controlSize(.small).frame(maxWidth: .infinity, minHeight: 60)
+            }
         }
-        .frame(maxWidth: .infinity)
     }
 
     private func color(_ pressure: MemoryPressure) -> Color {
@@ -117,16 +171,15 @@ struct AppMemoryList: View {
     let physical: UInt64
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             ForEach(apps) { app in
                 HStack(spacing: 12) {
-                    Text(app.name).lineLimit(1).truncationMode(.middle).frame(width: 280, alignment: .leading)
-                    SizeBar(fraction: physical > 0 ? Double(app.bytes) / Double(physical) : 0)
-                    Text(Format.memory(app.bytes)).monospacedDigit().frame(width: 90, alignment: .trailing)
+                    Text(app.name).lineLimit(1).truncationMode(.middle).frame(width: 240, alignment: .leading)
+                    CapacityBar(fraction: physical > 0 ? Double(app.bytes) / Double(physical) : 0)
+                    Text(Format.memory(app.bytes)).monospacedDigit().frame(width: 80, alignment: .trailing)
                 }
             }
         }
-        .padding(6)
     }
 }
 
@@ -146,31 +199,24 @@ struct ScenarioCard: View {
     }
 
     var body: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(steps) { step in
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: symbol(step.state))
-                            .foregroundStyle(color(step.state))
-                            .font(.title3)
-                            .frame(width: 24)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(step.title).font(.body.weight(.medium))
-                            Text(step.detail).font(.callout).foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        Spacer(minLength: 12)
-                        if let action = step.action {
-                            Button(action.title) { app.section = action.section }
-                        }
-                    }
-                    .padding(.vertical, 8)
-                    if step.id != steps.last?.id { Divider().padding(.leading, 36) }
+        let list = steps
+        let done = list.filter { $0.state == .done }.count
+        // Первый несделанный шаг — «следующий»: его кнопка главная, остальные спокойнее.
+        let next = list.first { $0.state != .done }?.id
+        Card(padding: 0, spacing: 0) {
+            VStack(alignment: .leading, spacing: 10) {
+                CardTitle(title: "Порядок работы", systemImage: "list.number") {
+                    Text("готово \(done) из \(list.count)")
+                        .font(.callout).foregroundStyle(.secondary).monospacedDigit()
                 }
+                CapacityBar(fraction: Double(done) / Double(max(1, list.count)), tint: .green, height: 4)
             }
-            .padding(6)
-        } label: {
-            Label("Порядок работы", systemImage: "list.number").font(.headline)
+            .padding(Theme.cardPadding)
+            Divider()
+            ForEach(Array(list.enumerated()), id: \.element.id) { index, step in
+                StepRow(number: index + 1, step: step, isNext: step.id == next) { app.section = $0 }
+                if step.id != list.last?.id { RowDivider(inset: 54) }
+            }
         }
     }
 
@@ -229,20 +275,57 @@ struct ScenarioCard: View {
                           action: ("Бэкап", .backup)))
         return steps
     }
+}
 
-    private func symbol(_ state: Step.State) -> String {
-        switch state {
-        case .done: return "checkmark.circle.fill"
-        case .todo: return "circle"
-        case .warning: return "exclamationmark.triangle.fill"
+/// Шаг порядка работы: номер или отметка, что сделано, текст и кнопка перехода.
+private struct StepRow: View {
+    let number: Int
+    let step: ScenarioCard.Step
+    let isNext: Bool
+    let open: (SidebarSection) -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            indicator
+                .frame(width: 26, height: 26)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(step.title).fontWeight(.medium)
+                Text(step.detail).font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 3)
+            Spacer(minLength: 12)
+            if let action = step.action {
+                if isNext {
+                    Button(action.title) { open(action.section) }
+                        .buttonStyle(.borderedProminent)
+                } else {
+                    Button(action.title) { open(action.section) }
+                }
+            }
         }
+        .padding(.horizontal, Theme.cardPadding)
+        .padding(.vertical, 12)
+        .background(isNext ? Theme.brand.opacity(0.05) : Color.clear)
     }
 
-    private func color(_ state: Step.State) -> Color {
-        switch state {
-        case .done: return .green
-        case .todo: return .secondary
-        case .warning: return .orange
+    @ViewBuilder
+    private var indicator: some View {
+        switch step.state {
+        case .done:
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 21))
+                .foregroundStyle(.green)
+        case .warning:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 17))
+                .foregroundStyle(.orange)
+        case .todo:
+            Text("\(number)")
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(isNext ? Theme.brand : Color.secondary)
+                .frame(width: 22, height: 22)
+                .overlay { Circle().strokeBorder(isNext ? Theme.brand : Color.secondary.opacity(0.5), lineWidth: 1.5) }
         }
     }
 }
