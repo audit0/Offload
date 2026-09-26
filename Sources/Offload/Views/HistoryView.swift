@@ -179,7 +179,7 @@ struct HistoryGroupRow: View {
                         Text("\(group.latest.formatted(date: .abbreviated, time: .shortened)) · \(Format.bytes(group.bytes)) · файлов \(group.files) · \(group.first.location)")
                             .font(.caption).foregroundStyle(.secondary)
                         if let note = group.note, !note.isEmpty {
-                            Text(note).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                            Text(note).font(.caption).foregroundStyle(Theme.warn).fixedSize(horizontal: false, vertical: true)
                         }
                     }
                     Spacer()
@@ -228,7 +228,7 @@ struct HistoryRow: View {
                 Text("\(record.date.formatted(date: .abbreviated, time: .shortened)) · \(Format.bytes(record.bytes)) · файлов \(record.files) · \(record.location)")
                     .font(.caption).foregroundStyle(.secondary)
                 if let note = record.note, !note.isEmpty {
-                    Text(note).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                    Text(note).font(.caption).foregroundStyle(Theme.warn).fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer()

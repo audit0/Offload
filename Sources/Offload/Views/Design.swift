@@ -5,46 +5,78 @@ import SwiftUI
 
 /// Общий язык интерфейса: отступы, скругления и цвета.
 ///
-/// Цвет здесь сообщает, а не украшает: зелёный — зашифровано и готово, оранжевый — лежит
-/// открыто или требует внимания, красный — ошибка, серый — трогать нельзя или делать нечего.
-/// Бирюзовый из иконки — только для действий и шкал, чтобы он не спорил с цветами состояний.
+/// Стиль — чёрно-белый, как у «Панели агентов»: белые карточки на тёплом сером, почти чёрный текст,
+/// чёрная главная кнопка, заголовки с засечками. Тема одна — светлая, при любой теме macOS.
+/// Цвет сообщает, а не украшает, и он приглушённый: зелёный — зашифровано и готово, янтарный —
+/// лежит открыто или требует внимания, красный — ошибка, серый — трогать нельзя или делать нечего.
 enum Theme {
-    static let pagePadding: CGFloat = 24
-    static let sectionSpacing: CGFloat = 20
+    static let pagePadding: CGFloat = 28
+    static let sectionSpacing: CGFloat = 24
     static let cardPadding: CGFloat = 16
-    static let cardRadius: CGFloat = 12
+    static let cardRadius: CGFloat = 13
     /// Шире колонка страницы не растягивается: на большом мониторе строки иначе читались бы с трудом.
     static let contentWidth: CGFloat = 980
 
-    /// В тёмной теме чуть светлее, чтобы шкалы и кнопки не тонули в фоне;
-    /// белый текст на кнопке остаётся читаемым в обеих темах.
-    static let brand = dynamic(light: NSColor(srgbRed: 0.05, green: 0.52, blue: 0.48, alpha: 1),
-                               dark: NSColor(srgbRed: 0.06, green: 0.60, blue: 0.55, alpha: 1))
-    /// Подложка карточки: белая в светлой теме, едва светлее фона — в тёмной.
-    static let cardFill = dynamic(light: NSColor(white: 1, alpha: 0.92), dark: NSColor(white: 1, alpha: 0.05))
-    static let cardStroke = dynamic(light: NSColor(white: 0, alpha: 0.09), dark: NSColor(white: 1, alpha: 0.09))
-    /// Дорожка шкал и колец.
-    static let track = dynamic(light: NSColor(white: 0, alpha: 0.08), dark: NSColor(white: 1, alpha: 0.12))
+    /// Фон страницы — тёплый серый; на нём белые карточки.
+    static let background = hex(0xF6F6F4)
+    static let panel = Color.white
+    /// Поверхность внутри карточки: подложки значков, ярлыки, поля.
+    static let soft = hex(0xF3F2EE)
+    static let ink = hex(0x16181C)
+    static let muted = hex(0x585D66)
+    static let faint = hex(0x6A6F77)
+    static let line = hex(0xE7E6E1)
+    static let lineSoft = hex(0xF0EFEB)
 
-    private static func dynamic(light: NSColor, dark: NSColor) -> Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
-        })
+    static let ok = hex(0x1F7A54)
+    static let okSoft = hex(0xEAF3EE)
+    static let warn = hex(0x8A6010)
+    static let warnSoft = hex(0xFDF5E6)
+    static let warnLine = hex(0xECD8A6)
+    static let bad = hex(0xB3261E)
+    static let badSoft = hex(0xFDEEEC)
+
+    /// Действия, шкалы и выделение — чёрным, как главная кнопка панели.
+    static let brand = ink
+    static let cardFill = panel
+    static let cardStroke = line
+    /// Дорожка шкал и колец.
+    static let track = hex(0xEDECE7)
+    /// Тень карточки: едва заметная, карточка лежит на фоне, а не парит.
+    static let shadow = Color(red: 20 / 255, green: 22 / 255, blue: 26 / 255).opacity(0.05)
+
+    /// Заголовки с засечками (New York), как у панели.
+    static func serif(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        .system(size: size, weight: weight, design: .serif)
+    }
+
+    private static func hex(_ value: UInt32) -> Color {
+        Color(red: Double((value >> 16) & 0xFF) / 255, green: Double((value >> 8) & 0xFF) / 255,
+              blue: Double(value & 0xFF) / 255)
     }
 }
 
-/// Что сообщает цвет. Один набор на всё приложение, чтобы оранжевое везде значило одно и то же.
+/// Что сообщает цвет. Один набор на всё приложение, чтобы янтарное везде значило одно и то же.
 enum Tone {
     case good, caution, danger, neutral, brand, info
 
     var color: Color {
         switch self {
-        case .good: return .green
-        case .caution: return .orange
-        case .danger: return .red
-        case .neutral: return .secondary
-        case .brand: return Theme.brand
-        case .info: return .blue
+        case .good: return Theme.ok
+        case .caution: return Theme.warn
+        case .danger: return Theme.bad
+        case .neutral: return Theme.faint
+        case .brand, .info: return Theme.ink
+        }
+    }
+
+    /// Подложка под цветом: плашки, значки, предупреждения.
+    var soft: Color {
+        switch self {
+        case .good: return Theme.okSoft
+        case .caution: return Theme.warnSoft
+        case .danger: return Theme.badSoft
+        case .neutral, .brand, .info: return Theme.soft
         }
     }
 }
@@ -64,6 +96,7 @@ struct PageScroll<Content: View>: View {
             .frame(maxWidth: Theme.contentWidth)
             .frame(maxWidth: .infinity)
         }
+        .background(Theme.background)
     }
 }
 
@@ -85,8 +118,21 @@ struct Card<Content: View>: View {
         }
         .padding(padding)
         .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil, alignment: .topLeading)
-        .background(tint.map { $0.opacity(0.08) } ?? Theme.cardFill, in: shape)
-        .overlay { shape.strokeBorder(tint.map { $0.opacity(0.28) } ?? Theme.cardStroke) }
+        .background(tint.map(Self.softFill) ?? Theme.cardFill, in: shape)
+        .overlay { shape.strokeBorder(tint.map(Self.softLine) ?? Theme.cardStroke) }
+        .shadow(color: tint == nil ? Theme.shadow : .clear, radius: 1, y: 1)
+    }
+
+    /// Подкрашенная карточка — мягкий фон своего цвета, как «Нужно от вас» в панели.
+    private static func softFill(_ tint: Color) -> Color {
+        if tint == Theme.warn { return Theme.warnSoft }
+        if tint == Theme.bad { return Theme.badSoft }
+        if tint == Theme.ok { return Theme.okSoft }
+        return Theme.soft
+    }
+
+    private static func softLine(_ tint: Color) -> Color {
+        tint == Theme.warn ? Theme.warnLine : tint.opacity(0.22)
     }
 }
 
@@ -99,9 +145,9 @@ struct CardTitle<Accessory: View>: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: systemImage)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.faint)
                 .frame(width: 18)
-            Text(title).font(.headline)
+            Text(title).font(.headline).foregroundStyle(Theme.ink)
             Spacer(minLength: 8)
             accessory
         }
@@ -125,28 +171,43 @@ struct CardSection<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                if let number {
-                    Text("\(number)")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 18, height: 18)
-                        .background(Theme.brand, in: Circle())
-                }
-                Text(title).font(.headline)
-            }
-            .padding(.horizontal, 4)
+            SectionHeader(title: title, number: number)
             Card(padding: 0, spacing: 0) {
                 content
             }
             if let footer {
                 Text(footer)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.muted)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 4)
             }
         }
+    }
+}
+
+/// Заголовок раздела, как в панели: тихая подпись заглавными с линией до края.
+struct SectionHeader: View {
+    let title: String
+    var number: Int?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if let number {
+                Text("\(number)")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 17, height: 17)
+                    .background(Theme.ink, in: Circle())
+            }
+            Text(title.uppercased())
+                .font(.system(size: 11, weight: .semibold))
+                .kerning(0.9)
+                .foregroundStyle(Theme.faint)
+                .lineLimit(1)
+            Rectangle().fill(Theme.line).frame(height: 1)
+        }
+        .padding(.horizontal, 2)
     }
 }
 
@@ -239,7 +300,7 @@ struct IconTile: View {
             .font(.system(size: size * 0.46, weight: .semibold))
             .foregroundStyle(tone.color)
             .frame(width: size, height: size)
-            .background(tone.color.opacity(0.14), in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
+            .background(tone.soft, in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
             .accessibilityHidden(true)
     }
 }
@@ -261,7 +322,7 @@ struct StatusPill: View {
         .foregroundStyle(tone.color)
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .background(tone.color.opacity(0.13), in: Capsule())
+        .background(tone.soft, in: Capsule())
     }
 }
 
@@ -278,11 +339,11 @@ struct StatTile: View {
             IconTile(systemImage: systemImage, tone: tone)
             VStack(alignment: .leading, spacing: 2) {
                 Text(value)
-                    .font(.system(.title2, design: .rounded, weight: .semibold))
+                    .font(Theme.serif(24))
                     .monospacedDigit()
-                Text(title).font(.callout).foregroundStyle(.secondary)
+                Text(title).font(.callout).foregroundStyle(Theme.muted)
                 if let detail {
-                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                    Text(detail).font(.caption).foregroundStyle(Theme.faint)
                 }
             }
         }
@@ -298,7 +359,7 @@ struct Chip: View {
             .font(.callout.monospaced())
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(Color.primary.opacity(0.06), in: Capsule())
+            .background(Theme.soft, in: Capsule())
             .overlay { Capsule().strokeBorder(Theme.cardStroke) }
     }
 }
@@ -460,7 +521,7 @@ struct SheetLayout<Content: View, Actions: View>: View {
                     IconTile(systemImage: systemImage, tone: tone, size: 40)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(title)
-                            .font(.title3.weight(.semibold))
+                            .font(Theme.serif(20))
                             .lineLimit(2)
                             .truncationMode(.middle)
                         if let subtitle {
@@ -485,5 +546,28 @@ struct SheetLayout<Content: View, Actions: View>: View {
             .padding(.vertical, 14)
         }
         .frame(width: width)
+        .background(Theme.panel)
+    }
+}
+
+/// Кнопка-ссылка: чёрным, подчёркивается при наведении — вместо системной синей ссылки.
+struct InkLinkStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        InkLink(configuration: configuration)
+    }
+
+    private struct InkLink: View {
+        let configuration: ButtonStyleConfiguration
+        @State private var hovering = false
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            configuration.label
+                .foregroundStyle(isEnabled ? Theme.ink : Theme.faint)
+                .underline(hovering && isEnabled)
+                .opacity(configuration.isPressed ? 0.6 : 1)
+                .contentShape(Rectangle())
+                .onHover { hovering = $0 }
+        }
     }
 }

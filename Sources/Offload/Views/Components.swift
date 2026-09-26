@@ -90,8 +90,8 @@ struct Notice: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(color.opacity(0.09), in: shape)
-        .overlay { shape.strokeBorder(color.opacity(0.22)) }
+        .background(soft, in: shape)
+        .overlay { shape.strokeBorder(kind == .warning ? Theme.warnLine : Theme.line.opacity(kind == .info ? 1 : 0)) }
     }
 
     private var symbol: String {
@@ -105,10 +105,20 @@ struct Notice: View {
 
     private var color: Color {
         switch kind {
-        case .info: return .blue
-        case .success: return .green
-        case .warning: return .orange
-        case .error: return .red
+        case .info: return Theme.ink
+        case .success: return Theme.ok
+        case .warning: return Theme.warn
+        case .error: return Theme.bad
+        }
+    }
+
+    /// Мягкий фон своего цвета, как «Нужно от вас» в панели; обычное — белое с рамкой.
+    private var soft: Color {
+        switch kind {
+        case .info: return Theme.panel
+        case .success: return Theme.okSoft
+        case .warning: return Theme.warnSoft
+        case .error: return Theme.badSoft
         }
     }
 }
@@ -117,7 +127,7 @@ struct FullDiskAccessBanner: View {
     @Environment(AppModel.self) private var app
 
     var body: some View {
-        Card(tint: .orange) {
+        Card(tint: Theme.warn) {
             HStack(alignment: .top, spacing: 14) {
                 IconTile(systemImage: "lock.shield", tone: .caution, size: 36)
                 VStack(alignment: .leading, spacing: 8) {

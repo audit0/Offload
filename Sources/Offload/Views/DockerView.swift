@@ -64,7 +64,7 @@ struct DockerView: View {
                             Text("—").foregroundStyle(.secondary)
                         } else {
                             Label(volume.usedBy.joined(separator: ", "), systemImage: "cube.fill")
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(Theme.warn)
                                 .lineLimit(1)
                         }
                     }
@@ -111,7 +111,7 @@ struct DockerView: View {
         return HStack(spacing: 12) {
             IconTile(systemImage: "shippingbox.fill", size: 36)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Docker").font(.title3.weight(.semibold))
+                Text("Docker").font(Theme.serif(19))
                 if model.sizing {
                     Text("Docker считает размеры томов — это может занять минуту").font(.caption).foregroundStyle(.secondary)
                 } else if let raw = model.rawBytes {

@@ -224,7 +224,7 @@ struct CleanupView: View {
         return VStack(alignment: .leading, spacing: Theme.sectionSpacing) {
             HStack(alignment: .center, spacing: 24) {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Разобрать Mac").font(.largeTitle.weight(.bold))
+                    Text("Разобрать Mac").font(Theme.serif(30))
                     Text("Найду, что занимает место зря, и спрошу про каждое: удалить или нет. Выбирать файлы и ходить по папкам не нужно — только отвечать «да» или «не сейчас». Без вашего «да» ничего не трогаю.")
                         .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     FlowLayout(spacing: 6) {
@@ -371,7 +371,7 @@ struct CleanupView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(progress.duplicates ? "Ищу одинаковые файлы"
                              : progress.total == 0 ? "Собираю, что посмотреть…" : "Смотрю, что занимает место")
-                            .font(.title3.weight(.semibold))
+                            .font(Theme.serif(19))
                         Text(progress.current.isEmpty ? " " : progress.current)
                             .font(.callout).foregroundStyle(.secondary)
                             .lineLimit(1).truncationMode(.middle)
@@ -425,7 +425,7 @@ struct CleanupView: View {
             IconTile(systemImage: module.symbol, tone: active ? module.tone : .neutral, size: 34)
             VStack(alignment: .leading, spacing: 2) {
                 Text(value)
-                    .font(.system(.title2, design: .rounded, weight: .semibold))
+                    .font(Theme.serif(24))
                     .monospacedDigit()
                     .contentTransition(.numericText())
                 Text(module.title).font(.callout).foregroundStyle(.secondary)
@@ -443,7 +443,7 @@ struct CleanupView: View {
             Card(spacing: 12) {
                 Label("Спрашивать не о чем: мусора и лишнего нет, а всё крупное либо используется, либо уже на своём месте.",
                       systemImage: "checkmark.seal.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(Theme.ok)
                 Button("Готово") { model.reset(app: app) }
             }
             dockerIdleCard
@@ -489,14 +489,14 @@ struct CleanupView: View {
                     if !open.isEmpty {
                         Text("Можно освободить").font(.callout).foregroundStyle(.secondary)
                         Text(Format.bytes(model.pendingBytes))
-                            .font(.system(size: 40, weight: .bold, design: .rounded)).monospacedDigit()
+                            .font(Theme.serif(44)).monospacedDigit()
                             .contentTransition(.numericText())
                         Text("\(open.count) \(pluralRu(open.count, "вопрос", "вопроса", "вопросов")) — на каждый ответьте «да» или «не сейчас». Удаляемое сначала уходит в Корзину.")
                             .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     } else {
                         Text(model.isSettled ? "Готово" : "Делаю…").font(.callout).foregroundStyle(.secondary)
                         Text(freed >= 100_000_000 ? "Освободилось \(Format.bytes(freed))" : "Ответили на всё")
-                            .font(.system(size: 32, weight: .bold, design: .rounded)).monospacedDigit()
+                            .font(Theme.serif(34)).monospacedDigit()
                         Text(settledLine)
                             .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
@@ -519,7 +519,7 @@ struct CleanupView: View {
                     }
                     if !model.isSettled {
                         Button("Отмена") { model.reset(app: app) }
-                            .buttonStyle(.link)
+                            .buttonStyle(InkLinkStyle())
                             .disabled(model.isBusy)
                     }
                 }
@@ -573,7 +573,7 @@ struct CleanupView: View {
                             .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 12)
-                    Text(Format.bytes(inTrash)).font(.system(.title3, design: .rounded, weight: .semibold)).monospacedDigit()
+                    Text(Format.bytes(inTrash)).font(Theme.serif(20)).monospacedDigit()
                 }
                 HStack(spacing: 10) {
                     if let finishing = model.finishing {
@@ -602,7 +602,7 @@ struct CleanupView: View {
 
     private func result(_ value: String, _ title: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(value).font(.system(.title3, design: .rounded, weight: .semibold)).monospacedDigit()
+            Text(value).font(Theme.serif(20)).monospacedDigit()
             Text(title).font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -634,7 +634,7 @@ struct QuestionCard: View {
                         Text(question.title).font(.headline).fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 8)
                         Text(question.amount)
-                            .font(.system(.title3, design: .rounded, weight: .semibold))
+                            .font(Theme.serif(20))
                             .monospacedDigit()
                     }
                     Text(question.text).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -662,7 +662,7 @@ struct QuestionCard: View {
             HStack(spacing: 10) {
                 if let hint {
                     Label(hint, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                        .font(.caption).foregroundStyle(Theme.warn).fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 12)
                 Button(question.noTitle, action: no)
@@ -697,7 +697,7 @@ struct QuestionCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 10) {
                     Label(doneLine(outcome), systemImage: outcome.done > 0 ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                        .foregroundStyle(outcome.done > 0 ? .green : .orange)
+                        .foregroundStyle(outcome.done > 0 ? Theme.ok : Theme.warn)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 12)
                     if !outcome.trashedItems.isEmpty {
@@ -718,7 +718,7 @@ struct QuestionCard: View {
                 Text("Не трогаю. Спрошу в следующий раз.")
                     .font(.callout).foregroundStyle(.secondary)
                 Spacer(minLength: 12)
-                Button("Передумал", action: reconsider).buttonStyle(.link)
+                Button("Передумал", action: reconsider).buttonStyle(InkLinkStyle())
             }
         }
     }
@@ -799,7 +799,7 @@ struct FoundRow: View {
                     Text(item.reason).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 ForEach(item.cautions, id: \.self) { caution in
-                    Text(caution).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                    Text(caution).font(.caption).foregroundStyle(Theme.warn).fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer(minLength: 12)
@@ -831,18 +831,18 @@ struct SafeStatusLine: View {
             if Demo.isOn {
                 Label("Сейф открыт", systemImage: "lock.open.fill").foregroundStyle(.secondary)
             } else if app.destination == nil {
-                Label("Подключите внешний диск с сейфом", systemImage: "externaldrive.badge.xmark").foregroundStyle(.orange)
+                Label("Подключите внешний диск с сейфом", systemImage: "externaldrive.badge.xmark").foregroundStyle(Theme.warn)
             } else if !safe.exists {
                 HStack(spacing: 6) {
-                    Label("Сейфа на диске нет", systemImage: "lock.slash").foregroundStyle(.orange)
-                    Button("Создать…") { app.section = .safe }.buttonStyle(.link)
+                    Label("Сейфа на диске нет", systemImage: "lock.slash").foregroundStyle(Theme.warn)
+                    Button("Создать…") { app.section = .safe }.buttonStyle(InkLinkStyle())
                 }
             } else if safe.state?.isEncrypted != true {
-                Label("Шифрование образа не подтверждается", systemImage: "exclamationmark.octagon").foregroundStyle(.red)
+                Label("Шифрование образа не подтверждается", systemImage: "exclamationmark.octagon").foregroundStyle(Theme.bad)
             } else if let room = safe.roomLeft(host: app.destination, volume: app.safeVolume), needed > room {
                 HStack(spacing: 6) {
-                    Label("Поместится около \(Format.bytes(room))", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                    Button("Увеличить…") { growing = true }.buttonStyle(.link)
+                    Label("Поместится около \(Format.bytes(room))", systemImage: "exclamationmark.triangle.fill").foregroundStyle(Theme.warn)
+                    Button("Увеличить…") { growing = true }.buttonStyle(InkLinkStyle())
                 }
             } else if let volume = app.safeVolume {
                 Label("Сейф открыт · свободно \(Format.bytes(volume.availableBytes))", systemImage: "lock.open.fill")
@@ -866,7 +866,7 @@ struct ScanButton: View {
         Button(action: action) {
             VStack(spacing: 6) {
                 Image(systemName: "sparkles").font(.system(size: 30, weight: .semibold))
-                Text(title).font(.title3.weight(.semibold))
+                Text(title).font(Theme.serif(19))
             }
             .foregroundStyle(.white)
             .frame(width: 128, height: 128)

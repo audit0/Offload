@@ -102,7 +102,7 @@ struct SafeView: View {
             HStack(spacing: 14) {
                 IconTile(systemImage: "externaldrive.badge.xmark", tone: .neutral, size: 52)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Нет внешнего диска").font(.title2.weight(.semibold))
+                    Text("Нет внешнего диска").font(Theme.serif(22))
                     Text("Подключите внешний диск — сейф живёт на нём.").foregroundStyle(.secondary)
                 }
             }
@@ -116,7 +116,7 @@ struct SafeView: View {
         HStack(spacing: 14) {
             IconTile(systemImage: isOpen ? "lock.open.fill" : "lock.shield.fill", tone: isOpen ? .caution : .good, size: 52)
             VStack(alignment: .leading, spacing: 3) {
-                Text(isOpen ? "Сейф открыт" : "Сейф закрыт").font(.title2.weight(.semibold))
+                Text(isOpen ? "Сейф открыт" : "Сейф закрыт").font(Theme.serif(22))
                 Text(isOpen
                      ? "Перенос, бэкап и ключи сейчас идут сюда. Закройте после работы."
                      : "На диске только шифротекст. Чтобы класть в сейф или брать из него, откройте его паролем.")
@@ -174,7 +174,7 @@ struct SafeView: View {
     private func fact(_ value: String, _ title: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value)
-                .font(.system(.title3, design: .rounded, weight: .semibold))
+                .font(Theme.serif(20))
                 .monospacedDigit()
             Text(title).font(.caption).foregroundStyle(.secondary)
         }
@@ -201,7 +201,7 @@ struct SafeView: View {
             IconTile(systemImage: "lock.shield", tone: .brand, size: 52)
             VStack(alignment: .leading, spacing: 4) {
                 Text(replacing == nil ? "На диске «\(host.name)» сейфа пока нет" : "Новый сейф на диске «\(host.name)»")
-                    .font(.title2.weight(.semibold))
+                    .font(Theme.serif(22))
                 Text("Образ разрежённый: места он занимает ровно столько, сколько в нём лежит, а предел лишь не даёт ему вырасти больше. Предел потом можно увеличить. Придумайте пароль, который не используете больше нигде. Надёжнее всего — фраза из 4–6 случайных слов.")
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
@@ -285,7 +285,7 @@ struct SafeView: View {
             .rowPadding()
         } else if plain.isEmpty {
             Label("Перенесённого, лежащего на диске открыто, нет.", systemImage: "checkmark.shield.fill")
-                .foregroundStyle(.green)
+                .foregroundStyle(Theme.ok)
                 .rowPadding()
         } else {
             Notice(.warning, "На диске «\(app.destination?.name ?? "")» открыто лежат перенесённые данные: \(plain.count) \(pluralRu(plain.count, "объект", "объекта", "объектов")), \(Format.bytes(bytes)). Кто получит диск в руки, прочтёт их без пароля.")
@@ -330,7 +330,7 @@ struct SafeView: View {
             RowDivider()
             Group {
                 if state.hostEncrypted {
-                    Label("Сам диск «\(host.name)» зашифрован целиком.", systemImage: "checkmark.shield.fill").foregroundStyle(.green)
+                    Label("Сам диск «\(host.name)» зашифрован целиком.", systemImage: "checkmark.shield.fill").foregroundStyle(Theme.ok)
                 } else if ["apfs", "hfs"].contains(host.fsType) {
                     Text("Сам диск «\(host.name)» не зашифрован. Его можно зашифровать целиком, не стирая: правый щелчок по диску в Finder → «Зашифровать». Тогда защищено будет и то, что лежит вне сейфа.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -478,7 +478,7 @@ struct GrowSafeSheet: View {
                 .fixedSize()
                 if needed > 0, let chosen, chosen < target {
                     Text("Выбранное для сейфа (\(Format.bytes(needed))) при таком пределе поместится не целиком.")
-                        .font(.caption).foregroundStyle(.orange)
+                        .font(.caption).foregroundStyle(Theme.warn)
                 }
                 if safe.isOpen {
                     HStack {
