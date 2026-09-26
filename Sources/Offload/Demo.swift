@@ -88,55 +88,51 @@ enum Demo {
         ]
     }
 
-    static func cleanupSuggestions() -> [CleanupSuggestion] {
-        func suggestion(_ relative: String, _ gb: Double, _ action: CleanupAction, _ reason: String, allowed: [CleanupAction],
-                        daysAgo: Double, directory: Bool = true, learned: Bool = false, habit: Bool = false,
-                        group: String? = nil) -> CleanupSuggestion {
-            CleanupSuggestion(url: home.appendingPathComponent(relative, isDirectory: directory), bytes: Int64(gb * Double(gigabyte)),
-                              modified: Date().addingTimeInterval(-daysAgo * 86_400), isDirectory: directory, action: action,
-                              reason: reason, allowed: allowed, learned: learned, cautions: [], duplicateGroup: group, habit: habit)
+    /// Что находит разбор в демонстрации — через настоящие правила, привычки и память,
+    /// чтобы снимок показывал то же, что увидит человек: что отмечено сразу, а что решает он.
+    static func cleanupSuggestions(memory: [String: CleanupAction], habits: HabitModel?) -> [CleanupSuggestion] {
+        let now = Date()
+        func path(_ relative: String) -> String { home.appendingPathComponent(relative, isDirectory: true).path }
+        func item(_ relative: String, _ gb: Double, daysAgo: Double, directory: Bool = true, verdict: Verdict = .safe,
+                  project: Bool = false) -> CleanupObservation {
+            CleanupObservation(url: home.appendingPathComponent(relative, isDirectory: directory), bytes: Int64(gb * Double(gigabyte)),
+                               modified: now.addingTimeInterval(-daysAgo * 86_400), isDirectory: directory, verdict: verdict,
+                               isProject: project)
         }
-        let redundant = "Лишняя копия: содержимое то же, что у копии, которая остаётся."
-        return [
-            suggestion("Library/Developer/Xcode/DerivedData", 18.4, .trash,
-                       "Промежуточные файлы сборки Xcode — пересоздаются при следующей сборке.", allowed: [.trash, .keep], daysAgo: 0),
-            suggestion("Library/Caches/Homebrew", 3.4, .trash, "Скачанные пакеты Homebrew — brew скачает их снова.",
-                       allowed: [.trash, .keep], daysAgo: 5),
-            suggestion("Movies/Съёмки 2023", 86.4, .safe,
-                       "Большое и давно не менялось — в сейфе не мешает, а вернуть можно в любой момент.",
-                       allowed: [.safe, .backup, .keep], daysAgo: 210),
-            suggestion("Downloads/Датасеты", 24.1, .safe, "В прошлый раз вы выбрали это же.",
-                       allowed: [.safe, .backup, .keep], daysAgo: 150, learned: true),
-            // Привычки — те, что выучены на решениях из `decisions()`.
-            suggestion("Movies/Интервью 2024", 12.6, .safe,
-                       "Похожее вы обычно убираете в сейф (5 из 5): папки в «Фильмах» больше 10 ГБ.",
-                       allowed: [.safe, .backup, .keep], daysAgo: 50, habit: true),
-            suggestion("Projects/offload-site", 1.2, .backup,
-                       "Похоже на проект (внутри git): его лучше держать в бэкапе, а не переносить.",
-                       allowed: [.safe, .backup, .keep], daysAgo: 120),
-            suggestion("Pictures/Photos Library.photoslibrary", 41.7, .keep,
-                       "«Photos Library.photoslibrary» зарегистрирован в приложении (виртуальная машина, медиатека или проект). После переноса приложение его потеряет, даже если данные целы.",
-                       allowed: [.keep], daysAgo: 1),
-            suggestion("Documents/Архив 2019", 9.4, .keep,
-                       "Похожее вы обычно оставляете (4 из 4): папки в «Документах» от 1 до 10 ГБ, не менялись больше года.",
-                       allowed: [.safe, .backup, .keep], daysAgo: 900, habit: true),
-            suggestion("Downloads/Xcode_16.xip", 7.9, .keep,
-                       "Похоже на установщик. Если программа уже стоит и его можно скачать снова, выберите «В Корзину».",
-                       allowed: [.trash, .safe, .keep], daysAgo: 60, directory: false),
-            suggestion("Documents/Работа", 8.1, .keep, "Менялось недавно — похоже, вы этим пользуетесь.",
-                       allowed: [.safe, .backup, .keep], daysAgo: 2),
-            suggestion("Movies/Отпуск 2023.mov", 2.4, .keep,
-                       "Лежит на своём месте, а не в Загрузках или на Рабочем столе, — эта копия остаётся.",
-                       allowed: [.trash, .keep], daysAgo: 300, directory: false, group: "demo-video"),
-            suggestion("Downloads/Отпуск 2023.mov", 2.4, .trash, redundant, allowed: [.trash, .keep], daysAgo: 40,
-                       directory: false, group: "demo-video"),
-            suggestion("Desktop/Отпуск 2023 (1).mov", 2.4, .trash, redundant, allowed: [.trash, .keep], daysAgo: 12,
-                       directory: false, group: "demo-video"),
-            suggestion("Documents/Договор аренды.pdf", 0.014, .keep, "Имя без «(1)» и «копия» — похоже на оригинал, он остаётся.",
-                       allowed: [.trash, .keep], daysAgo: 90, directory: false, group: "demo-pdf"),
-            suggestion("Downloads/Договор аренды (1).pdf", 0.014, .trash, redundant, allowed: [.trash, .keep], daysAgo: 30,
-                       directory: false, group: "demo-pdf"),
-        ]
+        func copy(_ relative: String, _ gb: Double, daysAgo: Double) -> DuplicateCopy {
+            DuplicateCopy(url: home.appendingPathComponent(relative), allocated: Int64(gb * Double(gigabyte)),
+                          modified: now.addingTimeInterval(-daysAgo * 86_400), created: now.addingTimeInterval(-daysAgo * 86_400))
+        }
+        let library = Verdict.blocked("Данные приложений")
+        let regenerable = Dictionary(uniqueKeysWithValues: CleanupPlanner.regenerableLocations
+            .filter { ["Library/Developer/Xcode/DerivedData", "Library/Caches/Homebrew", "Library/Caches/Google/Chrome",
+                       ".npm/_cacache"].contains($0.path) }
+            .map { (path($0.path), $0.reason) })
+        var remembered = memory
+        remembered[path("Downloads/Датасеты")] = .safe
+        let planner = CleanupPlanner(now: now, home: home, regenerable: regenerable, memory: remembered, habits: habits,
+                                     busy: CleanupPlanner.busy(home: home, running: ["com.google.Chrome": "Google Chrome"]))
+        return planner.suggestions([
+            item("Library/Developer/Xcode/DerivedData", 18.4, daysAgo: 0, verdict: library),
+            item("Library/Caches/Homebrew", 3.4, daysAgo: 5, verdict: library),
+            item("Library/Caches/Google/Chrome", 1.6, daysAgo: 0, verdict: library),
+            item(".npm/_cacache", 1.1, daysAgo: 7, verdict: library),
+            item("Movies/Съёмки 2023", 86.4, daysAgo: 210),
+            item("Downloads/Датасеты", 24.1, daysAgo: 150),
+            item("Movies/Интервью 2024", 12.6, daysAgo: 50),
+            item("Documents/Архив 2019", 9.4, daysAgo: 900),
+            item("Documents/Работа", 8.1, daysAgo: 2),
+            item("Pictures/Photos Library.photoslibrary", 41.7, daysAgo: 1, verdict: .blocked("Медиатека «Фото»")),
+            item("Downloads/Xcode_16.xip", 7.9, daysAgo: 60, directory: false),
+            item("Downloads/Figma.dmg", 0.3, daysAgo: 40, directory: false),
+            item("Projects/offload-site", 1.2, daysAgo: 120, project: true),
+        ], duplicates: [
+            DuplicateGroup(id: "demo-video", bytes: Int64(2.4 * Double(gigabyte)), copies: [
+                copy("Movies/Отпуск 2023.mov", 2.4, daysAgo: 300), copy("Downloads/Отпуск 2023.mov", 2.4, daysAgo: 40),
+                copy("Desktop/Отпуск 2023 (1).mov", 2.4, daysAgo: 12)]),
+            DuplicateGroup(id: "demo-pdf", bytes: 14_000_000, copies: [
+                copy("Documents/Договор аренды.pdf", 0.014, daysAgo: 90), copy("Downloads/Договор аренды (1).pdf", 0.014, daysAgo: 30)]),
+        ])
     }
 
     /// Прошлые решения, на которых в демонстрации выучены привычки. Пишутся только в базу в памяти.

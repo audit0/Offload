@@ -154,10 +154,17 @@ func checksDuplicates() {
         let merged = planner.suggestions([top("Movies/film.mkv", gb: 4, daysAgo: 400), top("Downloads/film.mkv", gb: 4, daysAgo: 300)],
                                          duplicates: [film])
         check(merged.count == 2 && merged.allSatisfy { $0.duplicateGroup != nil }, "файл-копия показывается только в своей группе")
-        check(merged.first?.action == .safe && merged.first?.allowed == [.trash, .safe, .keep],
-              "большая старая копия, которая остаётся, по-прежнему предлагается в сейф")
-        check(merged.last?.action == .trash && merged.last?.allowed == [.trash, .safe, .keep],
-              "лишнюю копию не везут в сейф, а удаляют")
+        check(merged.first?.action == .keep && merged.first?.allowed == [.trash, .keep],
+              "у копии два исхода — в Корзину или остаться: в сейф крупное и старое убирается своей плиткой")
+        check(merged.last?.action == .trash && merged.last?.allowed == [.trash, .keep] && merged.allSatisfy { $0.module == .duplicates },
+              "лишняя копия — в Корзину, обе в плитке «Одинаковые файлы»")
+        check(!merged.contains(where: \.preselected) && merged.last?.defaultChoice == .keep,
+              "лишние копии сами не отмечаются: какие удалить, решаете вы")
+        var ignoring = planner
+        ignoring.ignored = [home.appendingPathComponent("Downloads/a.pdf").path]
+        let spared = ignoring.suggestions([], duplicates: [group(copy("Downloads/a.pdf"), copy("Documents/a.pdf"))])
+        check(names(spared) == ["Downloads/a.pdf", "Documents/a.pdf"] && spared.first?.allowed == [.keep] && spared.last?.action == .trash,
+              "копия, которую вы просили не предлагать, остаётся, а другая становится лишней")
         let installers = planner.suggestions([top("Downloads/app.dmg", gb: 0.5, daysAgo: 30), top("Desktop/app.dmg", gb: 0.5, daysAgo: 30)],
                                              duplicates: [group(copy("Downloads/app.dmg"), copy("Desktop/app.dmg"))])
         check(installers.map(\.action) == [.keep, .keep]
@@ -229,7 +236,7 @@ func checksDuplicates() {
         var statement: OpaquePointer?
         sqlite3_prepare_v2(reader, "PRAGMA user_version", -1, &statement, nil)
         sqlite3_step(statement)
-        check(sqlite3_column_int(statement, 0) == 3, "версия схемы — последняя, 3")
+        check(sqlite3_column_int(statement, 0) == 4, "версия схемы — последняя, 4")
         sqlite3_finalize(statement)
         sqlite3_close(reader)
     }

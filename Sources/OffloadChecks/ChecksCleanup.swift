@@ -70,7 +70,77 @@ func checksCleanup() {
             item("Library/Developer/Xcode/DerivedData", gb: 2, daysAgo: 1, verdict: .blocked("Данные приложений")),
             item("Movies/Монтаж", gb: 90, daysAgo: 3),
         ])
-        check(list.map(\.action) == [.trash, .safe, .keep], "сначала то, что освобождает место; мелочь не показывается")
+        check(list.map(\.action) == [.trash, .safe] && list.map(\.module) == [.junk, .safe],
+              "сначала мусор, потом сейф; мелочь и то, что трогать незачем, в итоги не попадают")
+    }
+
+    section("Разбор: плитки и что отмечено сразу") {
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        let home = URL(fileURLWithPath: "/Users/q", isDirectory: true)
+        func item(_ relative: String, gb: Double, daysAgo: Double, directory: Bool = true, verdict: Verdict = .safe,
+                  project: Bool = false) -> CleanupObservation {
+            CleanupObservation(url: home.appendingPathComponent(relative), bytes: Int64(gb * 1_000_000_000),
+                               modified: now.addingTimeInterval(-daysAgo * 86_400), isDirectory: directory, verdict: verdict,
+                               isProject: project)
+        }
+        let derived = home.appendingPathComponent("Library/Developer/Xcode/DerivedData").path
+        let chrome = home.appendingPathComponent("Library/Caches/Google/Chrome").path
+        let planner = CleanupPlanner(now: now, home: home, regenerable: [derived: "кеш сборки", chrome: "кеш Chrome"])
+
+        let cache = planner.suggest(item("Library/Developer/Xcode/DerivedData", gb: 5, daysAgo: 1, verdict: .blocked("Данные приложений")))
+        check(cache.module == .junk && cache.preselected && cache.defaultChoice == .trash,
+              "мусор — плитка «Мусор», отмечен сразу: программы создадут его заново")
+        let film = planner.suggest(item("Movies/Съёмки 2019", gb: 80, daysAgo: 500))
+        check(film.module == .safe && film.action == .safe && !film.preselected && film.defaultChoice == .keep,
+              "крупное и старое — в плитке сейфа, но само не отмечается: личное решаете вы")
+        let project = planner.suggest(item("Projects/app", gb: 2, daysAgo: 200, project: true))
+        check(project.module == .projects && project.preselected, "проект без бэкапа отмечен сразу: добавление в бэкап ничего не удаляет")
+        let installer = planner.suggest(item("Downloads/Figma.dmg", gb: 0.3, daysAgo: 20, directory: false))
+        check(installer.module == .installers && !installer.preselected && installer.defaultChoice == .keep,
+              "старый установщик — в своей плитке, неотмеченным")
+        check(planner.suggest(item("Movies/Монтаж", gb: 80, daysAgo: 3)).module == nil, "то, чем пользуются, ни в какую плитку не попадает")
+
+        var remembering = planner
+        remembering.memory = [home.appendingPathComponent("Movies/Съёмки 2019").path: .safe,
+                              home.appendingPathComponent("Downloads/Figma.dmg").path: .trash,
+                              home.appendingPathComponent("Projects/app").path: .keep]
+        check(remembering.suggest(item("Movies/Съёмки 2019", gb: 80, daysAgo: 500)).preselected,
+              "в прошлый раз вы убрали это в сейф — теперь отмечено сразу")
+        check(remembering.suggest(item("Downloads/Figma.dmg", gb: 0.3, daysAgo: 20, directory: false)).preselected,
+              "установщик, который вы удаляли в прошлый раз, отмечен")
+        let keptProject = remembering.suggest(item("Projects/app", gb: 2, daysAgo: 200, project: true))
+        check(keptProject.module == .projects && !keptProject.preselected && keptProject.learned,
+              "проект, который вы в прошлый раз не стали добавлять, остаётся в своей плитке неотмеченным")
+
+        var busy = planner
+        busy.busy = CleanupPlanner.busy(home: home, running: ["com.google.Chrome": "Google Chrome", "com.apple.Safari": "Safari"])
+        busy.memory = [chrome: .trash]
+        let open = busy.suggest(item("Library/Caches/Google/Chrome", gb: 1, daysAgo: 1, verdict: .blocked("Данные приложений")))
+        check(open.module == .junk && !open.preselected && open.allowed.contains(.trash) && open.reason.contains("Google Chrome"),
+              "кеш открытой программы не отмечается, даже если его удаляли в прошлый раз, — и сказано почему")
+        check(busy.suggest(item("Library/Developer/Xcode/DerivedData", gb: 5, daysAgo: 1, verdict: .blocked("Данные приложений"))).preselected,
+              "кеши закрытых программ отмечены как обычно")
+        let jetbrains = CleanupPlanner.busy(home: home, running: ["com.jetbrains.intellij": "IntelliJ IDEA"])
+        check(jetbrains.keys.contains(home.appendingPathComponent("Library/Caches/JetBrains").path) && jetbrains.count == 1,
+              "любая среда JetBrains держит общий кеш JetBrains, и только его")
+        check(CleanupPlanner.busy(home: home, running: [:]).isEmpty, "ничего не открыто — ничего не занято")
+
+        var ignoring = planner
+        ignoring.ignored = [home.appendingPathComponent("Movies").path, chrome]
+        let visible = ignoring.suggestions([item("Movies/Съёмки 2019", gb: 80, daysAgo: 500),
+                                            item("Library/Caches/Google/Chrome", gb: 1, daysAgo: 1, verdict: .blocked("Данные приложений")),
+                                            item("Documents/Архив", gb: 20, daysAgo: 500)])
+        check(visible.map { String($0.id.dropFirst(home.path.count + 1)) } == ["Documents/Архив"],
+              "то, что вы просили не предлагать, — и всё внутри такой папки — в итоги не попадает")
+        check(ignoring.isIgnored(home.appendingPathComponent("Movies/a/b.mov").path) && !ignoring.isIgnored(home.appendingPathComponent("Moviesx").path),
+              "не предлагать папку — значит и всё внутри неё, но не соседей с похожим именем")
+
+        let fake = scratch.appendingPathComponent("home-regenerable", isDirectory: true)
+        for relative in [".gradle/caches", "Library/Caches/Google/Chrome", "Library/Caches/JetBrains"] {
+            try fm.createDirectory(at: fake.appendingPathComponent(relative), withIntermediateDirectories: true)
+        }
+        check(Set(CleanupPlanner.regenerable(home: fake).keys) == Set([".gradle/caches", "Library/Caches/Google/Chrome", "Library/Caches/JetBrains"]
+            .map { fake.appendingPathComponent($0, isDirectory: true).path }), "кеши Gradle, Chrome и JetBrains находятся, если они есть")
     }
 
     section("Разбор: база решений") {
@@ -113,6 +183,16 @@ func checksCleanup() {
         try memory.record([(path: "/x", action: .trash, bytes: 1)])
         check(try memory.lastDecisions() == ["/x": .trash], "база в памяти работает и ничего не пишет на диск")
         check(try memory.lastRun() == nil, "разборов ещё не было — итога нет")
+
+        try reopened.ignore("/Users/q/Movies", at: Date(timeIntervalSince1970: 10))
+        try reopened.ignore("/Users/q/VM «Ubuntu»; DROP", at: Date(timeIntervalSince1970: 20))
+        try reopened.ignore("/Users/q/Movies", at: Date(timeIntervalSince1970: 30))
+        check(try DecisionStore(url: url).ignoredPaths() == ["/Users/q/Movies", "/Users/q/VM «Ubuntu»; DROP"],
+              "«не предлагать» переживает перезапуск, повтор не дублирует, сначала недавнее")
+        try reopened.unignore("/Users/q/Movies")
+        check(try reopened.ignoredPaths() == ["/Users/q/VM «Ubuntu»; DROP"], "вернуть в разбор можно")
+        try reopened.forgetDecisions()
+        check(try reopened.ignoredPaths().count == 1, "«Забыть мои решения» не трогает то, что вы просили не предлагать")
     }
 }
 
@@ -129,4 +209,20 @@ func checksCleanupImages() throws {
                                      "-srcfolder", folder.appendingPathComponent("src").path, plain.path], timeout: 120)
     check(SecretsVault.encryptionInfo(of: encrypted)?.encrypted == true, "зашифрованный .dmg распознаётся без пароля")
     check(SecretsVault.encryptionInfo(of: plain)?.encrypted == false, "обычный .dmg — не зашифрован")
+}
+
+/// «Удалить насовсем» и «Вернуть на место» трогают в Корзине только тот самый файл.
+func checksTrashIdentity() throws {
+    let folder = scratch.appendingPathComponent("trash-identity", isDirectory: true)
+    try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+    let original = folder.appendingPathComponent("отчёт.pdf"), inTrash = folder.appendingPathComponent("в Корзине.pdf")
+    try write("то, что выбросил разбор", to: original)
+    let identity = FileIdentity.of(original)
+    check(identity != nil, "у файла есть номер")
+    try fm.moveItem(at: original, to: inTrash)
+    check(FileIdentity.of(inTrash) == identity, "перенос в Корзину на том же диске номер файла сохраняет")
+    try fm.removeItem(at: inTrash)
+    try write("другой файл, выброшенный потом с тем же именем", to: inTrash)
+    check(FileIdentity.of(inTrash) != identity, "другой файл по тому же пути — другой номер: удалить насовсем его нельзя")
+    check(FileIdentity.of(folder.appendingPathComponent("нет такого")) == nil, "нет файла — нет и номера")
 }
