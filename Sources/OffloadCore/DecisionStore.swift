@@ -42,8 +42,6 @@ public final class DecisionStore: @unchecked Sendable {
 
     private var db: OpaquePointer?
     private let lock = NSLock()
-    /// Версия схемы: при изменении таблиц добавляется шаг миграции, данные не теряются.
-    static let schemaVersion: Int32 = 1
 
     /// `url == nil` — база в памяти: для демонстрации и проверок, на диск ничего не пишется.
     public init(url: URL?) throws {
@@ -74,10 +72,11 @@ public final class DecisionStore: @unchecked Sendable {
 
     deinit { sqlite3_close(db) }
 
+    /// Схема растёт шагами: каждый шаг добавляет своё и ставит свой номер версии, прежние данные остаются.
     private func migrate() throws {
         let version = try queryInt("PRAGMA user_version")
         if version < 1 {
-            try execute("""
+            try migration(to: 1, """
                 CREATE TABLE IF NOT EXISTS decisions (
                     id INTEGER PRIMARY KEY,
                     path TEXT NOT NULL,
@@ -94,9 +93,27 @@ public final class DecisionStore: @unchecked Sendable {
                     added_to_backup INTEGER NOT NULL,
                     failures INTEGER NOT NULL
                 );
-                PRAGMA user_version = \(Self.schemaVersion);
                 """)
         }
+        if version < 2 {
+            // Отпечатки файлов для поиска дубликатов: неизменившийся файл второй раз не читается.
+            try migration(to: 2, """
+                CREATE TABLE IF NOT EXISTS fingerprints (
+                    path TEXT PRIMARY KEY,
+                    size INTEGER NOT NULL,
+                    modified REAL NOT NULL,
+                    inode INTEGER NOT NULL,
+                    edges TEXT,
+                    full TEXT,
+                    seen_at REAL NOT NULL
+                );
+                """)
+        }
+    }
+
+    /// Шаг схемы целиком или никак: оборванный посередине шаг оставил бы таблицы без номера версии.
+    private func migration(to version: Int32, _ sql: String) throws {
+        try transaction { try execute(sql + "PRAGMA user_version = \(version);") }
     }
 
     // MARK: - Решения
@@ -104,16 +121,11 @@ public final class DecisionStore: @unchecked Sendable {
     /// Записывает решения одного разбора разом: либо все, либо ни одного.
     public func record(_ decisions: [(path: String, action: CleanupAction, bytes: Int64)], at date: Date = Date()) throws {
         try locked {
-            try execute("BEGIN")
-            do {
+            try transaction {
                 for decision in decisions {
                     try run("INSERT INTO decisions (path, action, bytes, decided_at) VALUES (?, ?, ?, ?)",
                             [.text(decision.path), .text(decision.action.rawValue), .int(decision.bytes), .real(date.timeIntervalSince1970)])
                 }
-                try execute("COMMIT")
-            } catch {
-                try? execute("ROLLBACK")
-                throw error
             }
         }
     }
@@ -167,10 +179,46 @@ public final class DecisionStore: @unchecked Sendable {
         }
     }
 
+    // MARK: - Отпечатки файлов
+
+    /// Сохранённые отпечатки, по пути.
+    public func fingerprints() throws -> [String: Fingerprint] {
+        try locked {
+            var result: [String: Fingerprint] = [:]
+            try select("SELECT path, size, modified, inode, edges, full FROM fingerprints") { row in
+                guard let path = row.text(0) else { return }
+                result[path] = Fingerprint(path: path, size: row.int(1), modified: row.real(2), inode: row.int(3),
+                                           edges: row.text(4), full: row.text(5))
+            }
+            return result
+        }
+    }
+
+    /// Отпечатки одного поиска — разом: либо все, либо ни одного.
+    public func saveFingerprints(_ fingerprints: [Fingerprint], at date: Date = Date()) throws {
+        try locked {
+            try transaction {
+                for item in fingerprints {
+                    try run("""
+                        INSERT OR REPLACE INTO fingerprints (path, size, modified, inode, edges, full, seen_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        [.text(item.path), .int(item.size), .real(item.modified), .int(item.inode),
+                         item.edges.map(Value.text) ?? .null, item.full.map(Value.text) ?? .null, .real(date.timeIntervalSince1970)])
+                }
+            }
+        }
+    }
+
+    /// Забывает отпечатки, которых последний законченный поиск не касался: файла нет или он больше не нужен.
+    public func forgetFingerprints(seenBefore date: Date) throws {
+        try locked { try run("DELETE FROM fingerprints WHERE seen_at < ?", [.real(date.timeIntervalSince1970)]) }
+    }
+
     // MARK: - SQLite
 
     enum Value {
-        case text(String), int(Int64), real(Double)
+        case text(String), int(Int64), real(Double), null
     }
 
     struct Row {
@@ -197,6 +245,17 @@ public final class DecisionStore: @unchecked Sendable {
         guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else { throw error() }
     }
 
+    private func transaction(_ body: () throws -> Void) throws {
+        try execute("BEGIN")
+        do {
+            try body()
+            try execute("COMMIT")
+        } catch {
+            try? execute("ROLLBACK")
+            throw error
+        }
+    }
+
     private func prepare(_ sql: String, _ values: [Value]) throws -> OpaquePointer {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else { throw error() }
@@ -207,6 +266,7 @@ public final class DecisionStore: @unchecked Sendable {
             case .text(let text): status = sqlite3_bind_text(statement, position, text, -1, Self.transient)
             case .int(let number): status = sqlite3_bind_int64(statement, position, number)
             case .real(let number): status = sqlite3_bind_double(statement, position, number)
+            case .null: status = sqlite3_bind_null(statement, position)
             }
             guard status == SQLITE_OK else {
                 sqlite3_finalize(statement)

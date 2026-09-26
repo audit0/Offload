@@ -24,6 +24,22 @@ public enum FileHasher {
 
     public static func sha256(of data: Data) -> String { hex(SHA256.hash(data: data)) }
 
+    /// SHA-256 первых и последних `edge` байт — быстрый отпечаток, чтобы отсеять разные файлы
+    /// одного размера, не читая их целиком. Файл не длиннее двух краёв читается весь.
+    public static func sha256(edgesOf url: URL, size: Int64, edge: Int) throws -> String {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        if size <= Int64(edge) * 2 {
+            hasher.update(data: try handle.read(upToCount: Int(size)) ?? Data())
+        } else {
+            hasher.update(data: try handle.read(upToCount: edge) ?? Data())
+            try handle.seek(toOffset: UInt64(size - Int64(edge)))
+            hasher.update(data: try handle.read(upToCount: edge) ?? Data())
+        }
+        return hex(hasher.finalize())
+    }
+
     static func hex<S: Sequence>(_ bytes: S) -> String where S.Element == UInt8 {
         bytes.map { String(format: "%02x", $0) }.joined()
     }

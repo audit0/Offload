@@ -90,11 +90,12 @@ enum Demo {
 
     static func cleanupSuggestions() -> [CleanupSuggestion] {
         func suggestion(_ relative: String, _ gb: Double, _ action: CleanupAction, _ reason: String, allowed: [CleanupAction],
-                        daysAgo: Double, directory: Bool = true, learned: Bool = false) -> CleanupSuggestion {
+                        daysAgo: Double, directory: Bool = true, learned: Bool = false, group: String? = nil) -> CleanupSuggestion {
             CleanupSuggestion(url: home.appendingPathComponent(relative, isDirectory: directory), bytes: Int64(gb * Double(gigabyte)),
                               modified: Date().addingTimeInterval(-daysAgo * 86_400), isDirectory: directory, action: action,
-                              reason: reason, allowed: allowed, learned: learned, cautions: [])
+                              reason: reason, allowed: allowed, learned: learned, cautions: [], duplicateGroup: group)
         }
+        let redundant = "Лишняя копия: содержимое то же, что у копии, которая остаётся."
         return [
             suggestion("Library/Developer/Xcode/DerivedData", 18.4, .trash,
                        "Промежуточные файлы сборки Xcode — пересоздаются при следующей сборке.", allowed: [.trash, .keep], daysAgo: 0),
@@ -114,6 +115,17 @@ enum Demo {
                        allowed: [.keep], daysAgo: 1),
             suggestion("Documents/Работа", 8.1, .keep, "Менялось недавно — похоже, вы этим пользуетесь.",
                        allowed: [.safe, .backup, .keep], daysAgo: 2),
+            suggestion("Movies/Отпуск 2023.mov", 2.4, .keep,
+                       "Лежит на своём месте, а не в Загрузках или на Рабочем столе, — эта копия остаётся.",
+                       allowed: [.trash, .keep], daysAgo: 300, directory: false, group: "demo-video"),
+            suggestion("Downloads/Отпуск 2023.mov", 2.4, .trash, redundant, allowed: [.trash, .keep], daysAgo: 40,
+                       directory: false, group: "demo-video"),
+            suggestion("Desktop/Отпуск 2023 (1).mov", 2.4, .trash, redundant, allowed: [.trash, .keep], daysAgo: 12,
+                       directory: false, group: "demo-video"),
+            suggestion("Documents/Договор аренды.pdf", 0.014, .keep, "Имя без «(1)» и «копия» — похоже на оригинал, он остаётся.",
+                       allowed: [.trash, .keep], daysAgo: 90, directory: false, group: "demo-pdf"),
+            suggestion("Downloads/Договор аренды (1).pdf", 0.014, .trash, redundant, allowed: [.trash, .keep], daysAgo: 30,
+                       directory: false, group: "demo-pdf"),
         ]
     }
 
