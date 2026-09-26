@@ -149,18 +149,17 @@ enum Demo {
                                           bytes: Int64(gb * Double(gigabyte)), suggested: suggested, kind: kind,
                                           modified: decided.addingTimeInterval(-daysAgo * 86_400), decidedAt: decided)
         }
-        // Установщики из «Загрузок» удаляет, как и советуют правила; отснятое в «Фильмах» убирает в сейф;
-        // старые папки в «Документах» оставляет, хотя Offload предлагал сейф.
-        let installers = ["Figma-124.dmg", "Zoom.pkg", "Docker.dmg", "OBS-Studio-30.dmg", "Blender-4.1.dmg", "Telegram.dmg"]
-        return installers.enumerated().map { index, name in
-            decision("Downloads/\(name)", .trash, suggested: .trash, kind: .file, 0.3 + Double(index) * 0.2,
-                     daysAgo: 20 + Double(index) * 9, decidedDaysAgo: 30 + Double(index) * 20)
-        } + ["Съёмки 2019", "Съёмки 2020", "Свадьба Ани", "Съёмки 2021", "Съёмки 2022"].enumerated().map { index, name in
+        // Отснятое в «Фильмах» убирает в сейф; старые папки в «Документах» оставляет, хотя Offload
+        // предлагал сейф; проекты добавляет в бэкап, как и советуют правила.
+        return ["Съёмки 2019", "Съёмки 2020", "Свадьба Ани", "Съёмки 2021", "Съёмки 2022"].enumerated().map { index, name in
             decision("Movies/\(name)", .safe, suggested: .safe, kind: .folder, 18 + Double(index) * 11,
                      daysAgo: 200 + Double(index) * 60, decidedDaysAgo: 20 + Double(index) * 25)
         } + ["Архив 2015", "Архив 2016", "Архив 2017", "Архив 2018"].enumerated().map { index, name in
             decision("Documents/\(name)", .keep, suggested: .safe, kind: .folder, 2.5 + Double(index) * 1.5,
                      daysAgo: 400 + Double(index) * 200, decidedDaysAgo: 10 + Double(index) * 30)
+        } + ["landing", "telegram-bot", "scripts"].enumerated().map { index, name in
+            decision("Projects/\(name)", .backup, suggested: .backup, kind: .project, 0.2 + Double(index) * 0.3,
+                     daysAgo: 5 + Double(index) * 20, decidedDaysAgo: 15 + Double(index) * 10)
         }
     }
 

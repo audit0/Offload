@@ -195,7 +195,7 @@ struct CleanupView: View {
     private var learned: some View {
         let model = app.cleanup
         return CardSection(title: "Чему научился",
-                           footer: "Учусь только на этом Mac и только на вашем выборе: «оставить» там, где оставить и предлагалось, не считается. Привычка лишь меняет предложение — удалить разрешают только правила, а решаете всё равно вы.") {
+                           footer: "Учусь только на этом Mac и только на вашем выборе: «оставить» там, где оставить и предлагалось, не считается. Привычка лишь меняет предложение и никогда не предлагает удалить — решаете всё равно вы.") {
             if model.habits.isEmpty {
                 HStack(alignment: .top, spacing: 12) {
                     IconTile(systemImage: "sparkles", tone: .neutral)

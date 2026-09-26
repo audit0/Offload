@@ -76,6 +76,11 @@ func checksHabits() {
               && list.map(\.action) == [.safe, .keep] && list.first?.agreeing == 4,
               "список привычек — по местам и видам, самые подкреплённые сначала")
         check(HabitModel(examples: []).isEmpty && !three.isEmpty, "пустая модель знает, что пуста")
+
+        let deleting = HabitModel(examples: (1...4).map { example("Downloads/\($0).dmg", .trash, kind: .file, gb: 0.5) })
+        check(deleting.predict(features("Downloads/new.dmg", kind: .file, gb: 0.5), allowed: [.trash, .safe, .keep]) == nil
+              && deleting.habits().isEmpty,
+              "удалить привычка не предлагает никогда, даже если похожее всегда удаляли")
     }
 
     section("Привычки: в предложениях") {
@@ -110,6 +115,13 @@ func checksHabits() {
         let video = trashing.suggest(observation("Downloads/film.mkv", gb: 4, daysAgo: 400, directory: false))
         check(video.action != .trash && !video.allowed.contains(.trash),
               "даже если похожее вы удаляли, личный файл в Корзину не предлагается: удалять разрешают только правила")
+
+        let installers = CleanupPlanner(now: now, home: home, habits: HabitModel(examples: (1...3).map {
+            example("Downloads/\($0).dmg", .trash, kind: .file, gb: 0.5, daysAgo: 60)
+        }))
+        let installer = installers.suggest(observation("Downloads/Figma.dmg", gb: 0.5, daysAgo: 60, directory: false))
+        check(installer.action == .keep && !installer.habit && installer.allowed.contains(.trash),
+              "установщик удаляете вы сами: сколько бы похожих ни удаляли, привычка его в Корзину не предлагает")
 
         let copy = CleanupSuggestion(url: home.appendingPathComponent("Downloads/a.pdf"), bytes: 1, modified: nil, isDirectory: false,
                                      action: .trash, reason: "", allowed: [.trash, .keep], learned: false, cautions: [], duplicateGroup: "h")

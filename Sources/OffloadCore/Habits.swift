@@ -71,8 +71,9 @@ public struct DecisionFeatures: Sendable, Hashable {
 
 /// Привычки человека: что он обычно выбирает для похожего. Учится на решениях из базы,
 /// работает только на этом Mac и не гадает на пустом месте: пока похожих решений меньше трёх
-/// или они расходятся, решают правила. Разрешено ли действие, решают тоже правила — привычка
-/// не предложит удалить то, что удалять нельзя.
+/// или они расходятся, решают правила. Разрешено ли действие, решают тоже правила. Удалить привычка
+/// не предлагает никогда: в Корзину предлагают только правила (то, что пересоздаётся само) и решение
+/// человека по тому же объекту, — даже установщик, как бы часто похожие ни удаляли, удаляет сам человек.
 ///
 /// Похожесть — от строгой к широкой: сначала то же место, вид, размер и давность, потом без давности,
 /// потом без размера. Берётся самая строгая ступень, где решений хватает; если на ней они расходятся,
@@ -173,7 +174,7 @@ public struct HabitModel: Sendable {
 
     private func decided(_ votes: [CleanupAction: Int], total: Int, scope: String) -> Prediction? {
         guard let top = votes.max(by: { ($0.value, $0.key.rawValue) < ($1.value, $1.key.rawValue) }),
-              Double(top.value) / Double(total) >= minimumShare else { return nil }
+              top.key != .trash, Double(top.value) / Double(total) >= minimumShare else { return nil }
         return Prediction(action: top.key, agreeing: top.value, total: total, scope: scope)
     }
 
