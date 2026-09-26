@@ -44,6 +44,7 @@ struct CleanupView: View {
     @Environment(AppModel.self) private var app
     @State private var confirming = false
     @State private var showKept = false
+    @State private var showAllDuplicates = false
     @State private var growingSafe = false
 
     var body: some View {
@@ -84,7 +85,9 @@ struct CleanupView: View {
             Button("Выполнить") { model.run(app: app) }
             Button("Отмена", role: .cancel) {}
         } message: {
-            Text(summaryText + " Удалённое лежит в Корзине, пока вы её не очистите; в сейф переносится со сверкой каждого файла.")
+            Text(summaryText + " Удалённое лежит в Корзине, пока вы её не очистите; в сейф переносится со сверкой каждого файла."
+                 + (model.items(.trash).contains { $0.duplicateGroup != nil }
+                    ? " Каждая лишняя копия перед удалением ещё раз сверяется с остающейся байт в байт." : ""))
         }
     }
 
@@ -113,7 +116,7 @@ struct CleanupView: View {
                         .shadow(color: Theme.brand.opacity(0.35), radius: 10, y: 4)
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Разобрать Mac").font(.title.weight(.bold))
-                        Text("Offload посмотрит, что занимает место, и предложит: что удалить, что убрать в сейф, что добавить в бэкап. Вы поправите, где не согласны, — и только потом что-то произойдёт.")
+                        Text("Offload посмотрит, что занимает место, найдёт одинаковые файлы и предложит: что удалить, что убрать в сейф, что добавить в бэкап. Вы поправите, где не согласны, — и только потом что-то произойдёт.")
                             .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -171,7 +174,7 @@ struct CleanupView: View {
     private static func explanation(_ action: CleanupAction) -> String {
         switch action {
         case .trash:
-            return "Только то, что пересоздаётся само или скачивается заново: кеши сборки, скачанные пакеты. Установщики сюда можно перенести самому — из «Оставить». Всё уходит в Корзину — передумать можно, пока она не очищена."
+            return "То, что пересоздаётся само или скачивается заново (кеши сборки, скачанные пакеты), и лишние копии одинаковых файлов — одна копия всегда остаётся. Установщики сюда можно перенести самому — из «Оставить». Всё уходит в Корзину — передумать можно, пока она не очищена."
         case .safe:
             return "Большое и давно не нужное. Переносится со сверкой каждого файла, оригинал удаляется только после неё; вернуть можно в «Перенесённом»."
         case .backup:
@@ -193,20 +196,29 @@ struct CleanupView: View {
                     .frame(width: 56, height: 56)
                     .background(Theme.brand.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(progress.total == 0 ? "Собираю, что посмотреть…" : "Смотрю, что занимает место")
+                    Text(progress.duplicates ? "Ищу одинаковые файлы"
+                         : progress.total == 0 ? "Собираю, что посмотреть…" : "Смотрю, что занимает место")
                         .font(.title3.weight(.semibold))
                     Text(progress.current.isEmpty ? " " : progress.current)
                         .font(.callout).foregroundStyle(.secondary)
                         .lineLimit(1).truncationMode(.middle)
                 }
                 Spacer(minLength: 12)
-                if progress.total > 0 {
+                if progress.duplicates {
+                    Text("\(progress.files) \(pluralRu(progress.files, "файл", "файла", "файлов"))")
+                        .font(.callout).foregroundStyle(.secondary).monospacedDigit()
+                } else if progress.total > 0 {
                     Text("\(progress.done) из \(progress.total)")
                         .font(.callout).foregroundStyle(.secondary).monospacedDigit()
                 }
                 Button("Отменить") { app.cleanup.cancel() }
             }
-            ProgressView(value: progress.total > 0 ? Double(progress.done) / Double(progress.total) : 0)
+            if progress.duplicates {
+                // Сколько файлов впереди, заранее неизвестно — полоса без конца.
+                ProgressView().progressViewStyle(.linear)
+            } else {
+                ProgressView(value: progress.total > 0 ? Double(progress.done) / Double(progress.total) : 0)
+            }
             HStack(alignment: .top, spacing: 16) {
                 found(.trash, Format.bytes(progress.trashBytes))
                 found(.safe, Format.bytes(progress.safeBytes))
@@ -275,15 +287,11 @@ struct CleanupView: View {
                     }
                 }
             }
-            ForEach([CleanupAction.trash, .safe, .backup], id: \.self) { action in
-                let group = model.suggestions.filter { $0.action == action }
-                if !group.isEmpty {
-                    CardSection(title: "\(action.sectionTitle) — \(Format.bytes(group.reduce(0) { $0 + $1.bytes }))") {
-                        rows(group)
-                    }
-                }
-            }
-            let kept = model.suggestions.filter { $0.action == .keep }
+            section(.trash)
+            duplicates
+            section(.safe)
+            section(.backup)
+            let kept = model.suggestions.filter { $0.duplicateGroup == nil && $0.action == .keep }
             if !kept.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Button {
@@ -319,6 +327,17 @@ struct CleanupView: View {
         }
     }
 
+    /// Предложения одного действия; копии одинаковых файлов показываются своими группами.
+    @ViewBuilder
+    private func section(_ action: CleanupAction) -> some View {
+        let group = app.cleanup.suggestions.filter { $0.duplicateGroup == nil && $0.action == action }
+        if !group.isEmpty {
+            CardSection(title: "\(action.sectionTitle) — \(Format.bytes(group.reduce(0) { $0 + $1.bytes }))") {
+                rows(group)
+            }
+        }
+    }
+
     @ViewBuilder
     private func rows(_ group: [CleanupSuggestion]) -> some View {
         ForEach(group) { suggestion in
@@ -329,7 +348,72 @@ struct CleanupView: View {
 
     private func choiceBinding(_ suggestion: CleanupSuggestion) -> Binding<CleanupAction> {
         Binding(get: { app.cleanup.choice(for: suggestion) },
-                set: { app.cleanup.choices[suggestion.id] = $0 })
+                set: { app.cleanup.setChoice($0, for: suggestion) })
+    }
+
+    // MARK: - Одинаковые файлы
+
+    /// Сколько групп видно сразу: остальные — по кнопке, иначе длинный список тормозил бы.
+    private static let visibleGroups = 12
+
+    @ViewBuilder
+    private var duplicates: some View {
+        let model = app.cleanup
+        let groups = model.duplicateGroups
+        if !groups.isEmpty {
+            let shown = showAllDuplicates ? groups : Array(groups.prefix(Self.visibleGroups))
+            let freed = groups.reduce(Int64(0)) { $0 + model.freedBytes(in: $1) }
+            CardSection(title: "Одинаковые файлы — освободится \(Format.bytes(freed))",
+                        footer: "Одна копия всегда остаётся. Перед удалением каждая лишняя копия ещё раз сверяется с ней байт в байт; копии внутри папки, которая уезжает в сейф, едут вместе с ней.") {
+                ForEach(shown, id: \.self) { group in
+                    duplicateGroup(group)
+                    if group != shown.last || shown.count < groups.count { Divider() }
+                }
+                if shown.count < groups.count {
+                    let hidden = groups.count - shown.count
+                    Button("Показать ещё \(hidden) \(pluralRu(hidden, "группу", "группы", "групп"))") {
+                        withAnimation(.easeInOut(duration: 0.15)) { showAllDuplicates = true }
+                    }
+                    .buttonStyle(.link)
+                    .rowPadding()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func duplicateGroup(_ group: String) -> some View {
+        let model = app.cleanup
+        let copies = model.copies(in: group)
+        if let first = copies.first {
+            let freed = model.freedBytes(in: group)
+            HStack(spacing: 12) {
+                IconTile(systemImage: "doc.on.doc.fill", tone: freed > 0 ? .danger : .neutral, size: 32)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(first.url.lastPathComponent).fontWeight(.semibold).lineLimit(1).truncationMode(.middle)
+                    Text("\(copies.count) \(pluralRu(copies.count, "одинаковая копия", "одинаковые копии", "одинаковых копий")) по \(Format.bytes(first.bytes))")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 12)
+                Text(freed > 0 ? "освободится \(Format.bytes(freed))" : "все копии остаются")
+                    .font(.callout).foregroundStyle(.secondary).monospacedDigit()
+            }
+            .rowPadding()
+            // Копии — со сдвигом под заголовком группы; разделители начинаются там же, где их текст.
+            ForEach(copies) { copy in
+                RowDivider(inset: 82)
+                CleanupRow(suggestion: copy, home: app.rules.home, choice: choiceBinding(copy),
+                           options: model.options(for: copy), note: travelNote(copy))
+                    .padding(.leading, 24)
+            }
+        }
+    }
+
+    /// Копия выбрана в Корзину, но лежит в папке, которая уезжает в сейф, — едет вместе с папкой.
+    private func travelNote(_ copy: CleanupSuggestion) -> String? {
+        let model = app.cleanup
+        guard model.choice(for: copy) == .trash, let carrier = model.carrier(of: copy) else { return nil }
+        return "Уедет в сейф вместе с папкой «\(carrier.url.lastPathComponent)» — удалять её отдельно не буду."
     }
 
     private func tile(_ action: CleanupAction) -> some View {
@@ -344,11 +428,14 @@ struct CleanupView: View {
     private var summaryText: String {
         let model = app.cleanup
         var parts: [String] = []
-        for action in [CleanupAction.trash, .safe, .backup] {
-            let count = model.items(action).count
-            guard count > 0 else { continue }
-            parts.append(action == .backup ? "\(action.title): \(count)" : "\(action.title): \(count) (\(Format.bytes(model.bytes(action))))")
+        let trash = model.items(.trash)
+        for (title, items) in [("В Корзину", trash.filter { $0.duplicateGroup == nil }),
+                               ("лишние копии", trash.filter { $0.duplicateGroup != nil }),
+                               (CleanupAction.safe.title, model.items(.safe))] where !items.isEmpty {
+            parts.append("\(title): \(items.count) (\(Format.bytes(items.reduce(0) { $0 + $1.bytes })))")
         }
+        let backup = model.items(.backup).count
+        if backup > 0 { parts.append("\(CleanupAction.backup.title): \(backup)") }
         return parts.isEmpty ? "Ничего не меняется — решения только запомнятся." : parts.joined(separator: " · ") + "."
     }
 
@@ -375,7 +462,9 @@ struct CleanupView: View {
                 result("\(report.addedToBackup)", "добавлено в бэкап")
             }
             if report.trashed > 0 {
-                Notice(.info, "Место от удалённого освободится, когда вы очистите Корзину. До этого всё можно вернуть из неё.")
+                Notice(.info, (report.duplicates > 0
+                               ? "Из них лишних копий: \(report.duplicates) — каждая перед удалением сверена с остающейся байт в байт. " : "")
+                       + "Место от удалённого освободится, когда вы очистите Корзину. До этого всё можно вернуть из неё.")
             }
             if report.addedToBackup > 0 {
                 HStack {
@@ -411,6 +500,10 @@ struct CleanupRow: View {
     let suggestion: CleanupSuggestion
     let home: URL
     @Binding var choice: CleanupAction
+    /// Что можно выбрать сейчас; по умолчанию — всё, что разрешают правила.
+    var options: [CleanupAction]?
+    /// Пояснение к выбору, например что копия уедет в сейф вместе с папкой.
+    var note: String?
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -431,6 +524,9 @@ struct CleanupRow: View {
                         Text(note).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                if let note {
+                    Text(note).font(.caption).foregroundStyle(Theme.brand).fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 12)
             VStack(alignment: .trailing, spacing: 2) {
@@ -440,15 +536,17 @@ struct CleanupRow: View {
                 }
             }
             .frame(width: 120, alignment: .trailing)
+            let choices = options ?? suggestion.allowed
             Picker("Действие", selection: $choice) {
-                ForEach(suggestion.allowed, id: \.self) { action in
+                ForEach(choices, id: \.self) { action in
                     Label(action.title, systemImage: action.symbol).tag(action)
                 }
             }
             .labelsHidden()
             .fixedSize()
-            .disabled(suggestion.allowed.count == 1)
-            .help(suggestion.allowed.count == 1 ? "Это трогать нельзя" : "Что сделать")
+            .disabled(choices.count == 1)
+            .help(choices.count > 1 ? "Что сделать"
+                  : suggestion.allowed.count > 1 ? "Это последняя остающаяся копия: чтобы удалить её, оставьте другую" : "Это трогать нельзя")
         }
         .rowPadding()
         .contextMenu {
