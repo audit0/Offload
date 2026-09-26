@@ -636,6 +636,9 @@ checksHardenLocal()
 checksHardenRestore()
 checksSafe()
 checksCleanup()
+if env["OFFLOAD_SKIP_INTEGRATION"] != "1" {
+    section("Разбор: зашифрованные образы .dmg") { try checksCleanupImages() }
+}
 checksDuplicates()
 
 try? fm.removeItem(at: scratch)
