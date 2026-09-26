@@ -64,7 +64,7 @@ struct DiskCard: View {
                     .frame(width: 60, height: 60)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(Format.bytes(volume.availableBytes))
-                            .font(Theme.serif(26))
+                            .font(Theme.display(26))
                             .monospacedDigit()
                         Text("свободно из \(Format.bytes(volume.totalBytes))")
                             .font(.caption).foregroundStyle(.secondary)
@@ -92,7 +92,7 @@ struct ExternalDiskCard: View {
             if let disk = app.destination {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(disk.name)
-                        .font(Theme.serif(19))
+                        .font(Theme.display(19))
                         .lineLimit(1).truncationMode(.middle)
                     if disk.totalBytes > 0 {
                         CapacityBar(fraction: Double(disk.totalBytes - disk.availableBytes) / Double(disk.totalBytes))
@@ -109,7 +109,7 @@ struct ExternalDiskCard: View {
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Не подключён")
-                        .font(Theme.serif(19))
+                        .font(Theme.display(19))
                         .foregroundStyle(.secondary)
                     Text("На него Offload переносит то, что не нужно держать на Mac, и там же живёт сейф.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -135,7 +135,7 @@ struct MemoryCard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
                         Circle().fill(color(snapshot.pressure)).frame(width: 10, height: 10)
-                        Text(snapshot.pressure.title).font(Theme.serif(19))
+                        Text(snapshot.pressure.title).font(Theme.display(19))
                     }
                     Text("давление памяти").font(.caption).foregroundStyle(.secondary)
                 }
@@ -301,7 +301,7 @@ private struct StepRow: View {
             if let action = step.action {
                 if isNext {
                     Button(action.title) { open(action.section) }
-                        .buttonStyle(.borderedProminent)
+                        .prominentButton()
                 } else {
                     Button(action.title) { open(action.section) }
                 }
@@ -352,7 +352,7 @@ struct ConnectedPrompt: View {
                             app.section = .cleanup
                             app.cleanup.scan(app: app)
                         } label: { Label("Разобрать", systemImage: "wand.and.stars") }
-                            .buttonStyle(.borderedProminent)
+                            .prominentButton()
                         Button("Не сейчас") { app.connectedPrompt = nil }
                     }
                     .padding(.top, 2)

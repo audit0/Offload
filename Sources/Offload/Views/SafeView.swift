@@ -102,7 +102,7 @@ struct SafeView: View {
             HStack(spacing: 14) {
                 IconTile(systemImage: "externaldrive.badge.xmark", tone: .neutral, size: 52)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Нет внешнего диска").font(Theme.serif(22))
+                    Text("Нет внешнего диска").font(Theme.display(22))
                     Text("Подключите внешний диск — сейф живёт на нём.").foregroundStyle(.secondary)
                 }
             }
@@ -116,7 +116,7 @@ struct SafeView: View {
         HStack(spacing: 14) {
             IconTile(systemImage: isOpen ? "lock.open.fill" : "lock.shield.fill", tone: isOpen ? .caution : .good, size: 52)
             VStack(alignment: .leading, spacing: 3) {
-                Text(isOpen ? "Сейф открыт" : "Сейф закрыт").font(Theme.serif(22))
+                Text(isOpen ? "Сейф открыт" : "Сейф закрыт").font(Theme.display(22))
                 Text(isOpen
                      ? "Перенос, бэкап и ключи сейчас идут сюда. Закройте после работы."
                      : "На диске только шифротекст. Чтобы класть в сейф или брать из него, откройте его паролем.")
@@ -131,7 +131,7 @@ struct SafeView: View {
                     NSWorkspace.shared.open(mount)
                 }
                 Button { safe.close(app: app) } label: { Label("Закрыть сейф", systemImage: "lock.fill") }
-                    .buttonStyle(.borderedProminent)
+                    .prominentButton()
                     .keyboardShortcut("l", modifiers: [.command, .shift])
             }
         }
@@ -164,7 +164,7 @@ struct SafeView: View {
             Notice(.warning, "Этот сейф ограничен \(Format.bytes(limit)): для ключей хватит, а для переноса больших папок — нет. Предел можно увеличить — содержимое останется на месте.")
             HStack {
                 Button { sheet = .grow } label: { Label("Увеличить предел…", systemImage: "arrow.up.left.and.arrow.down.right") }
-                    .buttonStyle(.borderedProminent)
+                    .prominentButton()
                 Button("Создать другой сейф…") { creatingAnother = true }
             }
         }
@@ -174,7 +174,7 @@ struct SafeView: View {
     private func fact(_ value: String, _ title: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value)
-                .font(Theme.serif(20))
+                .font(Theme.display(20))
                 .monospacedDigit()
             Text(title).font(.caption).foregroundStyle(.secondary)
         }
@@ -201,7 +201,7 @@ struct SafeView: View {
             IconTile(systemImage: "lock.shield", tone: .brand, size: 52)
             VStack(alignment: .leading, spacing: 4) {
                 Text(replacing == nil ? "На диске «\(host.name)» сейфа пока нет" : "Новый сейф на диске «\(host.name)»")
-                    .font(Theme.serif(22))
+                    .font(Theme.display(22))
                 Text("Образ разрежённый: места он занимает ровно столько, сколько в нём лежит, а предел лишь не даёт ему вырасти больше. Предел потом можно увеличить. Придумайте пароль, который не используете больше нигде. Надёжнее всего — фраза из 4–6 случайных слов.")
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
@@ -230,7 +230,7 @@ struct SafeView: View {
                 password = ""; confirmation = ""
                 creatingAnother = false
             }
-            .buttonStyle(.borderedProminent)
+            .prominentButton()
             .keyboardShortcut(.defaultAction)
             .disabled(!fields.isAcceptable)
         }
@@ -315,7 +315,7 @@ struct SafeView: View {
                     } label: {
                         Label("Перенести в сейф и удалить открытые копии (\(chosen.count))", systemImage: "lock.doc")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .prominentButton()
                     .disabled(chosen.isEmpty || app.isBusy)
                 }
             }

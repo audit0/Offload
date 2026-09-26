@@ -91,7 +91,7 @@ struct Notice: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(soft, in: shape)
-        .overlay { shape.strokeBorder(kind == .warning ? Theme.warnLine : Theme.line.opacity(kind == .info ? 1 : 0)) }
+        .overlay { shape.strokeBorder(kind == .error ? Color.clear : Theme.line) }
     }
 
     private var symbol: String {
@@ -112,12 +112,10 @@ struct Notice: View {
         }
     }
 
-    /// Мягкий фон своего цвета, как «Нужно от вас» в панели; обычное — белое с рамкой.
+    /// Белая плашка с тонкой рамкой; у ошибки — розоватая.
     private var soft: Color {
         switch kind {
-        case .info: return Theme.panel
-        case .success: return Theme.okSoft
-        case .warning: return Theme.warnSoft
+        case .info, .success, .warning: return Theme.background
         case .error: return Theme.badSoft
         }
     }
@@ -136,7 +134,7 @@ struct FullDiskAccessBanner: View {
                         .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     HStack {
                         Button("Открыть настройки") { FullDiskAccess.openSettings() }
-                            .buttonStyle(.borderedProminent)
+                            .prominentButton()
                         Button("Проверить снова") { app.refreshVolumes() }
                     }
                     .padding(.top, 2)

@@ -224,7 +224,7 @@ struct CleanupView: View {
         return VStack(alignment: .leading, spacing: Theme.sectionSpacing) {
             HStack(alignment: .center, spacing: 24) {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Разобрать Mac").font(Theme.serif(30))
+                    Text("Разобрать Mac").font(Theme.display(30))
                     Text("Найду, что занимает место зря, и спрошу про каждое: удалить или нет. Выбирать файлы и ходить по папкам не нужно — только отвечать «да» или «не сейчас». Без вашего «да» ничего не трогаю.")
                         .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     FlowLayout(spacing: 6) {
@@ -371,7 +371,7 @@ struct CleanupView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(progress.duplicates ? "Ищу одинаковые файлы"
                              : progress.total == 0 ? "Собираю, что посмотреть…" : "Смотрю, что занимает место")
-                            .font(Theme.serif(19))
+                            .font(Theme.display(19))
                         Text(progress.current.isEmpty ? " " : progress.current)
                             .font(.callout).foregroundStyle(.secondary)
                             .lineLimit(1).truncationMode(.middle)
@@ -425,7 +425,7 @@ struct CleanupView: View {
             IconTile(systemImage: module.symbol, tone: active ? module.tone : .neutral, size: 34)
             VStack(alignment: .leading, spacing: 2) {
                 Text(value)
-                    .font(Theme.serif(24))
+                    .font(Theme.display(24))
                     .monospacedDigit()
                     .contentTransition(.numericText())
                 Text(module.title).font(.callout).foregroundStyle(.secondary)
@@ -489,14 +489,14 @@ struct CleanupView: View {
                     if !open.isEmpty {
                         Text("Можно освободить").font(.callout).foregroundStyle(.secondary)
                         Text(Format.bytes(model.pendingBytes))
-                            .font(Theme.serif(44)).monospacedDigit()
+                            .font(Theme.display(44)).monospacedDigit()
                             .contentTransition(.numericText())
                         Text("\(open.count) \(pluralRu(open.count, "вопрос", "вопроса", "вопросов")) — на каждый ответьте «да» или «не сейчас». Удаляемое сначала уходит в Корзину.")
                             .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     } else {
                         Text(model.isSettled ? "Готово" : "Делаю…").font(.callout).foregroundStyle(.secondary)
                         Text(freed >= 100_000_000 ? "Освободилось \(Format.bytes(freed))" : "Ответили на всё")
-                            .font(Theme.serif(34)).monospacedDigit()
+                            .font(Theme.display(34)).monospacedDigit()
                         Text(settledLine)
                             .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
@@ -510,7 +510,7 @@ struct CleanupView: View {
                                   systemImage: "checkmark.circle.fill")
                                 .frame(minWidth: 150)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .prominentButton()
                         .controlSize(.large)
                         .keyboardShortcut(.defaultAction)
                         .help(open.count > together.count
@@ -573,7 +573,7 @@ struct CleanupView: View {
                             .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 12)
-                    Text(Format.bytes(inTrash)).font(Theme.serif(20)).monospacedDigit()
+                    Text(Format.bytes(inTrash)).font(Theme.display(20)).monospacedDigit()
                 }
                 HStack(spacing: 10) {
                     if let finishing = model.finishing {
@@ -602,7 +602,7 @@ struct CleanupView: View {
 
     private func result(_ value: String, _ title: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(value).font(Theme.serif(20)).monospacedDigit()
+            Text(value).font(Theme.display(20)).monospacedDigit()
             Text(title).font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -634,7 +634,7 @@ struct QuestionCard: View {
                         Text(question.title).font(.headline).fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 8)
                         Text(question.amount)
-                            .font(Theme.serif(20))
+                            .font(Theme.display(20))
                             .monospacedDigit()
                     }
                     Text(question.text).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -668,7 +668,7 @@ struct QuestionCard: View {
                 Button(question.noTitle, action: no)
                     .controlSize(.large)
                 Button(question.yesTitle, action: yes)
-                    .buttonStyle(.borderedProminent)
+                    .prominentButton()
                     .controlSize(.large)
             }
         case .queued:
@@ -866,7 +866,7 @@ struct ScanButton: View {
         Button(action: action) {
             VStack(spacing: 6) {
                 Image(systemName: "sparkles").font(.system(size: 30, weight: .semibold))
-                Text(title).font(Theme.serif(19))
+                Text(title).font(Theme.display(19))
             }
             .foregroundStyle(.white)
             .frame(width: 128, height: 128)

@@ -9,7 +9,7 @@ struct ContentView: View {
         @Bindable var safe = app.safe
         NavigationSplitView {
             // Своя колонка вместо List: выделение у List macOS рисует системным синим,
-            // а здесь, как в «Панели агентов», — светло-серая подложка и жирный текст.
+            // а здесь оно чёрно-белое — стекло или светло-серая подложка и жирный текст.
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(SidebarSection.allCases) { section in
                     SidebarRow(section: section, badge: badge(for: section), isSelected: (app.section ?? .overview) == section) {
@@ -20,7 +20,7 @@ struct ContentView: View {
             .padding(.horizontal, 10)
             .padding(.top, 8)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(Theme.soft)
+            .modifier(SidebarBackground())
             .navigationSplitViewColumnWidth(min: 240, ideal: 260)
             .safeAreaInset(edge: .bottom) {
                 SafeStatusPanel().padding(10)
@@ -45,6 +45,7 @@ struct ContentView: View {
             .background(Theme.background)
         }
         .tint(Theme.brand)
+        .glassButtons()
         // Сменили диск — перечитываем, есть ли на нём сейф и открыт ли он.
         .task(id: app.destinationID) { app.safe.refresh(app: app) }
         // Закрыть сейф не дали открытые в нём файлы — откуда бы ни закрывали: из панели, меню или раздела.
@@ -66,7 +67,7 @@ struct ContentView: View {
     }
 }
 
-/// Строка боковой колонки, как в «Панели агентов»: выбранная — на светло-серой подложке, жирным.
+/// Строка боковой колонки: выбранная — на стеклянной капсуле (macOS 26) или светло-серой подложке, жирным.
 private struct SidebarRow: View {
     let section: SidebarSection
     let badge: Int
@@ -96,11 +97,35 @@ private struct SidebarRow: View {
             .padding(.horizontal, 10)
             .frame(height: 32)
             .contentShape(Rectangle())
-            .background((isSelected ? Theme.line : hovering ? Theme.lineSoft : .clear),
-                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .modifier(SidebarSelection(isSelected: isSelected, hovering: hovering))
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+/// Фон колонки: на macOS 26 его нет — колонку рисует системное стекло; раньше — светло-серая заливка.
+private struct SidebarBackground: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content
+        } else {
+            content.background(Theme.panel)
+        }
+    }
+}
+
+private struct SidebarSelection: ViewModifier {
+    let isSelected: Bool
+    let hovering: Bool
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        if isSelected {
+            content.glassSurface(in: shape, fallback: Theme.lineSoft, interactive: true)
+        } else {
+            content.background(hovering ? Theme.lineSoft.opacity(0.6) : .clear, in: shape)
+        }
     }
 }

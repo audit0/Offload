@@ -109,7 +109,7 @@ struct BackupView: View {
                     Button { model.run(on: volume, app: app) } label: {
                         Label("Обновить бэкап", systemImage: "arrow.triangle.2.circlepath")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .prominentButton()
                     .disabled(model.sources.isEmpty)
                 }
                 if let report = model.report {

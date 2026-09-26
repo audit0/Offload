@@ -3,51 +3,49 @@ import SwiftUI
 
 // MARK: - Тема
 
-/// Общий язык интерфейса: отступы, скругления и цвета.
+/// Общий язык интерфейса: отступы, скругления, цвета и стекло.
 ///
-/// Стиль — чёрно-белый, как у «Панели агентов»: белые карточки на тёплом сером, почти чёрный текст,
-/// чёрная главная кнопка, заголовки с засечками. Тема одна — светлая, при любой теме macOS.
-/// Цвет сообщает, а не украшает, и он приглушённый: зелёный — зашифровано и готово, янтарный —
-/// лежит открыто или требует внимания, красный — ошибка, серый — трогать нельзя или делать нечего.
+/// Стиль — строгий чёрно-белый, как у Apple: белая страница, светло-серые карточки без рамок и теней,
+/// шрифт SF, чёрные действия. Цветом ничего не украшается: состояния различаются значками и словами,
+/// красный — только ошибка. Тема одна — светлая, при любой теме macOS.
+///
+/// Liquid Glass (macOS 26) — только у элементов управления, как у самой Apple: боковая колонка,
+/// выделение в ней, кнопки, плавающая панель диска и сейфа. Содержимое на стекло не кладётся.
+/// На macOS 14–15 те же места рисуются ровной заливкой.
 enum Theme {
-    static let pagePadding: CGFloat = 28
-    static let sectionSpacing: CGFloat = 24
-    static let cardPadding: CGFloat = 16
-    static let cardRadius: CGFloat = 13
+    static let pagePadding: CGFloat = 32
+    static let sectionSpacing: CGFloat = 28
+    static let cardPadding: CGFloat = 18
+    static let cardRadius: CGFloat = 18
     /// Шире колонка страницы не растягивается: на большом мониторе строки иначе читались бы с трудом.
     static let contentWidth: CGFloat = 980
 
-    /// Фон страницы — тёплый серый; на нём белые карточки.
-    static let background = hex(0xF6F6F4)
-    static let panel = Color.white
-    /// Поверхность внутри карточки: подложки значков, ярлыки, поля.
-    static let soft = hex(0xF3F2EE)
-    static let ink = hex(0x16181C)
-    static let muted = hex(0x585D66)
-    static let faint = hex(0x6A6F77)
-    static let line = hex(0xE7E6E1)
-    static let lineSoft = hex(0xF0EFEB)
+    static let background = Color.white
+    /// Карточка — светло-серая пластина, как на apple.com.
+    static let panel = hex(0xF5F5F7)
+    /// Подложка внутри карточки: значки, ярлыки, выделение.
+    static let soft = Color.white
+    static let ink = hex(0x1D1D1F)
+    static let muted = hex(0x6E6E73)
+    static let faint = hex(0x86868B)
+    static let line = hex(0xD2D2D7)
+    static let lineSoft = hex(0xE8E8ED)
 
-    static let ok = hex(0x1F7A54)
-    static let okSoft = hex(0xEAF3EE)
-    static let warn = hex(0x8A6010)
-    static let warnSoft = hex(0xFDF5E6)
-    static let warnLine = hex(0xECD8A6)
-    static let bad = hex(0xB3261E)
-    static let badSoft = hex(0xFDEEEC)
+    /// Состояния — тем же чёрным: различает их значок (галочка, треугольник), а не цвет.
+    static let ok = ink
+    static let warn = ink
+    static let bad = hex(0xD70015)
+    static let badSoft = hex(0xFFF1F1)
 
-    /// Действия, шкалы и выделение — чёрным, как главная кнопка панели.
     static let brand = ink
     static let cardFill = panel
-    static let cardStroke = line
+    static let cardStroke = Color.clear
     /// Дорожка шкал и колец.
-    static let track = hex(0xEDECE7)
-    /// Тень карточки: едва заметная, карточка лежит на фоне, а не парит.
-    static let shadow = Color(red: 20 / 255, green: 22 / 255, blue: 26 / 255).opacity(0.05)
+    static let track = lineSoft
 
-    /// Заголовки с засечками (New York), как у панели.
-    static func serif(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight, design: .serif)
+    /// Крупный текст — SF, плотный и жирный, как заголовки Apple.
+    static func display(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
+        .system(size: size, weight: weight)
     }
 
     private static func hex(_ value: UInt32) -> Color {
@@ -56,27 +54,52 @@ enum Theme {
     }
 }
 
-/// Что сообщает цвет. Один набор на всё приложение, чтобы янтарное везде значило одно и то же.
+/// Что сообщает строка. Цвет у всего один — чёрный; красный только у ошибки.
 enum Tone {
     case good, caution, danger, neutral, brand, info
 
     var color: Color {
         switch self {
-        case .good: return Theme.ok
-        case .caution: return Theme.warn
         case .danger: return Theme.bad
         case .neutral: return Theme.faint
-        case .brand, .info: return Theme.ink
+        case .good, .caution, .brand, .info: return Theme.ink
         }
     }
 
-    /// Подложка под цветом: плашки, значки, предупреждения.
-    var soft: Color {
-        switch self {
-        case .good: return Theme.okSoft
-        case .caution: return Theme.warnSoft
-        case .danger: return Theme.badSoft
-        case .neutral, .brand, .info: return Theme.soft
+    /// Подложка значка и плашки: белая на серой карточке, розоватая — у ошибки.
+    var soft: Color { self == .danger ? Theme.badSoft : Theme.soft }
+}
+
+// MARK: - Стекло
+
+extension View {
+    /// Liquid Glass на macOS 26 и новее, ровная заливка — на более старых.
+    @ViewBuilder
+    func glassSurface<S: Shape>(in shape: S, fallback: Color = Theme.lineSoft, interactive: Bool = false) -> some View {
+        if #available(macOS 26.0, *) {
+            glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
+        } else {
+            background(fallback, in: shape)
+        }
+    }
+
+    /// Главная кнопка: чёрное стекло на macOS 26, чёрная капсула — раньше.
+    @ViewBuilder
+    func prominentButton() -> some View {
+        if #available(macOS 26.0, *) {
+            buttonStyle(.glassProminent).tint(Theme.ink)
+        } else {
+            buttonStyle(.borderedProminent).buttonBorderShape(.capsule).tint(Theme.ink)
+        }
+    }
+
+    /// Обычные кнопки всего окна: стекло на macOS 26, светлые капсулы — раньше.
+    @ViewBuilder
+    func glassButtons() -> some View {
+        if #available(macOS 26.0, *) {
+            buttonStyle(.glass)
+        } else {
+            buttonBorderShape(.capsule)
         }
     }
 }
@@ -118,21 +141,10 @@ struct Card<Content: View>: View {
         }
         .padding(padding)
         .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil, alignment: .topLeading)
-        .background(tint.map(Self.softFill) ?? Theme.cardFill, in: shape)
-        .overlay { shape.strokeBorder(tint.map(Self.softLine) ?? Theme.cardStroke) }
-        .shadow(color: tint == nil ? Theme.shadow : .clear, radius: 1, y: 1)
-    }
-
-    /// Подкрашенная карточка — мягкий фон своего цвета, как «Нужно от вас» в панели.
-    private static func softFill(_ tint: Color) -> Color {
-        if tint == Theme.warn { return Theme.warnSoft }
-        if tint == Theme.bad { return Theme.badSoft }
-        if tint == Theme.ok { return Theme.okSoft }
-        return Theme.soft
-    }
-
-    private static func softLine(_ tint: Color) -> Color {
-        tint == Theme.warn ? Theme.warnLine : tint.opacity(0.22)
+        .background(tint == nil ? Theme.cardFill : tint == Theme.bad ? Theme.badSoft : Theme.background, in: shape)
+        // Выделенная карточка (предупреждение) — белая с тонкой рамкой: на белой странице среди серых
+        // она заметна без цвета.
+        .overlay { shape.strokeBorder(tint == nil ? Color.clear : Theme.line) }
     }
 }
 
@@ -186,7 +198,7 @@ struct CardSection<Content: View>: View {
     }
 }
 
-/// Заголовок раздела, как в панели: тихая подпись заглавными с линией до края.
+/// Заголовок раздела над карточкой: коротко и жирно, без линий и заглавных.
 struct SectionHeader: View {
     let title: String
     var number: Int?
@@ -200,12 +212,11 @@ struct SectionHeader: View {
                     .frame(width: 17, height: 17)
                     .background(Theme.ink, in: Circle())
             }
-            Text(title.uppercased())
-                .font(.system(size: 11, weight: .semibold))
-                .kerning(0.9)
-                .foregroundStyle(Theme.faint)
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.ink)
                 .lineLimit(1)
-            Rectangle().fill(Theme.line).frame(height: 1)
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 2)
     }
@@ -339,7 +350,7 @@ struct StatTile: View {
             IconTile(systemImage: systemImage, tone: tone)
             VStack(alignment: .leading, spacing: 2) {
                 Text(value)
-                    .font(Theme.serif(24))
+                    .font(Theme.display(24))
                     .monospacedDigit()
                 Text(title).font(.callout).foregroundStyle(Theme.muted)
                 if let detail {
@@ -521,7 +532,7 @@ struct SheetLayout<Content: View, Actions: View>: View {
                     IconTile(systemImage: systemImage, tone: tone, size: 40)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(title)
-                            .font(Theme.serif(20))
+                            .font(Theme.display(20))
                             .lineLimit(2)
                             .truncationMode(.middle)
                         if let subtitle {

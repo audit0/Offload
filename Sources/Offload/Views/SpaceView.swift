@@ -83,7 +83,7 @@ struct SpaceView: View {
                     .help("Наверх")
                 VStack(alignment: .leading, spacing: 1) {
                     Text(model.title(home: app.rules.home))
-                        .font(Theme.serif(19))
+                        .font(Theme.display(19))
                         .lineLimit(1).truncationMode(.middle)
                     Text(!model.isScanning ? "\(Format.bytes(total)) · \(model.items.count) \(pluralRu(model.items.count, "объект", "объекта", "объектов"))"
                          : model.items.isEmpty ? "Считаю…" : "Считаю: \(measured.count) из \(model.items.count)")
@@ -98,14 +98,14 @@ struct SpaceView: View {
             if total > 0 {
                 VStack(alignment: .leading, spacing: 8) {
                     StackedBar(parts: [
-                        StackedBar.Part(fraction: Double(movable) / Double(total), color: Theme.ok),
-                        StackedBar.Part(fraction: Double(caution) / Double(total), color: Theme.warn),
-                        StackedBar.Part(fraction: Double(blocked) / Double(total), color: Color.secondary.opacity(0.45)),
+                        StackedBar.Part(fraction: Double(movable) / Double(total), color: Theme.ink),
+                        StackedBar.Part(fraction: Double(caution) / Double(total), color: Theme.faint),
+                        StackedBar.Part(fraction: Double(blocked) / Double(total), color: Theme.line),
                     ])
                     HStack(spacing: 18) {
-                        legend("Можно перенести", bytes: movable, color: Theme.ok)
-                        legend("С оговорками", bytes: caution, color: Theme.warn)
-                        legend("Не трогать", bytes: blocked, color: Color.secondary.opacity(0.45))
+                        legend("Можно перенести", bytes: movable, color: Theme.ink)
+                        legend("С оговорками", bytes: caution, color: Theme.faint)
+                        legend("Не трогать", bytes: blocked, color: Theme.line)
                         Spacer(minLength: 0)
                     }
                 }
