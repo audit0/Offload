@@ -41,10 +41,10 @@ struct PasswordStrengthView: View {
 
     private func color(_ level: PasswordStrength.Level) -> Color {
         switch level {
-        case .weak: return .red
-        case .fair: return .orange
-        case .good: return .green
-        case .strong: return .green
+        case .weak: return Theme.bad
+        case .fair: return Theme.warn
+        case .good: return Theme.ok
+        case .strong: return Theme.ok
         }
     }
 }
@@ -67,7 +67,7 @@ struct NewPasswordFields: View {
             PasswordStrengthView(password: password)
             if !confirmation.isEmpty, confirmation != password {
                 Label("Пароли не совпадают.", systemImage: "xmark.circle.fill")
-                    .font(.caption).foregroundStyle(.red)
+                    .font(.caption).foregroundStyle(Theme.bad)
             }
         }
     }
@@ -92,13 +92,13 @@ struct SafeUnlockRow: View {
                     ProgressView().controlSize(.small)
                 } else {
                     Button("Открыть", action: open)
-                        .buttonStyle(.borderedProminent)
+                        .prominentButton()
                         .disabled(password.isEmpty)
                 }
             }
             if let error = app.safe.unlockError {
                 Label(error, systemImage: "xmark.circle.fill")
-                    .font(.caption).foregroundStyle(.red)
+                    .font(.caption).foregroundStyle(Theme.bad)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -147,7 +147,7 @@ struct TargetSummary: View {
             Spacer(minLength: 0)
         }
         .padding(10)
-        .background(tone.color.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Theme.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
@@ -202,8 +202,8 @@ struct SafeStatusPanel: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.045), in: shape)
-        .overlay { shape.strokeBorder(Theme.cardStroke) }
+        // Плавающая панель над колонкой — стекло, как у элементов управления macOS 26.
+        .glassSurface(in: shape, fallback: Theme.background)
     }
 
     @ViewBuilder

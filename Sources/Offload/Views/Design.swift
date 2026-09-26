@@ -3,48 +3,103 @@ import SwiftUI
 
 // MARK: - Тема
 
-/// Общий язык интерфейса: отступы, скругления и цвета.
+/// Общий язык интерфейса: отступы, скругления, цвета и стекло.
 ///
-/// Цвет здесь сообщает, а не украшает: зелёный — зашифровано и готово, оранжевый — лежит
-/// открыто или требует внимания, красный — ошибка, серый — трогать нельзя или делать нечего.
-/// Бирюзовый из иконки — только для действий и шкал, чтобы он не спорил с цветами состояний.
+/// Стиль — строгий чёрно-белый, как у Apple: белая страница, светло-серые карточки без рамок и теней,
+/// шрифт SF, чёрные действия. Цветом ничего не украшается: состояния различаются значками и словами,
+/// красный — только ошибка. Тема одна — светлая, при любой теме macOS.
+///
+/// Liquid Glass (macOS 26) — только у элементов управления, как у самой Apple: боковая колонка,
+/// выделение в ней, кнопки, плавающая панель диска и сейфа. Содержимое на стекло не кладётся.
+/// На macOS 14–15 те же места рисуются ровной заливкой.
 enum Theme {
-    static let pagePadding: CGFloat = 24
-    static let sectionSpacing: CGFloat = 20
-    static let cardPadding: CGFloat = 16
-    static let cardRadius: CGFloat = 12
+    static let pagePadding: CGFloat = 32
+    static let sectionSpacing: CGFloat = 28
+    static let cardPadding: CGFloat = 18
+    static let cardRadius: CGFloat = 18
     /// Шире колонка страницы не растягивается: на большом мониторе строки иначе читались бы с трудом.
     static let contentWidth: CGFloat = 980
 
-    /// В тёмной теме чуть светлее, чтобы шкалы и кнопки не тонули в фоне;
-    /// белый текст на кнопке остаётся читаемым в обеих темах.
-    static let brand = dynamic(light: NSColor(srgbRed: 0.05, green: 0.52, blue: 0.48, alpha: 1),
-                               dark: NSColor(srgbRed: 0.06, green: 0.60, blue: 0.55, alpha: 1))
-    /// Подложка карточки: белая в светлой теме, едва светлее фона — в тёмной.
-    static let cardFill = dynamic(light: NSColor(white: 1, alpha: 0.92), dark: NSColor(white: 1, alpha: 0.05))
-    static let cardStroke = dynamic(light: NSColor(white: 0, alpha: 0.09), dark: NSColor(white: 1, alpha: 0.09))
-    /// Дорожка шкал и колец.
-    static let track = dynamic(light: NSColor(white: 0, alpha: 0.08), dark: NSColor(white: 1, alpha: 0.12))
+    static let background = Color.white
+    /// Карточка — светло-серая пластина, как на apple.com.
+    static let panel = hex(0xF5F5F7)
+    /// Подложка внутри карточки: значки, ярлыки, выделение.
+    static let soft = Color.white
+    static let ink = hex(0x1D1D1F)
+    static let muted = hex(0x6E6E73)
+    static let faint = hex(0x86868B)
+    static let line = hex(0xD2D2D7)
+    static let lineSoft = hex(0xE8E8ED)
 
-    private static func dynamic(light: NSColor, dark: NSColor) -> Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
-        })
+    /// Состояния — тем же чёрным: различает их значок (галочка, треугольник), а не цвет.
+    static let ok = ink
+    static let warn = ink
+    static let bad = hex(0xD70015)
+    static let badSoft = hex(0xFFF1F1)
+
+    static let brand = ink
+    static let cardFill = panel
+    static let cardStroke = Color.clear
+    /// Дорожка шкал и колец.
+    static let track = lineSoft
+
+    /// Крупный текст — SF, плотный и жирный, как заголовки Apple.
+    static func display(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
+        .system(size: size, weight: weight)
+    }
+
+    private static func hex(_ value: UInt32) -> Color {
+        Color(red: Double((value >> 16) & 0xFF) / 255, green: Double((value >> 8) & 0xFF) / 255,
+              blue: Double(value & 0xFF) / 255)
     }
 }
 
-/// Что сообщает цвет. Один набор на всё приложение, чтобы оранжевое везде значило одно и то же.
+/// Что сообщает строка. Цвет у всего один — чёрный; красный только у ошибки.
 enum Tone {
     case good, caution, danger, neutral, brand, info
 
     var color: Color {
         switch self {
-        case .good: return .green
-        case .caution: return .orange
-        case .danger: return .red
-        case .neutral: return .secondary
-        case .brand: return Theme.brand
-        case .info: return .blue
+        case .danger: return Theme.bad
+        case .neutral: return Theme.faint
+        case .good, .caution, .brand, .info: return Theme.ink
+        }
+    }
+
+    /// Подложка значка и плашки: белая на серой карточке, розоватая — у ошибки.
+    var soft: Color { self == .danger ? Theme.badSoft : Theme.soft }
+}
+
+// MARK: - Стекло
+
+extension View {
+    /// Liquid Glass на macOS 26 и новее, ровная заливка — на более старых.
+    @ViewBuilder
+    func glassSurface<S: Shape>(in shape: S, fallback: Color = Theme.lineSoft, interactive: Bool = false) -> some View {
+        if #available(macOS 26.0, *) {
+            glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
+        } else {
+            background(fallback, in: shape)
+        }
+    }
+
+    /// Главная кнопка: чёрное стекло на macOS 26, чёрная капсула — раньше.
+    @ViewBuilder
+    func prominentButton() -> some View {
+        if #available(macOS 26.0, *) {
+            buttonStyle(.glassProminent).tint(Theme.ink)
+        } else {
+            buttonStyle(.borderedProminent).buttonBorderShape(.capsule).tint(Theme.ink)
+        }
+    }
+
+    /// Обычные кнопки всего окна: стекло на macOS 26, светлые капсулы — раньше.
+    @ViewBuilder
+    func glassButtons() -> some View {
+        if #available(macOS 26.0, *) {
+            buttonStyle(.glass)
+        } else {
+            buttonBorderShape(.capsule)
         }
     }
 }
@@ -64,6 +119,7 @@ struct PageScroll<Content: View>: View {
             .frame(maxWidth: Theme.contentWidth)
             .frame(maxWidth: .infinity)
         }
+        .background(Theme.background)
     }
 }
 
@@ -85,8 +141,10 @@ struct Card<Content: View>: View {
         }
         .padding(padding)
         .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil, alignment: .topLeading)
-        .background(tint.map { $0.opacity(0.08) } ?? Theme.cardFill, in: shape)
-        .overlay { shape.strokeBorder(tint.map { $0.opacity(0.28) } ?? Theme.cardStroke) }
+        .background(tint == nil ? Theme.cardFill : tint == Theme.bad ? Theme.badSoft : Theme.background, in: shape)
+        // Выделенная карточка (предупреждение) — белая с тонкой рамкой: на белой странице среди серых
+        // она заметна без цвета.
+        .overlay { shape.strokeBorder(tint == nil ? Color.clear : Theme.line) }
     }
 }
 
@@ -99,9 +157,9 @@ struct CardTitle<Accessory: View>: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: systemImage)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.faint)
                 .frame(width: 18)
-            Text(title).font(.headline)
+            Text(title).font(.headline).foregroundStyle(Theme.ink)
             Spacer(minLength: 8)
             accessory
         }
@@ -125,28 +183,42 @@ struct CardSection<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                if let number {
-                    Text("\(number)")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 18, height: 18)
-                        .background(Theme.brand, in: Circle())
-                }
-                Text(title).font(.headline)
-            }
-            .padding(.horizontal, 4)
+            SectionHeader(title: title, number: number)
             Card(padding: 0, spacing: 0) {
                 content
             }
             if let footer {
                 Text(footer)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.muted)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 4)
             }
         }
+    }
+}
+
+/// Заголовок раздела над карточкой: коротко и жирно, без линий и заглавных.
+struct SectionHeader: View {
+    let title: String
+    var number: Int?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if let number {
+                Text("\(number)")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 17, height: 17)
+                    .background(Theme.ink, in: Circle())
+            }
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 2)
     }
 }
 
@@ -239,7 +311,7 @@ struct IconTile: View {
             .font(.system(size: size * 0.46, weight: .semibold))
             .foregroundStyle(tone.color)
             .frame(width: size, height: size)
-            .background(tone.color.opacity(0.14), in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
+            .background(tone.soft, in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
             .accessibilityHidden(true)
     }
 }
@@ -261,7 +333,7 @@ struct StatusPill: View {
         .foregroundStyle(tone.color)
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .background(tone.color.opacity(0.13), in: Capsule())
+        .background(tone.soft, in: Capsule())
     }
 }
 
@@ -278,11 +350,11 @@ struct StatTile: View {
             IconTile(systemImage: systemImage, tone: tone)
             VStack(alignment: .leading, spacing: 2) {
                 Text(value)
-                    .font(.system(.title2, design: .rounded, weight: .semibold))
+                    .font(Theme.display(24))
                     .monospacedDigit()
-                Text(title).font(.callout).foregroundStyle(.secondary)
+                Text(title).font(.callout).foregroundStyle(Theme.muted)
                 if let detail {
-                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                    Text(detail).font(.caption).foregroundStyle(Theme.faint)
                 }
             }
         }
@@ -298,7 +370,7 @@ struct Chip: View {
             .font(.callout.monospaced())
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(Color.primary.opacity(0.06), in: Capsule())
+            .background(Theme.soft, in: Capsule())
             .overlay { Capsule().strokeBorder(Theme.cardStroke) }
     }
 }
@@ -460,7 +532,7 @@ struct SheetLayout<Content: View, Actions: View>: View {
                     IconTile(systemImage: systemImage, tone: tone, size: 40)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(title)
-                            .font(.title3.weight(.semibold))
+                            .font(Theme.display(20))
                             .lineLimit(2)
                             .truncationMode(.middle)
                         if let subtitle {
@@ -485,5 +557,28 @@ struct SheetLayout<Content: View, Actions: View>: View {
             .padding(.vertical, 14)
         }
         .frame(width: width)
+        .background(Theme.panel)
+    }
+}
+
+/// Кнопка-ссылка: чёрным, подчёркивается при наведении — вместо системной синей ссылки.
+struct InkLinkStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        InkLink(configuration: configuration)
+    }
+
+    private struct InkLink: View {
+        let configuration: ButtonStyleConfiguration
+        @State private var hovering = false
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            configuration.label
+                .foregroundStyle(isEnabled ? Theme.ink : Theme.faint)
+                .underline(hovering && isEnabled)
+                .opacity(configuration.isPressed ? 0.6 : 1)
+                .contentShape(Rectangle())
+                .onHover { hovering = $0 }
+        }
     }
 }

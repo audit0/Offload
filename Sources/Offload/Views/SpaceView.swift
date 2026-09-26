@@ -83,7 +83,7 @@ struct SpaceView: View {
                     .help("Наверх")
                 VStack(alignment: .leading, spacing: 1) {
                     Text(model.title(home: app.rules.home))
-                        .font(.title3.weight(.semibold))
+                        .font(Theme.display(19))
                         .lineLimit(1).truncationMode(.middle)
                     Text(!model.isScanning ? "\(Format.bytes(total)) · \(model.items.count) \(pluralRu(model.items.count, "объект", "объекта", "объектов"))"
                          : model.items.isEmpty ? "Считаю…" : "Считаю: \(measured.count) из \(model.items.count)")
@@ -98,14 +98,14 @@ struct SpaceView: View {
             if total > 0 {
                 VStack(alignment: .leading, spacing: 8) {
                     StackedBar(parts: [
-                        StackedBar.Part(fraction: Double(movable) / Double(total), color: .green),
-                        StackedBar.Part(fraction: Double(caution) / Double(total), color: .orange),
-                        StackedBar.Part(fraction: Double(blocked) / Double(total), color: Color.secondary.opacity(0.45)),
+                        StackedBar.Part(fraction: Double(movable) / Double(total), color: Theme.ink),
+                        StackedBar.Part(fraction: Double(caution) / Double(total), color: Theme.faint),
+                        StackedBar.Part(fraction: Double(blocked) / Double(total), color: Theme.line),
                     ])
                     HStack(spacing: 18) {
-                        legend("Можно перенести", bytes: movable, color: .green)
-                        legend("С оговорками", bytes: caution, color: .orange)
-                        legend("Не трогать", bytes: blocked, color: Color.secondary.opacity(0.45))
+                        legend("Можно перенести", bytes: movable, color: Theme.ink)
+                        legend("С оговорками", bytes: caution, color: Theme.faint)
+                        legend("Не трогать", bytes: blocked, color: Theme.line)
                         Spacer(minLength: 0)
                     }
                 }
@@ -238,7 +238,7 @@ struct MoveSheet: View {
                 // Сейф закрыт — открываем прямо здесь, не уходя из окна переноса.
                 SafeUnlockRow()
                 Button("Всё-таки положить открыто на диск «\(app.destination?.name ?? "")»") { app.storeMode = .open }
-                    .buttonStyle(.link).font(.caption)
+                    .buttonStyle(InkLinkStyle()).font(.caption)
             }
         } actions: {
             switch model.stage {
@@ -326,7 +326,7 @@ struct MoveSheet: View {
                        ? "Перенесено и сверено: \(record.files) файлов, \(Format.bytes(record.bytes)). Оригинал удалён, место на Mac освободилось."
                        : "Скопировано и сверено: \(record.files) файлов, \(Format.bytes(record.bytes)). Оригинал на месте.")
                 if record.isEncrypted {
-                    Label("Лежит в сейфе — зашифровано.", systemImage: "lock.fill").foregroundStyle(.green).font(.callout)
+                    Label("Лежит в сейфе — зашифровано.", systemImage: "lock.fill").foregroundStyle(Theme.ok).font(.callout)
                 }
                 HStack {
                     Button("Показать на диске") { revealInFinder(URL(fileURLWithPath: record.archivedPath)) }

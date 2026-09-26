@@ -27,7 +27,7 @@ struct OverviewView: View {
                         Label {
                             Text(tip).fixedSize(horizontal: false, vertical: true)
                         } icon: {
-                            Image(systemName: "lightbulb.fill").foregroundStyle(.orange)
+                            Image(systemName: "lightbulb.fill").foregroundStyle(Theme.warn)
                         }
                     }
                 }
@@ -58,13 +58,13 @@ struct DiskCard: View {
                 HStack(spacing: 14) {
                     RingGauge(fraction: used, tint: tint) {
                         Text("\(Int((used * 100).rounded()))%")
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .font(.system(size: 13, weight: .semibold))
                             .monospacedDigit()
                     }
                     .frame(width: 60, height: 60)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(Format.bytes(volume.availableBytes))
-                            .font(.system(size: 22, weight: .semibold, design: .rounded))
+                            .font(Theme.display(26))
                             .monospacedDigit()
                         Text("свободно из \(Format.bytes(volume.totalBytes))")
                             .font(.caption).foregroundStyle(.secondary)
@@ -92,7 +92,7 @@ struct ExternalDiskCard: View {
             if let disk = app.destination {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(disk.name)
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(Theme.display(19))
                         .lineLimit(1).truncationMode(.middle)
                     if disk.totalBytes > 0 {
                         CapacityBar(fraction: Double(disk.totalBytes - disk.availableBytes) / Double(disk.totalBytes))
@@ -109,7 +109,7 @@ struct ExternalDiskCard: View {
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Не подключён")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(Theme.display(19))
                         .foregroundStyle(.secondary)
                     Text("На него Offload переносит то, что не нужно держать на Mac, и там же живёт сейф.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -135,7 +135,7 @@ struct MemoryCard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
                         Circle().fill(color(snapshot.pressure)).frame(width: 10, height: 10)
-                        Text(snapshot.pressure.title).font(.system(size: 17, weight: .semibold))
+                        Text(snapshot.pressure.title).font(Theme.display(19))
                     }
                     Text("давление памяти").font(.caption).foregroundStyle(.secondary)
                 }
@@ -155,9 +155,9 @@ struct MemoryCard: View {
 
     private func color(_ pressure: MemoryPressure) -> Color {
         switch pressure {
-        case .normal: return .green
-        case .warning: return .orange
-        case .critical: return .red
+        case .normal: return Theme.ok
+        case .warning: return Theme.warn
+        case .critical: return Theme.bad
         case .unknown: return .secondary
         }
     }
@@ -212,7 +212,7 @@ struct ScenarioCard: View {
                     Text("готово \(done) из \(list.count)")
                         .font(.callout).foregroundStyle(.secondary).monospacedDigit()
                 }
-                CapacityBar(fraction: Double(done) / Double(max(1, list.count)), tint: .green, height: 4)
+                CapacityBar(fraction: Double(done) / Double(max(1, list.count)), tint: Theme.ok, height: 4)
             }
             .padding(Theme.cardPadding)
             Divider()
@@ -301,7 +301,7 @@ private struct StepRow: View {
             if let action = step.action {
                 if isNext {
                     Button(action.title) { open(action.section) }
-                        .buttonStyle(.borderedProminent)
+                        .prominentButton()
                 } else {
                     Button(action.title) { open(action.section) }
                 }
@@ -318,14 +318,14 @@ private struct StepRow: View {
         case .done:
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 21))
-                .foregroundStyle(.green)
+                .foregroundStyle(Theme.ok)
         case .warning:
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 17))
-                .foregroundStyle(.orange)
+                .foregroundStyle(Theme.warn)
         case .todo:
             Text("\(number)")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(isNext ? Theme.brand : Color.secondary)
                 .frame(width: 22, height: 22)
                 .overlay { Circle().strokeBorder(isNext ? Theme.brand : Color.secondary.opacity(0.5), lineWidth: 1.5) }
@@ -352,7 +352,7 @@ struct ConnectedPrompt: View {
                             app.section = .cleanup
                             app.cleanup.scan(app: app)
                         } label: { Label("Разобрать", systemImage: "wand.and.stars") }
-                            .buttonStyle(.borderedProminent)
+                            .prominentButton()
                         Button("Не сейчас") { app.connectedPrompt = nil }
                     }
                     .padding(.top, 2)
