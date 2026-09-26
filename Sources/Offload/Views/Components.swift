@@ -90,7 +90,12 @@ struct Notice: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(color.opacity(0.09), in: shape)
+        // Белое стекло с подкраской: одинаково читается и на странице, и внутри карточки.
+        // Тени нет — плашка часто лежит внутри карточки, и две тени друг на друге выглядели бы грязно.
+        .background {
+            shape.fill(Theme.cardFill)
+            shape.fill(color.opacity(0.09))
+        }
         .overlay { shape.strokeBorder(color.opacity(0.22)) }
     }
 
