@@ -516,8 +516,14 @@ final class DockerModel {
     private(set) var rawBytes: Int64?
     /// Docker ещё считает размеры томов.
     private(set) var sizing = false
+    /// Сколько внутри Docker занимают образы, контейнеры, тома и кеш сборки.
+    private(set) var usage: DockerUsage?
+    /// Docker ещё считает `usage`.
+    private(set) var measuringUsage = false
     private(set) var archives: [URL] = []
     private(set) var busy: String?
+    /// Идёт очистка: её не отменить — Docker доводит начатое до конца, даже если остановить клиент.
+    private(set) var pruning = false
     private(set) var messages: [String] = []
     /// Токен на каждую упаковку и распаковку: общий на модель отменял бы только последнюю,
     /// а начатая раньше продолжала бы работать без кнопки «Отменить».
@@ -542,6 +548,8 @@ final class DockerModel {
 
     func reload(archiveVolumes: [VolumeInfo]) {
         status = .checking
+        sizing = false
+        measuringUsage = false
         let service = service
         let generation = UUID()
         reloadGeneration = generation
@@ -558,14 +566,75 @@ final class DockerModel {
             rawBytes = quick.2
             selection = selection.intersection(Set(volumes.map(\.name)))
             archives = archiveVolumes.flatMap { DockerService.archives(on: $0) }
-            guard status == .ready, !volumes.isEmpty else { return }
-            sizing = true
-            let sizes = await Task.detached(priority: .userInitiated) { service.volumeSizes() }.value
+            guard status == .ready else {
+                usage = nil
+                return
+            }
+            // Размеры томов и место внутри Docker считаются одновременно: для Docker это одна и та же
+            // долгая работа, и второй запрос дожидается первого, а не начинает её заново.
+            measuringUsage = true
+            async let measured = Task.detached(priority: .userInitiated) { service.usage() }.value
+            if !volumes.isEmpty {
+                sizing = true
+                let sizes = await Task.detached(priority: .userInitiated) { service.volumeSizes() }.value
+                guard reloadGeneration == generation else { return }
+                volumes = volumes.map { DockerVolume(name: $0.name, createdAt: $0.createdAt, sizeBytes: sizes[$0.name], usedBy: $0.usedBy) }
+                    .sorted { ($0.sizeBytes ?? 0, $1.name) > ($1.sizeBytes ?? 0, $0.name) }
+                sizing = false
+            }
+            let usage = await measured
             guard reloadGeneration == generation else { return }
-            volumes = volumes.map { DockerVolume(name: $0.name, createdAt: $0.createdAt, sizeBytes: sizes[$0.name], usedBy: $0.usedBy) }
-                .sorted { ($0.sizeBytes ?? 0, $1.name) > ($1.sizeBytes ?? 0, $0.name) }
-            sizing = false
+            self.usage = usage
+            measuringUsage = false
         }
+    }
+
+    /// Удаляет выбранное из того, что Docker пересоздаст сам, и ждёт, пока Docker.raw вернёт место Mac.
+    func prune(_ targets: Set<DockerPruneTarget>, app: AppModel) {
+        guard !targets.isEmpty, busy == nil else { return }
+        let service = service
+        let rawBefore = service.rawDiskBytes()
+        busy = "Очистка: подготовка"
+        pruning = true
+        messages = []
+        Task {
+            do {
+                let reclaimed = try await Task.detached(priority: .userInitiated) {
+                    try service.prune(targets) { target in
+                        Task { @MainActor in
+                            if self.busy != nil { self.busy = "Очистка: \(target.title.lowercased())" }
+                        }
+                    }
+                }.value
+                // Docker.raw — разрежённый файл: освобождённое внутри Docker Desktop отдаёт Mac
+                // обычно за секунды. Ждём, пока размер перестанет меняться, но не дольше 12 секунд.
+                busy = "Жду, пока Docker вернёт место Mac"
+                var rawAfter = service.rawDiskBytes()
+                for _ in 0..<6 {
+                    try? await Task.sleep(for: .seconds(2))
+                    let now = service.rawDiskBytes()
+                    let settled = now == rawAfter && (now ?? 0) < (rawBefore ?? 0)
+                    rawAfter = now
+                    if settled { break }
+                }
+                messages.append(Self.pruneReport(reclaimed: reclaimed, rawBefore: rawBefore, rawAfter: rawAfter))
+            } catch {
+                messages.append("✗ \(error.localizedDescription)")
+            }
+            busy = nil
+            pruning = false
+            app.refreshVolumes()
+            reload(app: app)
+        }
+    }
+
+    static func pruneReport(reclaimed: Int64?, rawBefore: Int64?, rawAfter: Int64?) -> String {
+        if reclaimed == 0 { return "Удалять было нечего: всё выбранное сейчас используется." }
+        let inside = reclaimed.map { "Docker удалил \(Format.bytes($0))." } ?? "Docker удалил выбранное."
+        if let rawBefore, let rawAfter, rawBefore - rawAfter >= 64 << 20 {
+            return "✓ \(inside) Диск Docker на Mac уменьшился на \(Format.bytes(rawBefore - rawAfter))."
+        }
+        return "✓ \(inside) Место на Mac Docker вернёт чуть позже — иногда только после перезапуска Docker Desktop."
     }
 
     func checkActivity(_ names: [String]) {

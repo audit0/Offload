@@ -5,6 +5,7 @@ struct SpaceView: View {
     @Environment(AppModel.self) private var app
     @State private var moveItem: SpaceItem?
     @State private var moved = false
+    @State private var utmItem: SpaceItem?
 
     var body: some View {
         let model = app.space
@@ -18,8 +19,10 @@ struct SpaceView: View {
                 LazyVStack(spacing: 2) {
                     ForEach(model.visibleItems) { item in
                         SpaceRow(item: item, largest: model.largest,
+                                 appData: AppData.kind(of: item.url, home: app.rules.home),
                                  onOpen: { model.open(item.url, rules: app.rules) },
-                                 onMove: { moveItem = item })
+                                 onMove: { moveItem = item },
+                                 onFree: { free(item) })
                     }
                     if model.hiddenSmallCount > 0, !model.isScanning {
                         Text("И ещё \(model.hiddenSmallCount) объектов меньше 1 МБ")
@@ -50,6 +53,16 @@ struct SpaceView: View {
             app.refreshVolumes()
         }) { item in
             MoveSheet(source: item.url, onMoved: { moved = true })
+        }
+        .sheet(item: $utmItem) { item in UTMSheet(item: item) }
+    }
+
+    /// Docker освобождается в своём разделе, машины UTM — в самом UTM: лист объясняет, как.
+    private func free(_ item: SpaceItem) {
+        switch AppData.kind(of: item.url, home: app.rules.home) {
+        case .docker?: app.section = .docker
+        case .utm?: utmItem = item
+        case nil: break
         }
     }
 
@@ -115,14 +128,24 @@ struct SpaceView: View {
 struct SpaceRow: View {
     let item: SpaceItem
     let largest: Int64
+    /// Данные Docker или UTM: место из-под них освобождается средствами самих приложений.
+    var appData: AppData?
     let onOpen: () -> Void
     let onMove: () -> Void
+    var onFree: () -> Void = {}
     @State private var hovering = false
+
+    private var icon: String {
+        switch appData {
+        case .docker?: return "shippingbox.fill"
+        case .utm?: return "desktopcomputer"
+        case nil: return item.isDirectory ? "folder.fill" : "doc.fill"
+        }
+    }
 
     var body: some View {
         HStack(spacing: 12) {
-            IconTile(systemImage: item.isDirectory ? "folder.fill" : "doc.fill",
-                     tone: item.isDirectory ? .brand : .neutral, size: 32)
+            IconTile(systemImage: icon, tone: item.isDirectory ? .brand : .neutral, size: 32)
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 6) {
                     Text(item.url.lastPathComponent).fontWeight(.medium).lineLimit(1).truncationMode(.middle)
@@ -154,7 +177,14 @@ struct SpaceRow: View {
                     .buttonStyle(.borderless)
                     .help("Показать в Finder")
                     .opacity(hovering ? 1 : 0)
-                if !item.verdict.isBlocked {
+                if let appData {
+                    Button("Как освободить…", action: onFree)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .help(appData == .docker
+                              ? "Открыть раздел «Docker»: очистка образов и кеша сборки, архивация томов"
+                              : "Сколько занимает каждая машина и как освободить место через UTM")
+                } else if !item.verdict.isBlocked {
                     Button("Перенести…", action: onMove)
                         .buttonStyle(.bordered)
                         .controlSize(.small)
@@ -165,7 +195,7 @@ struct SpaceRow: View {
                     .opacity(item.isDirectory ? 1 : 0)
                     .disabled(!item.isDirectory)
             }
-            .frame(width: 150, alignment: .trailing)
+            .frame(width: 180, alignment: .trailing)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -177,7 +207,10 @@ struct SpaceRow: View {
         .contextMenu {
             if item.isDirectory { Button("Открыть", action: onOpen) }
             Button("Показать в Finder") { revealInFinder(item.url) }
-            if !item.verdict.isBlocked {
+            if appData != nil {
+                Divider()
+                Button("Как освободить…", action: onFree)
+            } else if !item.verdict.isBlocked {
                 Divider()
                 Button("Перенести…", action: onMove)
             }
