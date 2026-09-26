@@ -61,6 +61,17 @@ func checksDuplicates() {
         check(third.groups.first?.copies.count == 2, "изменившийся файл перечитан и из группы выпал")
         check(third.readBytes > 0 && third.readBytes < first.readBytes, "перечитан только он")
 
+        // Зашифрован ли образ, спрашивается только у .dmg: у остальных файлов вопрос не задаётся.
+        try put(bytes(200_000, seed: 5), "Images/vault.dmg")
+        try put(bytes(200_000, seed: 5), "Images/Старое/vault.dmg")
+        try put(bytes(200_000, seed: 6), "Images/notes.bin")
+        try put(bytes(200_000, seed: 6), "Images/Старое/notes.bin")
+        var images = finder
+        images.encryptedImage = { _ in true }
+        let marked = images.find(in: [url("Images")], rules: rules).groups.flatMap(\.copies)
+        check(marked.count == 4 && marked.allSatisfy { $0.isEncryptedImage == ($0.url.pathExtension == "dmg") },
+              "зашифрованные образы .dmg помечены, другие файлы — нет")
+
         var clones = finder
         let clonePath = url("Pictures/2019/photo.jpg").standardizedFileURL.path
         let originalPath = url("Downloads/photo.jpg").standardizedFileURL.path
@@ -88,10 +99,11 @@ func checksDuplicates() {
         let now = Date(timeIntervalSince1970: 2_000_000_000)
         let home = URL(fileURLWithPath: "/Users/q", isDirectory: true)
         let planner = CleanupPlanner(now: now, home: home)
-        func copy(_ relative: String, daysAgo: Double = 10, verdict: Verdict = .safe, shares: Bool = false) -> DuplicateCopy {
+        func copy(_ relative: String, daysAgo: Double = 10, verdict: Verdict = .safe, shares: Bool = false,
+                  encrypted: Bool = false) -> DuplicateCopy {
             DuplicateCopy(url: home.appendingPathComponent(relative), allocated: 5_000_000,
                           modified: now.addingTimeInterval(-daysAgo * 86_400), created: now.addingTimeInterval(-daysAgo * 86_400),
-                          verdict: verdict, sharesData: shares)
+                          verdict: verdict, sharesData: shares, isEncryptedImage: encrypted)
         }
         func group(_ copies: DuplicateCopy...) -> DuplicateGroup { DuplicateGroup(id: "h\(copies.count)", bytes: 5_000_000, copies: copies) }
         func names(_ list: [CleanupSuggestion]) -> [String] { list.map { String($0.id.dropFirst(home.path.count + 1)) } }
@@ -125,6 +137,13 @@ func checksDuplicates() {
               "клоны APFS не предлагаются: места их удаление не освободит")
         let blocked = planner.suggestions([], duplicates: [group(copy("Documents/d.bin"), copy("Documents/x.utm/d.bin", verdict: .blocked("пакет")))])
         check(blocked.first(where: { $0.id.contains(".utm") })?.allowed == [.keep], "копию в запрещённом месте удалить нельзя")
+        check(planner.suggestions([], duplicates: [group(copy("Downloads/vault.dmg", encrypted: true),
+                                                         copy("Documents/vault.dmg", encrypted: true))]).isEmpty,
+              "копии зашифрованного образа не удаляются: как и сам образ, это личные данные")
+        check(planner.suggestions([], duplicates: [group(copy("Downloads/ubuntu.iso"), copy("VMs/ubuntu.iso"))]).isEmpty,
+              "копии .iso не удаляются: к образу бывает подключена виртуальная машина")
+        let plainImage = planner.suggestions([], duplicates: [group(copy("Downloads/photos.dmg"), copy("Documents/photos.dmg"))])
+        check(plainImage.map(\.action) == [.keep, .trash], "у обычного образа .dmg лишняя копия удаляется, как любая другая")
 
         // Строки разбора и группы не пересекаются.
         func top(_ relative: String, gb: Double, daysAgo: Double, directory: Bool = false) -> CleanupObservation {
@@ -141,8 +160,9 @@ func checksDuplicates() {
               "лишнюю копию не везут в сейф, а удаляют")
         let installers = planner.suggestions([top("Downloads/app.dmg", gb: 0.5, daysAgo: 30), top("Desktop/app.dmg", gb: 0.5, daysAgo: 30)],
                                              duplicates: [group(copy("Downloads/app.dmg"), copy("Desktop/app.dmg"))])
-        check(installers.map(\.action) == [.trash, .trash] && installers.allSatisfy { $0.duplicateGroup == nil },
-              "старые установщики уходят по своему правилу, группа им не нужна")
+        check(installers.map(\.action) == [.keep, .keep]
+              && installers.allSatisfy { $0.duplicateGroup == nil && $0.allowed.contains(.trash) },
+              "старые установщики в группу не попадают: удалить их, каждый по отдельности, решаете вы")
 
         var remembering = planner
         remembering.memory = [home.appendingPathComponent("Downloads/a.pdf").path: .keep]

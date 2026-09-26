@@ -12,14 +12,18 @@ public struct DuplicateCopy: Sendable, Hashable {
     /// Данные общие с другой копией группы (клон APFS, как после «Дублировать» в Finder):
     /// удаление такой копии места не освободит.
     public var sharesData: Bool
+    /// Зашифрованный образ диска: личные данные. Его копию, как и сам образ, разбор не удаляет.
+    public var isEncryptedImage: Bool
 
-    public init(url: URL, allocated: Int64, modified: Date?, created: Date?, verdict: Verdict = .safe, sharesData: Bool = false) {
+    public init(url: URL, allocated: Int64, modified: Date?, created: Date?, verdict: Verdict = .safe, sharesData: Bool = false,
+                isEncryptedImage: Bool = false) {
         self.url = url
         self.allocated = allocated
         self.modified = modified
         self.created = created
         self.verdict = verdict
         self.sharesData = sharesData
+        self.isEncryptedImage = isEncryptedImage
     }
 }
 
@@ -101,6 +105,9 @@ public struct DuplicateFinder: Sendable {
     public var skippedFolders: Set<String> = BackupEngine.defaultExcludedNames
     /// Общий идентификатор содержимого у клонов APFS; nil — неизвестно.
     public var contentIdentifier: @Sendable (URL) -> Int64? = DuplicateFinder.apfsContentIdentifier
+    /// Зашифрован ли образ .dmg. Спрашивается только у копий, которые уже нашлись одинаковыми:
+    /// `hdiutil isencrypted` отвечает без пароля и окон не открывает.
+    public var encryptedImage: @Sendable (URL) -> Bool = { SecretsVault.encryptionInfo(of: $0)?.encrypted == true }
 
     public init() {}
 
@@ -296,7 +303,8 @@ public struct DuplicateFinder: Sendable {
         return same.sorted { $0.url.path < $1.url.path }.map { entry in
             let shared = entry.clone.flatMap { clone in entry.device.map { clones[[$0, clone]] ?? 0 } } ?? 0
             return DuplicateCopy(url: entry.url, allocated: entry.allocated, modified: entry.modified, created: entry.created,
-                                 verdict: rules.pathVerdict(for: entry.url), sharesData: shared > 1)
+                                 verdict: rules.pathVerdict(for: entry.url), sharesData: shared > 1,
+                                 isEncryptedImage: entry.url.pathExtension.lowercased() == "dmg" && encryptedImage(entry.url))
         }
     }
 

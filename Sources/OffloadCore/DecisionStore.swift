@@ -66,6 +66,10 @@ public final class DecisionStore: @unchecked Sendable {
 
     private var db: OpaquePointer?
     private let lock = NSLock()
+    /// Каждый разбор записывает решение по каждому показанному пути, поэтому история ограничена:
+    /// по пути — последние решения, итогов — последние разборы. Иначе база растёт без конца.
+    public static let decisionsPerPath = 20
+    public static let keptRuns = 500
 
     /// `url == nil` — база в памяти: для демонстрации и проверок, на диск ничего не пишется.
     public init(url: URL?) throws {
@@ -163,6 +167,14 @@ public final class DecisionStore: @unchecked Sendable {
                          .real(decision.decidedAt.timeIntervalSince1970), decision.suggested.map { .text($0.rawValue) } ?? .null,
                          decision.kind.map { .text($0.rawValue) } ?? .null, decision.modified.map { .real($0.timeIntervalSince1970) } ?? .null])
                 }
+                try run("""
+                    DELETE FROM decisions WHERE id IN (
+                        SELECT id FROM (
+                            SELECT id, ROW_NUMBER() OVER (PARTITION BY path ORDER BY decided_at DESC, id DESC) AS n
+                            FROM decisions
+                        ) WHERE n > ?
+                    )
+                    """, [.int(Int64(Self.decisionsPerPath))])
             }
         }
     }
@@ -231,6 +243,8 @@ public final class DecisionStore: @unchecked Sendable {
             try self.run("INSERT INTO runs (started_at, trashed_bytes, moved_bytes, added_to_backup, failures) VALUES (?, ?, ?, ?, ?)",
                          [.real(run.date.timeIntervalSince1970), .int(run.trashedBytes), .int(run.movedBytes),
                           .int(Int64(run.addedToBackup)), .int(Int64(run.failures))])
+            try self.run("DELETE FROM runs WHERE id NOT IN (SELECT id FROM runs ORDER BY started_at DESC, id DESC LIMIT ?)",
+                         [.int(Int64(Self.keptRuns))])
         }
     }
 

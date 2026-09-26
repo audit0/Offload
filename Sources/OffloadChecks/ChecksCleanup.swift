@@ -21,7 +21,18 @@ func checksCleanup() {
         check(cache.allowed == [.trash, .keep], "кеш можно только удалить или оставить — ни в сейф, ни в бэкап")
 
         let installer = planner.suggest(item("Downloads/Figma.dmg", gb: 0.3, daysAgo: 20, directory: false))
-        check(installer.action == .trash, "старый установщик — в Корзину")
+        check(installer.action == .keep && installer.allowed.contains(.trash),
+              "старый установщик сам в Корзину не предлагается, но выбрать её можно: .dmg бывает и личным")
+        let encrypted = planner.suggest(CleanupObservation(
+            url: home.appendingPathComponent("Downloads/Документы.dmg"), bytes: 2_000_000_000,
+            modified: now.addingTimeInterval(-400 * 86_400), isDirectory: false, verdict: .safe, isEncryptedImage: true))
+        check(!encrypted.allowed.contains(.trash), "зашифрованный .dmg — личные данные: удалить из разбора нельзя")
+        check(encrypted.action == .safe, "большой старый зашифрованный образ — в сейф, как любой личный файл")
+        let iso = planner.suggest(item("Downloads/ubuntu.iso", gb: 5, daysAgo: 20, directory: false))
+        check(!iso.allowed.contains(.trash), ".iso не установщик: к нему бывает подключена виртуальная машина")
+        let learnedTrash = CleanupPlanner(now: now, memory: [home.appendingPathComponent("Downloads/Figma.dmg").path: .trash])
+            .suggest(item("Downloads/Figma.dmg", gb: 0.3, daysAgo: 20, directory: false))
+        check(learnedTrash.action == .trash && learnedTrash.learned, "если в прошлый раз установщик удалили — предлагается то же")
         let fresh = planner.suggest(item("Downloads/Figma.dmg", gb: 0.3, daysAgo: 2, directory: false))
         check(!fresh.allowed.contains(.trash), "установщик, скачанный на днях, удалить не предлагается: его могли ещё не поставить")
         let video = planner.suggest(item("Downloads/film.mkv", gb: 3, daysAgo: 400, directory: false))
@@ -89,9 +100,33 @@ func checksCleanup() {
         try "это не база".write(to: broken, atomically: true, encoding: .utf8)
         expectError("испорченный файл базы — понятная ошибка, а не падение") { _ = try DecisionStore(url: broken) }
 
+        let long = try DecisionStore(url: nil)
+        for index in 0..<(DecisionStore.decisionsPerPath + 5) {
+            try long.record([(path: "/often", action: index.isMultiple(of: 2) ? .keep : .safe, bytes: 1)],
+                            at: Date(timeIntervalSince1970: Double(1000 + index)))
+        }
+        check(try long.counts(for: "/often").values.reduce(0, +) == DecisionStore.decisionsPerPath,
+              "по одному пути хранятся только последние решения — база не растёт без конца")
+        check(try long.lastDecisions()["/often"] == .keep, "последнее решение при этом не теряется")
+
         let memory = try DecisionStore(url: nil)
         try memory.record([(path: "/x", action: .trash, bytes: 1)])
         check(try memory.lastDecisions() == ["/x": .trash], "база в памяти работает и ничего не пишет на диск")
         check(try memory.lastRun() == nil, "разборов ещё не было — итога нет")
     }
+}
+
+/// Зашифрованный .dmg разбор узнаёт без пароля и без системных окон.
+func checksCleanupImages() throws {
+    let folder = scratch.appendingPathComponent("cleanup-images", isDirectory: true)
+    try fm.createDirectory(at: folder.appendingPathComponent("src"), withIntermediateDirectories: true)
+    try write("данные", to: folder.appendingPathComponent("src/a.txt"))
+    let encrypted = folder.appendingPathComponent("личное.dmg"), plain = folder.appendingPathComponent("Установщик.dmg")
+    _ = try Runner.check("hdiutil", ["create", "-quiet", "-encryption", "AES-256", "-stdinpass", "-format", "UDZO",
+                                     "-srcfolder", folder.appendingPathComponent("src").path, encrypted.path],
+                         stdin: Data("Проверка-пароля-2026\u{0}".utf8), timeout: 120)
+    _ = try Runner.check("hdiutil", ["create", "-quiet", "-format", "UDZO",
+                                     "-srcfolder", folder.appendingPathComponent("src").path, plain.path], timeout: 120)
+    check(SecretsVault.encryptionInfo(of: encrypted)?.encrypted == true, "зашифрованный .dmg распознаётся без пароля")
+    check(SecretsVault.encryptionInfo(of: plain)?.encrypted == false, "обычный .dmg — не зашифрован")
 }
