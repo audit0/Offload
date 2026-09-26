@@ -115,7 +115,7 @@ struct Notice: View {
     /// Белая плашка с тонкой рамкой; у ошибки — розоватая.
     private var soft: Color {
         switch kind {
-        case .info, .success, .warning: return Theme.background
+        case .info, .success, .warning: return Color.white.opacity(0.5)
         case .error: return Theme.badSoft
         }
     }

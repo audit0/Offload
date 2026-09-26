@@ -147,7 +147,7 @@ struct TargetSummary: View {
             Spacer(minLength: 0)
         }
         .padding(10)
-        .background(Theme.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .glassPlate(in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
@@ -202,8 +202,8 @@ struct SafeStatusPanel: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        // Панель внизу колонки — светло-серая пластина на белом.
-        .background(Theme.background, in: shape)
+        // Панель внизу колонки — стеклянная пластина.
+        .glassPlate(in: shape)
     }
 
     @ViewBuilder

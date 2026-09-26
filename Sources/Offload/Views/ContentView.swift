@@ -42,7 +42,11 @@ struct ContentView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .background(Theme.background)
+        }
+        // Всё окно — стекло: размытый рабочий стол под приглушающей дымкой.
+        .background {
+            WindowGlass().ignoresSafeArea()
+            Theme.background.ignoresSafeArea()
         }
         .tint(Theme.brand)
         .glassButtons()
@@ -105,10 +109,11 @@ private struct SidebarRow: View {
     }
 }
 
-/// Фон колонки — белый, как список чатов в Telegram: на нём чётко видны строки и выделение.
+/// Фон колонки — светлее страницы, на том же стекле окна.
 private struct SidebarBackground: ViewModifier {
     func body(content: Content) -> some View {
-        content.background(Theme.panel)
+        // Колонка — чуть светлее страницы, но тоже стекло: окно просвечивает сквозь неё.
+        content.background(Color.white.opacity(0.28))
     }
 }
 
@@ -118,6 +123,8 @@ private struct SidebarSelection: ViewModifier {
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
-        content.background(isSelected ? Theme.soft : hovering ? Theme.soft.opacity(0.5) : .clear, in: shape)
+        content
+            .background(isSelected ? Color.white.opacity(0.62) : hovering ? Color.white.opacity(0.3) : .clear, in: shape)
+            .overlay { if isSelected { shape.strokeBorder(Theme.glassEdge, lineWidth: 0.8) } }
     }
 }

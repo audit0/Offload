@@ -5,12 +5,13 @@ import SwiftUI
 
 /// Общий язык интерфейса: отступы, скругления, цвета и стекло.
 ///
-/// Стиль — строгий чёрно-белый, как у Apple и Telegram: белые карточки на светло-сером, чёткий
-/// тёмный текст, шрифт SF, сплошные чёрные кнопки-капсулы. Цветом ничего не украшается: состояния различаются значками и словами,
+/// Стиль — чёрно-белое стекло, как в iOS 27: окно — размытый рабочий стол под приглушающей дымкой,
+/// карточки и кнопки — полупрозрачные стеклянные пластины с бликом по кромке, текст тёмный и чёткий,
+/// шрифт SF. Главные кнопки — тёмные, их видно всегда. Цветом ничего не украшается: состояния различаются значками и словами,
 /// красный — только ошибка. Тема одна — светлая, при любой теме macOS.
 ///
-/// Кнопки и выделение — сплошные: стеклянные (Liquid Glass) в неактивном окне бледнели до вида
-/// выключенных, и их было не разглядеть. `glassSurface` оставлен для будущих плавающих элементов.
+/// Стекло своё (NSVisualEffectView и материалы SwiftUI), а не системные стеклянные кнопки: те в неактивном
+/// окне бледнели до вида выключенных. Это размытие не гаснет, когда окно не в фокусе.
 enum Theme {
     static let pagePadding: CGFloat = 32
     static let sectionSpacing: CGFloat = 28
@@ -19,11 +20,18 @@ enum Theme {
     /// Шире колонка страницы не растягивается: на большом мониторе строки иначе читались бы с трудом.
     static let contentWidth: CGFloat = 980
 
-    /// Страница — светло-серая, карточки на ней — белые: граница видна сразу, без рамок.
-    static let background = hex(0xF2F2F7)
-    static let panel = Color.white
-    /// Подложка значков, ярлыков, выделенной строки и второстепенных кнопок.
-    static let soft = hex(0xEEEEF2)
+    /// Дымка поверх стекла окна: приглушает яркость, но рабочий стол размыто просвечивает.
+    static let background = Color(red: 0.84, green: 0.84, blue: 0.87).opacity(0.4)
+    /// Сплошная светлая поверхность — листы и то, что не лежит на стекле окна.
+    static let panel = hex(0xF4F4F7)
+    /// Стекло карточки: полупрозрачное белое поверх размытия.
+    static let glassFill = Color.white.opacity(0.42)
+    /// Кромка стекла: светлый блик сверху, почти прозрачная снизу.
+    static let glassEdge = LinearGradient(colors: [Color.white.opacity(0.85), Color.white.opacity(0.15)],
+                                          startPoint: .top, endPoint: .bottom)
+    static let glassShadow = Color.black.opacity(0.07)
+    /// Подложка значков, ярлыков, выделенной строки — матовое белое стекло.
+    static let soft = Color.white.opacity(0.55)
     static let ink = hex(0x111111)
     /// Второстепенный текст — тёмно-серый: читается так же уверенно, как в Telegram.
     static let muted = hex(0x55555A)
@@ -116,16 +124,53 @@ struct PillButtonStyle: ButtonStyle {
                 .fixedSize()
                 .padding(.horizontal, large ? 18 : small ? 10 : 14)
                 .padding(.vertical, large ? 8 : small ? 3 : 5)
-                .background(fill, in: Capsule())
+                .background {
+                    if prominent {
+                        Capsule().fill(fill)
+                    } else {
+                        Capsule().fill(.ultraThinMaterial)
+                        Capsule().fill(fill)
+                        Capsule().strokeBorder(Theme.glassEdge, lineWidth: 0.8)
+                    }
+                }
                 .contentShape(Capsule())
                 .opacity(isEnabled ? 1 : 0.4)
                 .onHover { hovering = $0 }
         }
 
         private var fill: Color {
-            if prominent { return configuration.isPressed ? Color.black.opacity(0.75) : hovering ? Color.black : Theme.ink }
-            return configuration.isPressed ? Theme.line : hovering ? Theme.lineSoft : Theme.soft
+            if prominent { return configuration.isPressed ? Color.black.opacity(0.65) : hovering ? Color.black.opacity(0.92) : Theme.ink.opacity(0.86) }
+            return Color.white.opacity(configuration.isPressed ? 0.25 : hovering ? 0.7 : 0.5)
         }
+    }
+}
+
+// MARK: - Стекло окна и пластины
+
+/// Фон окна: рабочий стол размыто просвечивает сквозь стекло. Размытие активно всегда,
+/// и когда окно не в фокусе, — стекло остаётся стеклом.
+struct WindowGlass: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .underWindowBackground
+        view.blendingMode = .behindWindow
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+}
+
+extension View {
+    /// Стеклянная пластина: размытие того, что под ней, полупрозрачная белая заливка,
+    /// блик по кромке и мягкая тень — как карточки iOS 27.
+    func glassPlate<S: InsettableShape>(in shape: S, tint: Color? = nil) -> some View {
+        background {
+            shape.fill(.ultraThinMaterial)
+            shape.fill(tint ?? Theme.glassFill)
+            shape.strokeBorder(Theme.glassEdge, lineWidth: 0.8)
+        }
+        .shadow(color: Theme.glassShadow, radius: 12, y: 4)
     }
 }
 
@@ -144,7 +189,7 @@ struct PageScroll<Content: View>: View {
             .frame(maxWidth: Theme.contentWidth)
             .frame(maxWidth: .infinity)
         }
-        .background(Theme.background)
+        .scrollContentBackground(.hidden)
     }
 }
 
@@ -166,9 +211,11 @@ struct Card<Content: View>: View {
         }
         .padding(padding)
         .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil, alignment: .topLeading)
-        .background(tint == Theme.bad ? Theme.badSoft : Theme.cardFill, in: shape)
-        // Выделенная карточка (предупреждение) — с чёрной рамкой: заметна без цвета.
-        .overlay { shape.strokeBorder(tint == nil ? Color.clear : tint == Theme.bad ? Theme.bad.opacity(0.35) : Theme.ink, lineWidth: tint == nil ? 0 : 1.2) }
+        .glassPlate(in: shape, tint: tint == Theme.bad ? Theme.badSoft.opacity(0.7) : nil)
+        // Выделенная карточка (предупреждение) — с тёмной рамкой: заметна без цвета.
+        .overlay {
+            if let tint { shape.strokeBorder(tint == Theme.bad ? Theme.bad.opacity(0.4) : Theme.ink.opacity(0.7), lineWidth: 1.2) }
+        }
     }
 }
 
@@ -395,6 +442,7 @@ struct Chip: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(Theme.soft, in: Capsule())
+            .overlay { Capsule().strokeBorder(Theme.glassEdge, lineWidth: 0.6) }
             .overlay { Capsule().strokeBorder(Theme.cardStroke) }
     }
 }
