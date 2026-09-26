@@ -145,6 +145,15 @@ public final class DecisionStore: @unchecked Sendable {
                 ALTER TABLE decisions ADD COLUMN modified REAL;
                 """)
         }
+        if version < 4 {
+            // Что человек просил больше не предлагать («Не предлагать больше»), как Ignore List в CleanMyMac.
+            try migration(to: 4, """
+                CREATE TABLE IF NOT EXISTS ignored (
+                    path TEXT PRIMARY KEY,
+                    added_at REAL NOT NULL
+                );
+                """)
+        }
     }
 
     /// Шаг схемы целиком или никак: оборванный посередине шаг оставил бы таблицы без номера версии.
@@ -231,6 +240,29 @@ public final class DecisionStore: @unchecked Sendable {
             var result: [CleanupAction: Int] = [:]
             try select("SELECT action, COUNT(*) FROM decisions WHERE path = ? GROUP BY action", [.text(path)]) { row in
                 if let action = row.text(0).flatMap(CleanupAction.init(rawValue:)) { result[action] = Int(row.int(1)) }
+            }
+            return result
+        }
+    }
+
+    // MARK: - Не предлагать
+
+    /// Больше не предлагать этот путь и всё, что внутри. Решения и привычки это не трогает.
+    public func ignore(_ path: String, at date: Date = Date()) throws {
+        try locked { try run("INSERT OR REPLACE INTO ignored (path, added_at) VALUES (?, ?)", [.text(path), .real(date.timeIntervalSince1970)]) }
+    }
+
+    /// Снова предлагать.
+    public func unignore(_ path: String) throws {
+        try locked { try run("DELETE FROM ignored WHERE path = ?", [.text(path)]) }
+    }
+
+    /// Что просили не предлагать, сначала недавнее.
+    public func ignoredPaths() throws -> [String] {
+        try locked {
+            var result: [String] = []
+            try select("SELECT path FROM ignored ORDER BY added_at DESC, path") { row in
+                if let path = row.text(0) { result.append(path) }
             }
             return result
         }
