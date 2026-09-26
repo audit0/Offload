@@ -209,7 +209,7 @@ func checksDuplicates() {
         var statement: OpaquePointer?
         sqlite3_prepare_v2(reader, "PRAGMA user_version", -1, &statement, nil)
         sqlite3_step(statement)
-        check(sqlite3_column_int(statement, 0) == 2, "версия схемы — 2")
+        check(sqlite3_column_int(statement, 0) == 3, "версия схемы — последняя, 3")
         sqlite3_finalize(statement)
         sqlite3_close(reader)
     }

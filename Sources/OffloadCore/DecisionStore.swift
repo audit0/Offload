@@ -8,6 +8,30 @@ import SQLite3
 /// Пути здесь — названия папок человека, поэтому файл лежит рядом с журналом переносов,
 /// в ~/Library/Application Support/Offload, и доступен только его учётной записи.
 public final class DecisionStore: @unchecked Sendable {
+    /// Решение по объекту и то, каким объект был в тот момент: на этом учатся привычки.
+    public struct Decision: Sendable, Equatable {
+        public var path: String
+        public var action: CleanupAction
+        public var bytes: Int64
+        /// Что предлагалось, когда человек выбирал.
+        public var suggested: CleanupAction?
+        /// nil — решение записано версией, которая этого не хранила.
+        public var kind: DecisionFeatures.Kind?
+        public var modified: Date?
+        public var decidedAt: Date
+
+        public init(path: String, action: CleanupAction, bytes: Int64, suggested: CleanupAction? = nil,
+                    kind: DecisionFeatures.Kind? = nil, modified: Date? = nil, decidedAt: Date = Date()) {
+            self.path = path
+            self.action = action
+            self.bytes = bytes
+            self.suggested = suggested
+            self.kind = kind
+            self.modified = modified
+            self.decidedAt = decidedAt
+        }
+    }
+
     public struct Run: Sendable, Equatable {
         public var date: Date
         public var trashedBytes: Int64
@@ -109,6 +133,14 @@ public final class DecisionStore: @unchecked Sendable {
                 );
                 """)
         }
+        if version < 3 {
+            // Каким объект был при решении: вид, дата изменения и что предлагалось. На этом учатся привычки.
+            try migration(to: 3, """
+                ALTER TABLE decisions ADD COLUMN suggested TEXT;
+                ALTER TABLE decisions ADD COLUMN kind TEXT;
+                ALTER TABLE decisions ADD COLUMN modified REAL;
+                """)
+        }
     }
 
     /// Шаг схемы целиком или никак: оборванный посередине шаг оставил бы таблицы без номера версии.
@@ -119,15 +151,49 @@ public final class DecisionStore: @unchecked Sendable {
     // MARK: - Решения
 
     /// Записывает решения одного разбора разом: либо все, либо ни одного.
-    public func record(_ decisions: [(path: String, action: CleanupAction, bytes: Int64)], at date: Date = Date()) throws {
+    public func record(_ decisions: [Decision]) throws {
         try locked {
             try transaction {
                 for decision in decisions {
-                    try run("INSERT INTO decisions (path, action, bytes, decided_at) VALUES (?, ?, ?, ?)",
-                            [.text(decision.path), .text(decision.action.rawValue), .int(decision.bytes), .real(date.timeIntervalSince1970)])
+                    try run("""
+                        INSERT INTO decisions (path, action, bytes, decided_at, suggested, kind, modified)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        [.text(decision.path), .text(decision.action.rawValue), .int(decision.bytes),
+                         .real(decision.decidedAt.timeIntervalSince1970), decision.suggested.map { .text($0.rawValue) } ?? .null,
+                         decision.kind.map { .text($0.rawValue) } ?? .null, decision.modified.map { .real($0.timeIntervalSince1970) } ?? .null])
                 }
             }
         }
+    }
+
+    public func record(_ decisions: [(path: String, action: CleanupAction, bytes: Int64)], at date: Date = Date()) throws {
+        try record(decisions.map { Decision(path: $0.path, action: $0.action, bytes: $0.bytes, decidedAt: date) })
+    }
+
+    /// Последнее решение по каждому пути, со всем, что о нём известно. Каждый объект считается
+    /// один раз: папка, которую оставляют в каждом разборе, не должна перевешивать десять разных.
+    public func history() throws -> [Decision] {
+        try locked {
+            var result: [Decision] = []
+            try select("""
+                SELECT path, action, bytes, decided_at, suggested, kind, modified FROM decisions AS d
+                WHERE id = (SELECT id FROM decisions WHERE path = d.path ORDER BY decided_at DESC, id DESC LIMIT 1)
+                ORDER BY id
+                """) { row in
+                guard let path = row.text(0), let action = row.text(1).flatMap(CleanupAction.init(rawValue:)) else { return }
+                result.append(Decision(path: path, action: action, bytes: row.int(2), suggested: row.text(4).flatMap(CleanupAction.init(rawValue:)),
+                                       kind: row.text(5).flatMap(DecisionFeatures.Kind.init(rawValue:)),
+                                       modified: row.isNull(6) ? nil : Date(timeIntervalSince1970: row.real(6)),
+                                       decidedAt: Date(timeIntervalSince1970: row.real(3))))
+            }
+            return result
+        }
+    }
+
+    /// Забывает все решения: и «как в прошлый раз», и привычки. Итоги разборов и отпечатки файлов остаются.
+    public func forgetDecisions() throws {
+        try locked { try execute("DELETE FROM decisions") }
     }
 
     /// Последнее решение по каждому пути. Неизвестные действия (из будущих версий) пропускаются.
@@ -226,6 +292,7 @@ public final class DecisionStore: @unchecked Sendable {
         func text(_ column: Int32) -> String? { sqlite3_column_text(statement, column).map { String(cString: $0) } }
         func int(_ column: Int32) -> Int64 { sqlite3_column_int64(statement, column) }
         func real(_ column: Int32) -> Double { sqlite3_column_double(statement, column) }
+        func isNull(_ column: Int32) -> Bool { sqlite3_column_type(statement, column) == SQLITE_NULL }
     }
 
     /// SQLITE_TRANSIENT: SQLite копирует строку сразу, Swift может освободить её после вызова.

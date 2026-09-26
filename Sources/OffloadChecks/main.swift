@@ -637,6 +637,7 @@ checksHardenRestore()
 checksSafe()
 checksCleanup()
 checksDuplicates()
+checksHabits()
 
 try? fm.removeItem(at: scratch)
 print("")
