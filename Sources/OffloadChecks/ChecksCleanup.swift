@@ -210,3 +210,19 @@ func checksCleanupImages() throws {
     check(SecretsVault.encryptionInfo(of: encrypted)?.encrypted == true, "зашифрованный .dmg распознаётся без пароля")
     check(SecretsVault.encryptionInfo(of: plain)?.encrypted == false, "обычный .dmg — не зашифрован")
 }
+
+/// «Удалить насовсем» и «Вернуть на место» трогают в Корзине только тот самый файл.
+func checksTrashIdentity() throws {
+    let folder = scratch.appendingPathComponent("trash-identity", isDirectory: true)
+    try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+    let original = folder.appendingPathComponent("отчёт.pdf"), inTrash = folder.appendingPathComponent("в Корзине.pdf")
+    try write("то, что выбросил разбор", to: original)
+    let identity = FileIdentity.of(original)
+    check(identity != nil, "у файла есть номер")
+    try fm.moveItem(at: original, to: inTrash)
+    check(FileIdentity.of(inTrash) == identity, "перенос в Корзину на том же диске номер файла сохраняет")
+    try fm.removeItem(at: inTrash)
+    try write("другой файл, выброшенный потом с тем же именем", to: inTrash)
+    check(FileIdentity.of(inTrash) != identity, "другой файл по тому же пути — другой номер: удалить насовсем его нельзя")
+    check(FileIdentity.of(folder.appendingPathComponent("нет такого")) == nil, "нет файла — нет и номера")
+}

@@ -49,6 +49,12 @@ final class CleanupModel {
         var original: URL
         var inTrash: URL
         var bytes: Int64
+        /// Какой это файл (см. `FileIdentity`). Вернуть или удалить насовсем можно, только если
+        /// по пути в Корзине лежит он же, а не другой, выброшенный туда с тем же именем.
+        var identity: FileIdentity?
+
+        /// По пути в Корзине лежит то самое, что туда отправил разбор.
+        var isStillInTrash: Bool { identity != nil && FileIdentity.of(inTrash) == identity }
     }
 
     struct Report: Equatable {
@@ -307,11 +313,7 @@ final class CleanupModel {
         self.token = token
         let sources = app.backup.sources.map(\.standardizedFileURL.path)
         // Кеш открытой программы сам не отмечается: удалять его на ходу не стоит.
-        var running: [String: String] = [:]
-        for app in NSWorkspace.shared.runningApplications {
-            if let id = app.bundleIdentifier { running[id] = app.localizedName ?? id }
-        }
-        let busy = CleanupPlanner.busy(home: rules.home, running: running)
+        let busy = CleanupPlanner.busy(home: rules.home, running: Self.runningApplications())
         let store = store
         stage = .scanning(ScanProgress())
         let throttle = Throttle(interval: 0.2)
@@ -466,7 +468,7 @@ final class CleanupModel {
                     let compared = Counter()
                     do {
                         // Сверяется содержимое, а не отпечаток из поиска: файл могли изменить после него.
-                        let trashedAt = try await Task.detached(priority: .userInitiated) { () -> URL?? in
+                        let trashedAt = try await Task.detached(priority: .userInitiated) { () -> (url: URL, identity: FileIdentity?)?? in
                             let same = try DuplicateFinder.sameContent(url, reference.url, isCancelled: { token.isCancelled }) { read in
                                 let done = compared.add(Int64(read))
                                 guard throttle.ready() else { return }
@@ -488,7 +490,7 @@ final class CleanupModel {
                         report.trashedBytes += item.bytes
                         report.duplicates += 1
                         report.duplicateBytes += item.bytes
-                        if let trashedAt { report.trashedItems.append(TrashedItem(original: url, inTrash: trashedAt, bytes: item.bytes)) }
+                        if let trashedAt { report.trashedItems.append(TrashedItem(original: url, inTrash: trashedAt.url, bytes: item.bytes, identity: trashedAt.identity)) }
                     } catch is CancellationError {
                         report.cancelled = true
                         break items
@@ -502,11 +504,16 @@ final class CleanupModel {
                         continue items
                     }
                     let url = item.url
+                    // Программу могли открыть уже после поиска: кеш занятой программы на ходу не удаляем.
+                    if let busy = CleanupPlanner.busy(home: rules.home, running: Self.runningApplications())[url.path] {
+                        report.problems.append("«\(name)» осталось на месте. \(busy)")
+                        continue items
+                    }
                     do {
                         let trashedAt = try await Task.detached(priority: .userInitiated) { try Self.trash(url) }.value
                         report.trashed += 1
                         report.trashedBytes += item.bytes
-                        if let trashedAt { report.trashedItems.append(TrashedItem(original: url, inTrash: trashedAt, bytes: item.bytes)) }
+                        if let trashedAt { report.trashedItems.append(TrashedItem(original: url, inTrash: trashedAt.url, bytes: item.bytes, identity: trashedAt.identity)) }
                     } catch {
                         report.problems.append("«\(name)» не удалось отправить в Корзину: \(error.localizedDescription)")
                     }
@@ -578,11 +585,21 @@ final class CleanupModel {
         }
     }
 
-    /// В Корзину; ответ — где объект лежит теперь (nil, если macOS не сказала).
-    nonisolated private static func trash(_ url: URL) throws -> URL? {
+    /// Открытые программы: идентификатор → название.
+    private static func runningApplications() -> [String: String] {
+        var running: [String: String] = [:]
+        for app in NSWorkspace.shared.runningApplications {
+            if let id = app.bundleIdentifier { running[id] = app.localizedName ?? id }
+        }
+        return running
+    }
+
+    /// В Корзину; ответ — где объект лежит теперь и какой это файл (nil, если macOS не сказала, куда положила).
+    nonisolated private static func trash(_ url: URL) throws -> (url: URL, identity: FileIdentity?)? {
+        let identity = FileIdentity.of(url)
         var resulting: NSURL?
         try FileManager.default.trashItem(at: url, resultingItemURL: &resulting)
-        return resulting as URL?
+        return (resulting as URL?).map { ($0, identity) }
     }
 
     /// Сколько свободно на диске Mac — с учётом того, что macOS освободит сама (снимки, кеши).
@@ -617,6 +634,10 @@ final class CleanupModel {
                     let name = item.original.lastPathComponent
                     guard fm.fileExists(atPath: item.inTrash.path) else {
                         problems.append("«\(name)»: в Корзине его уже нет.")
+                        continue
+                    }
+                    guard item.isStillInTrash else {
+                        problems.append("«\(name)»: в Корзине под этим именем теперь другой файл — его не трогаю.")
                         continue
                     }
                     guard !fm.fileExists(atPath: item.original.path) else {
@@ -661,7 +682,13 @@ final class CleanupModel {
                 var problems: [String] = []
                 for item in items {
                     do {
+                        // Удаляется насовсем, поэтому только то самое, что туда отправил разбор: файл,
+                        // выброшенный потом с тем же именем, мог лечь на тот же путь.
                         if FileManager.default.fileExists(atPath: item.inTrash.path) {
+                            guard item.isStillInTrash else {
+                                problems.append("«\(item.original.lastPathComponent)»: в Корзине под этим именем теперь другой файл — его не трогаю.")
+                                continue
+                            }
                             try FileManager.default.removeItem(at: item.inTrash)
                         }
                         gone.append(item)

@@ -13,6 +13,27 @@ public enum CleanupAction: String, Codable, CaseIterable, Sendable, Hashable {
     case keep
 }
 
+/// Какой именно это файл: устройство и номер файла. Переименование и перенос в Корзину на том же
+/// диске их сохраняют, а другой файл, оказавшийся по тому же пути, — нет. Поэтому по нему сверяют,
+/// что в Корзине лежит то самое, что туда отправил разбор, прежде чем вернуть или удалить насовсем.
+public struct FileIdentity: Sendable, Hashable {
+    public var device: Int64
+    public var inode: Int64
+
+    public init(device: Int64, inode: Int64) {
+        self.device = device
+        self.inode = inode
+    }
+
+    /// Символическая ссылка не разворачивается: номер берётся у неё самой.
+    public static func of(_ url: URL) -> FileIdentity? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let device = (attributes[.systemNumber] as? NSNumber)?.int64Value,
+              let inode = (attributes[.systemFileNumber] as? NSNumber)?.int64Value else { return nil }
+        return FileIdentity(device: device, inode: inode)
+    }
+}
+
 /// Плитка на экране итогов разбора. Как в CleanMyMac: сразу отмечено только то, что программы
 /// создадут заново, и то, что ничего не удаляет. Личное — крупное и старое, лишние копии,
 /// установщики — Offload находит и объясняет, а отмечаете вы сами (или ваша прошлая привычка).
@@ -343,7 +364,7 @@ public struct CleanupPlanner: Sendable {
                             apps: ["com.microsoft.VSCode"]),
         RegenerableLocation("Library/Caches/Google/Chrome", "Кеш Chrome — страницы подгрузятся снова; закладки, пароли и история не затрагиваются.",
                             apps: ["com.google.Chrome"]),
-        RegenerableLocation("Library/Caches/com.spotify.client", "Кеш Spotify — музыка подгрузится снова; скачанное для прослушивания без сети не затрагивается.",
+        RegenerableLocation("Library/Caches/com.spotify.client", "Кеш Spotify — музыка подгрузится снова. Скачанное для прослушивания без сети, возможно, придётся скачать заново.",
                             apps: ["com.spotify.client"]),
         RegenerableLocation("Library/iTunes/iPhone Software Updates", "Прошивки iPhone — Finder скачает нужную снова."),
     ]
