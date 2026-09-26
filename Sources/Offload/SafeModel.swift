@@ -42,6 +42,15 @@ final class SafeModel {
     private(set) var activity: String?
     private(set) var migration: Migration?
     var message: Notice.Message?
+    /// Почему не открылся: показывается прямо под полем пароля — там, где его вводили,
+    /// будь то «Сейф», «Разобрать» или панель слева. Раньше ошибка была видна только
+    /// в разделе «Сейф», а в остальных местах поле просто очищалось, и казалось, что ничего не произошло.
+    var unlockError: String?
+    /// Закрыть не дали открытые в сейфе файлы: предложить закрыть принудительно.
+    var closeBlocked = false
+    /// Куда смонтированы открытые зашифрованные образы — в том числе открытые в Finder.
+    /// Такой том — это сейф, а не ещё один внешний диск, и в списке дисков его быть не должно.
+    private(set) var encryptedMounts: Set<String> = []
     /// Почему сейф закроется, как только закончится идущая операция.
     private(set) var pendingClose: String?
 
@@ -58,6 +67,8 @@ final class SafeModel {
     @ObservationIgnored private var observers: [(NotificationCenter, NSObjectProtocol)] = []
     @ObservationIgnored private var idleTimer: Timer?
     @ObservationIgnored private var migrationToken: CancelToken?
+    /// Формат и число паролей: у открытого образа macOS их не сообщает — помним с закрытого.
+    @ObservationIgnored private var knownInfo: [String: SecretsVault.EncryptionInfo] = [:]
 
     var isOpen: Bool { state?.mount != nil }
     var exists: Bool { state?.exists == true }
@@ -101,20 +112,46 @@ final class SafeModel {
         if state?.volumeID != host.id { state = nil }
         let preferred = preferredImages[host.id].map { URL(fileURLWithPath: $0, isDirectory: true) }
         Task {
-            let snapshot = await Task.detached(priority: .utility) { () -> State in
-                let vault = SecretsVault(on: host, preferred: preferred)
-                let exists = vault.exists
-                let info = exists ? SecretsVault.encryptionInfo(of: vault.imageURL) : nil
-                let encrypted = exists && SecretsVault.hasEncryptionHeader(vault.imageURL) && (info?.opensWithPassword ?? false)
-                return State(volumeID: host.id, imageURL: vault.imageURL, exists: exists, isEncrypted: encrypted, info: info,
-                             sizeLimit: exists ? vault.sizeLimit : nil, allocated: exists ? vault.allocatedBytes : 0,
-                             mount: exists ? vault.currentMountPoint() : nil,
-                             candidates: SecretsVault.candidates(in: host.mountPoint),
-                             hostEncrypted: Volumes.isVolumeEncrypted(host))
+            let (found, mounts) = await Task.detached(priority: .utility) { () -> (State, Set<String>) in
+                // Один `hdiutil info` на всё: открыт ли сейф, какие образы открыты вообще.
+                let attached = SecretsVault.attachedImages()
+                let vault = SecretsVault(on: host, preferred: preferred, attached: attached)
+                let status = vault.status(attached: attached)
+                let state = State(volumeID: host.id, imageURL: vault.imageURL, exists: status.exists, isEncrypted: status.isEncrypted,
+                                  info: status.info, sizeLimit: status.exists ? vault.sizeLimit : nil,
+                                  allocated: status.exists ? vault.allocatedBytes : 0, mount: status.mountPoint,
+                                  candidates: SecretsVault.candidates(in: host.mountPoint, attached: attached),
+                                  hostEncrypted: Volumes.isVolumeEncrypted(host))
+                return (state, Self.mounts(of: attached))
             }.value
-            guard self.generation == generation, app.destinationID == snapshot.volumeID else { return }
+            updateEncryptedMounts(mounts, app: app)
+            guard self.generation == generation, app.destinationID == found.volumeID else { return }
+            var snapshot = found
+            if let info = snapshot.info {
+                knownInfo[snapshot.imageURL.path] = info
+            } else {
+                snapshot.info = knownInfo[snapshot.imageURL.path]
+            }
             state = snapshot
         }
+    }
+
+    nonisolated static func mounts(of attached: [String: SecretsVault.Attachment]) -> Set<String> {
+        Set(attached.values.filter(\.encrypted).compactMap { $0.mountPoint?.standardizedFileURL.path })
+    }
+
+    /// Открытые зашифрованные образы изменились: список внешних дисков — без них.
+    func updateEncryptedMounts(_ mounts: Set<String>, app: AppModel) {
+        guard mounts != encryptedMounts else { return }
+        encryptedMounts = mounts
+        app.refreshVolumes()
+    }
+
+    /// Перечитать только, какие зашифрованные образы открыты, — после подключения диска или тома.
+    func reloadEncryptedMounts(app: AppModel) async {
+        guard !Demo.isOn else { return }
+        let mounts = await Task.detached(priority: .utility) { Self.mounts(of: SecretsVault.attachedImages()) }.value
+        updateEncryptedMounts(mounts, app: app)
     }
 
     /// Сейф как место назначения: том внутри образа, а свободное место — меньшее из того,
@@ -134,8 +171,10 @@ final class SafeModel {
 
     // MARK: - Открыть, закрыть, создать
 
+    /// `failed` — своя реакция на ошибку вместо общего сообщения вверху раздела.
     private func perform(_ title: String, app: AppModel,
                          _ work: @escaping @Sendable () throws -> Notice.Message?,
+                         failed: (@MainActor (Error) -> Void)? = nil,
                          after: @escaping @MainActor () -> Void = {}) {
         guard activity == nil else { return }
         activity = title
@@ -144,7 +183,7 @@ final class SafeModel {
             do {
                 if let result = try await Task.detached(priority: .userInitiated, operation: work).value { message = result }
             } catch {
-                message = Notice.Message(.error, error.localizedDescription)
+                if let failed { failed(error) } else { message = Notice.Message(.error, error.localizedDescription) }
             }
             activity = nil
             after()
@@ -195,11 +234,21 @@ final class SafeModel {
     func open(password: String, app: AppModel) {
         guard let state, state.exists else { return }
         let vault = SecretsVault(imageURL: state.imageURL)
+        let opened = Collector<URL>()
+        unlockError = nil
         perform("Открываю сейф…", app: app, {
-            _ = try vault.attach(password: password)
+            opened.append(try vault.attach(password: password))
             return nil
+        }, failed: { [weak self] error in
+            self?.unlockError = error.localizedDescription
         }, after: { [weak self] in
-            self?.lastUse = Date()
+            guard let self else { return }
+            lastUse = Date()
+            // Сразу, не дожидаясь перечитывания: attach уже спросил macOS, что том зашифрован.
+            if let mount = opened.all.first, self.state?.imageURL == vault.imageURL {
+                self.state?.mount = mount
+                self.state?.isEncrypted = true
+            }
         })
     }
 
@@ -213,10 +262,18 @@ final class SafeModel {
             return
         }
         pendingClose = nil
-        perform("Закрываю сейф…", app: app) {
+        closeBlocked = false
+        perform("Закрываю сейф…", app: app, {
             try SecretsVault.detach(mount, force: force)
             return Notice.Message(.success, reason.map { "Сейф закрыт: \($0)." } ?? "Сейф закрыт — на диске снова только шифротекст.")
-        }
+        }, failed: { [weak self] error in
+            // Открытые файлы — не ошибка, а вопрос: закрыть ли принудительно (см. ContentView).
+            if (error as? VaultError) == .busy {
+                self?.closeBlocked = true
+            } else {
+                self?.message = Notice.Message(.error, error.localizedDescription)
+            }
+        })
     }
 
     // MARK: - Автозакрытие
@@ -347,7 +404,7 @@ final class SafeModel {
     }
 
     func backupHeader(app: AppModel) {
-        guard let state, state.isEncrypted else { return }
+        guard let state, state.isEncrypted, state.mount == nil else { return }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false

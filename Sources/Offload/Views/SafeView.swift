@@ -43,7 +43,7 @@ struct SafeView: View {
             if safe.state?.isEncrypted == true {
                 CardSection(title: "Пароль, заголовок, место",
                             footer: safe.isOpen
-                                ? "Смена пароля, восстановление заголовка, увеличение и сжатие — на закрытом сейфе."
+                                ? "Смена пароля, копия и восстановление заголовка, увеличение и сжатие — на закрытом сейфе."
                                 : "В заголовке лежит ключ данных, зашифрованный паролем: испортится он — пропадёт всё, даже при верном пароле. Храните копию заголовка отдельно от диска. Место, освобождённое внутри сейфа, идёт под новые данные, но сам образ на диске не уменьшается; сжатие возвращает его частично, а на больших сейфах macOS может не вернуть ничего — Offload покажет, сколько вернулось на самом деле.") {
                     keySection
                 }
@@ -126,7 +126,9 @@ struct SafeView: View {
             if let mount = state.mount {
                 Button("Показать в Finder") {
                     safe.noteUse()
-                    revealInFinder(mount)
+                    // Том сейфа скрыт из боковой панели Finder (-nobrowse), поэтому открываем
+                    // саму папку тома, а не выделяем её в /Volumes, где её не видно.
+                    NSWorkspace.shared.open(mount)
                 }
                 Button { safe.close(app: app) } label: { Label("Закрыть сейф", systemImage: "lock.fill") }
                     .buttonStyle(.borderedProminent)
@@ -353,7 +355,7 @@ struct SafeView: View {
         RowDivider()
         FormRow(title: "Копия заголовка", detail: "Храните отдельно от диска: без заголовка сейф не откроется.") {
             HStack {
-                Button("Сохранить…") { safe.backupHeader(app: app) }
+                Button("Сохранить…") { safe.backupHeader(app: app) }.disabled(!closed)
                 Button("Восстановить…") { sheet = .restoreHeader }.disabled(!closed)
             }
         }

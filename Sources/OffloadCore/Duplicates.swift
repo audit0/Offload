@@ -105,9 +105,9 @@ public struct DuplicateFinder: Sendable {
     public var skippedFolders: Set<String> = BackupEngine.defaultExcludedNames
     /// Общий идентификатор содержимого у клонов APFS; nil — неизвестно.
     public var contentIdentifier: @Sendable (URL) -> Int64? = DuplicateFinder.apfsContentIdentifier
-    /// Зашифрован ли образ .dmg. Спрашивается только у копий, которые уже нашлись одинаковыми:
-    /// `hdiutil isencrypted` отвечает без пароля и окон не открывает.
-    public var encryptedImage: @Sendable (URL) -> Bool = { SecretsVault.encryptionInfo(of: $0)?.encrypted == true }
+    /// Зашифрован ли образ .dmg. Спрашивается только у копий, которые уже нашлись одинаковыми,
+    /// без пароля и без окон: закрытый образ — `hdiutil isencrypted`, подключённый — `hdiutil info`.
+    public var encryptedImage: @Sendable (URL) -> Bool = { SecretsVault.isEncryptedImage($0) }
 
     public init() {}
 
