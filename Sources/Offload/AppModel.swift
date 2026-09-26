@@ -46,7 +46,12 @@ enum StoreMode: String, CaseIterable, Identifiable {
 @Observable
 final class AppModel {
     var section: SidebarSection? = .overview
-    private(set) var volumes: [VolumeInfo] = []
+    /// Все внешние тома, какими их видит система.
+    private(set) var mountedVolumes: [VolumeInfo] = []
+    /// Внешние диски. Открытый в Finder сейф — тоже том, но не отдельный диск: его здесь нет.
+    var volumes: [VolumeInfo] {
+        mountedVolumes.filter { !safe.encryptedMounts.contains($0.mountPoint.standardizedFileURL.path) }
+    }
     var destinationID: String?
     private(set) var hasFullDiskAccess = FullDiskAccess.isGranted
 
@@ -136,30 +141,37 @@ final class AppModel {
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     let known = Set(self.volumes.map(\.id))
-                    self.refreshVolumes()
-                    self.safe.refresh(app: self)
-                    // Появился новый диск — не сейф, который сейчас открывается (его том может
-                    // называться как угодно, у старых сейфов — «Secrets»), а настоящий внешний.
-                    if name == NSWorkspace.didMountNotification, self.safe.activity == nil,
-                       let added = self.volumes.first(where: { !known.contains($0.id) && $0.name != SecretsVault.safeVolumeName }) {
-                        self.connectedPrompt = added.name
+                    let opening = self.safe.activity != nil
+                    Task {
+                        // Сначала — какие из томов открытые сейфы: сейф, открытый в Finder, иначе
+                        // на миг попал бы в список дисков, а «Обзор» предложил бы его разобрать.
+                        await self.safe.reloadEncryptedMounts(app: self)
+                        self.refreshVolumes()
+                        self.safe.refresh(app: self)
+                        // Появился новый диск — не сейф, который сейчас открывается (его том может
+                        // называться как угодно, у старых сейфов — «Secrets»), а настоящий внешний.
+                        if name == NSWorkspace.didMountNotification, !opening,
+                           let added = self.volumes.first(where: { !known.contains($0.id) && $0.name != SecretsVault.safeVolumeName }) {
+                            self.connectedPrompt = added.name
+                        }
                     }
                 }
             })
         }
         safe.startGuards(app: self)
         safe.refresh(app: self)
+        Task { await safe.reloadEncryptedMounts(app: self) }
     }
 
     /// Список внешних дисков и свободное место на них меняются после каждой операции.
     func refreshVolumes() {
         if Demo.isOn {
-            volumes = [Demo.disk]
+            mountedVolumes = [Demo.disk]
             destinationID = Demo.disk.id
             hasFullDiskAccess = true
             return
         }
-        volumes = Volumes.external()
+        mountedVolumes = Volumes.external()
         if destination == nil { destinationID = volumes.first?.id }
         hasFullDiskAccess = FullDiskAccess.isGranted
     }

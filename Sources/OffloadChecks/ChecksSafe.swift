@@ -31,6 +31,35 @@ func checksSafe() {
               "словарное слово названо в совете, а не просто снижает оценку")
     }
 
+    section("Сейф: что открыто — по ответу hdiutil info") {
+        // Один образ записан трижды: подключали без монтирования (так Offload растягивает сейф),
+        // открыли, снова подключали. Ответ — запись с точкой монтирования, где бы она ни стояла.
+        // И обычный установщик рядом.
+        let unmounted = """
+          <dict><key>image-path</key><string>/Volumes/SSD/Secrets.sparsebundle</string><key>image-encrypted</key><true/>
+            <key>system-entities</key><array><dict><key>dev-entry</key><string>/dev/disk9</string></dict></array></dict>
+        """
+        let plist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0"><dict><key>images</key><array>
+        \(unmounted)
+          <dict><key>image-path</key><string>/Volumes/SSD/Secrets.sparsebundle</string><key>image-encrypted</key><true/>
+            <key>system-entities</key><array><dict><key>dev-entry</key><string>/dev/disk5</string></dict>
+              <dict><key>dev-entry</key><string>/dev/disk6s1</string><key>mount-point</key><string>/Volumes/Secrets</string></dict></array></dict>
+          <dict><key>image-path</key><string>/Users/me/Downloads/App.dmg</string><key>image-encrypted</key><false/>
+            <key>system-entities</key><array><dict><key>mount-point</key><string>/Volumes/App</string></dict></array></dict>
+        \(unmounted)
+        </array></dict></plist>
+        """
+        let attached = SecretsVault.attachments(fromInfoPlist: Data(plist.utf8))
+        let safe = attached["/Volumes/SSD/Secrets.sparsebundle"]
+        check(safe?.encrypted == true && safe?.mountPoint?.path == "/Volumes/Secrets",
+              "открытый сейф: зашифрован и смонтирован — берётся запись с точкой монтирования: \(String(describing: safe))")
+        check(attached["/Users/me/Downloads/App.dmg"]?.encrypted == false, "открытый установщик — не зашифрован")
+        check(SecretsVault.attachments(fromInfoPlist: Data("не plist".utf8)).isEmpty, "непонятный ответ — ничего не открыто")
+    }
+
     guard env["OFFLOAD_SKIP_INTEGRATION"] != "1" else {
         print("▸ Сейф на настоящих образах — пропущено (OFFLOAD_SKIP_INTEGRATION=1)")
         return
@@ -57,6 +86,26 @@ func checksSafe() {
 
         // Место: свободным считается меньшее из свободного внутри образа и на диске-хозяине.
         var mount = try vault.attach(password: first)
+
+        // Открытый сейф — по-прежнему зашифрованный и открытый. Прежде он выглядел «незашифрованным»:
+        // состояние читалось `hdiutil isencrypted`, а тот у подключённого образа не отвечает.
+        if let raw = try? Runner.run("hdiutil", ["isencrypted", "-plist", image.path], timeout: 20) {
+            print("  · hdiutil isencrypted у открытого сейфа: код \(raw.status)"
+                  + (raw.succeeded ? "" : ", " + raw.stderr.trimmingCharacters(in: .whitespacesAndNewlines)))
+        } else {
+            print("  · hdiutil isencrypted у открытого сейфа не ответил за 20 с")
+        }
+        let opened = vault.status()
+        check(opened.isEncrypted && opened.isAttached && opened.mountPoint?.standardizedFileURL.path == mount.standardizedFileURL.path,
+              "открытый сейф признан зашифрованным и открытым: \(opened)")
+        check(vault.isEncrypted, "isEncrypted у открытого сейфа — да")
+        check(SecretsVault.candidates(in: folder).contains { $0.standardizedFileURL.path == image.standardizedFileURL.path },
+              "открытый сейф остаётся среди зашифрованных образов диска")
+        check(SecretsVault.isEncryptedImage(image), "открытый образ и в разборе опознаётся как зашифрованный")
+        check(try vault.attach(password: first).standardizedFileURL.path == mount.standardizedFileURL.path,
+              "повторное открытие открытого сейфа отдаёт ту же точку, второй раз не подключая")
+        expectError("копия заголовка с открытого сейфа не снимается", { _ = try vault.backupHeader(to: folder) },
+                    matching: { ($0 as? VaultError) == .busy })
         let tinyHost = VolumeInfo(mountPoint: folder, name: "Почти полный диск", fsType: "exfat", totalBytes: 10 << 30,
                                   availableBytes: Volumes.safeHostReserve + (5 << 20), blockSize: 4096,
                                   isReadOnly: false, isInternal: false)
@@ -74,6 +123,10 @@ func checksSafe() {
         try handle.close()
         try SecretsVault.detach(mount)
         check(vault.currentMountPoint() == nil, "после закрытия файла сейф закрылся")
+        check(vault.status() == SecretsVault.Status(exists: true, isEncrypted: true, info: SecretsVault.encryptionInfo(of: image),
+                                                    mountPoint: nil, isAttached: false),
+              "закрытый сейф снова читается через isencrypted: \(vault.status())")
+        check((try? SecretsVault.detach(mount)) != nil, "закрыть уже закрытый сейф — не ошибка")
 
         // Сжатие. macOS возвращает освобождённое внутри место на диск не всегда: на образе
         // с пределом 8 ГБ проверено — «Reclaimed 0 bytes out of 7.7 GB possible», хотя 40 МБ
