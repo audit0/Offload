@@ -12,6 +12,8 @@ public enum VaultError: LocalizedError, Equatable {
     case headerRejected(String)
     /// Предел не увеличился: образ не растянулся или файловая система внутри не заняла новое место.
     case growFailed(String)
+    /// hdiutil не закрыл сейф, и дело не в открытых файлах.
+    case closeFailed(String)
 
     public var errorDescription: String? {
         switch self {
@@ -26,6 +28,7 @@ public enum VaultError: LocalizedError, Equatable {
         case .busy: return "В сейфе открыты файлы. Закройте их в других программах и повторите."
         case .headerRejected(let reason): return "Заголовок не восстановлен: \(reason)"
         case .growFailed(let reason): return "Предел сейфа не увеличен: \(reason)"
+        case .closeFailed(let message): return "Не удалось закрыть сейф: \(message)"
         }
     }
 }
@@ -61,8 +64,8 @@ public struct SecretsVault: Sendable {
 
     /// Где на диске лежит сейф: выбранный человеком образ, затем свой, затем прежний контейнер
     /// для ключей, затем любой зашифрованный образ в корне. Если нет ни одного — путь,
-    /// по которому сейф будет создан.
-    public init(on volume: VolumeInfo, preferred: URL? = nil) {
+    /// по которому сейф будет создан. `attached` — ответ `attachedImages()`, если он уже есть.
+    public init(on volume: VolumeInfo, preferred: URL? = nil, attached: [String: Attachment]? = nil) {
         let fm = FileManager.default
         let own = volume.mountPoint.appendingPathComponent(Self.safeImageName, isDirectory: true)
         let legacy = volume.mountPoint.appendingPathComponent(Self.legacyImageName, isDirectory: true)
@@ -74,15 +77,19 @@ public struct SecretsVault: Sendable {
         } else if fm.fileExists(atPath: legacy.path) {
             imageURL = legacy
         } else {
-            imageURL = Self.existingEncryptedBundle(in: volume.mountPoint) ?? own
+            imageURL = Self.existingEncryptedBundle(in: volume.mountPoint, attached: attached) ?? own
         }
     }
 
     /// Все зашифрованные образы в корне диска — чтобы человек сам выбрал, какой из них его сейф,
     /// если их несколько. Порядок: свой, прежний, остальные по весу заголовка и имени.
-    public static func candidates(in root: URL) -> [URL] {
+    /// Открытый сейф в списке остаётся: его шифрование подтверждает `hdiutil info` (см. `status`).
+    public static func candidates(in root: URL, attached: [String: Attachment]? = nil) -> [URL] {
         let fm = FileManager.default
         let items = (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
+        let bundles = items.filter { $0.pathExtension == "sparsebundle" }
+        guard !bundles.isEmpty else { return [] }
+        let attached = attached ?? attachedImages()
         func rank(_ url: URL) -> Int {
             switch url.lastPathComponent {
             case safeImageName: return 0
@@ -90,7 +97,7 @@ public struct SecretsVault: Sendable {
             default: return 2
             }
         }
-        return items.filter { $0.pathExtension == "sparsebundle" && SecretsVault(imageURL: $0).isEncrypted }
+        return bundles.filter { SecretsVault(imageURL: $0).status(attached: attached).isEncrypted }
             .sorted {
                 if rank($0) != rank($1) { return rank($0) < rank($1) }
                 let (left, right) = (tokenSize($0), tokenSize($1))
@@ -100,20 +107,95 @@ public struct SecretsVault: Sendable {
     }
 
     /// Первый из зашифрованных образов в корне диска (см. `candidates`).
-    public static func existingEncryptedBundle(in root: URL) -> URL? { candidates(in: root).first }
+    public static func existingEncryptedBundle(in root: URL, attached: [String: Attachment]? = nil) -> URL? {
+        candidates(in: root, attached: attached).first
+    }
 
     public var exists: Bool { FileManager.default.fileExists(atPath: imageURL.path) }
 
-    /// Зашифрован ли образ — ответ подсистемы образов, а не догадка по файлам.
+    /// Зашифрован ли образ — ответ подсистемы образов, а не догадка по файлам (см. `status`).
+    public var isEncrypted: Bool { status().isEncrypted }
+
+    // MARK: - Открыт ли и зашифрован ли
+
+    /// Образ, который подсистема образов уже подключила: так отвечает `hdiutil info`.
+    public struct Attachment: Sendable, Equatable {
+        /// Куда смонтирован том; nil — подключён без монтирования (так Offload растягивает сейф).
+        public var mountPoint: URL?
+        /// `image-encrypted` — ответ про уже открытый образ. Подложенным файлом его не подделать.
+        public var encrypted: Bool
+
+        public init(mountPoint: URL?, encrypted: Bool) {
+            self.mountPoint = mountPoint
+            self.encrypted = encrypted
+        }
+    }
+
+    /// Все подключённые сейчас образы: развёрнутый путь образа → подключение. Пароля не просит.
+    public static func attachedImages() -> [String: Attachment] {
+        guard let result = try? Runner.run("hdiutil", ["info", "-plist"], timeout: 30), result.succeeded else { return [:] }
+        return attachments(fromInfoPlist: result.stdout)
+    }
+
+    /// Разбор ответа `hdiutil info -plist`. Путь образа hdiutil отдаёт уже развёрнутым
+    /// (/tmp → /private/tmp), поэтому и ключ — развёрнутый путь. Если один образ записан
+    /// несколько раз (подключали раньше), берётся запись с точкой монтирования.
+    public static func attachments(fromInfoPlist data: Data) -> [String: Attachment] {
+        guard let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              let images = plist["images"] as? [[String: Any]] else { return [:] }
+        var result: [String: Attachment] = [:]
+        for entry in images {
+            guard let path = entry["image-path"] as? String else { continue }
+            let key = Paths.resolve(URL(fileURLWithPath: path)).path
+            let entities = (entry["system-entities"] as? [[String: Any]]) ?? []
+            let mount = entities.compactMap { $0["mount-point"] as? String }.first.map { URL(fileURLWithPath: $0, isDirectory: true) }
+            let attachment = Attachment(mountPoint: mount, encrypted: (entry["image-encrypted"] as? NSNumber)?.boolValue == true)
+            if result[key]?.mountPoint == nil { result[key] = attachment }
+        }
+        return result
+    }
+
+    /// Что с сейфом сейчас — без пароля и без системных окон.
+    public struct Status: Sendable, Equatable {
+        public var exists: Bool
+        /// Шифрование подтверждено самой macOS (см. `status`).
+        public var isEncrypted: Bool
+        /// Ответ `hdiutil isencrypted`. У подключённого образа его нет: заголовок занят.
+        public var info: EncryptionInfo?
+        /// Где открыт — Offload, Finder или hdiutil; nil — закрыт.
+        public var mountPoint: URL?
+        /// Подключён — с монтированием или без. Менять пароль, растягивать и сжимать такой нельзя.
+        public var isAttached: Bool
+
+        public init(exists: Bool, isEncrypted: Bool, info: EncryptionInfo?, mountPoint: URL?, isAttached: Bool) {
+            self.exists = exists
+            self.isEncrypted = isEncrypted
+            self.info = info
+            self.mountPoint = mountPoint
+            self.isAttached = isAttached
+        }
+    }
+
+    /// Открыт ли сейф и зашифрован ли он.
     ///
-    /// `hdiutil isencrypted` читает заголовок и отвечает сразу, без пароля и без системных
-    /// окон (в отличие от `imageinfo`, проверено). Подделки он различает: образ с восемью
-    /// байтами «encrcdsa» в token называет незашифрованным, а набитый нулями заголовок —
-    /// зашифрованным, но без единого пароля. Поэтому требуем оба признака: шифрование
-    /// и хотя бы один пароль, которым его можно открыть.
-    public var isEncrypted: Bool {
-        guard Self.hasEncryptionHeader(imageURL) else { return false }
-        return Self.encryptionInfo(of: imageURL)?.opensWithPassword ?? false
+    /// Закрытый образ проверяет `hdiutil isencrypted`: читает заголовок и отвечает сразу, без пароля
+    /// и без системных окон (в отличие от `imageinfo`, проверено). Подделки он различает: образ
+    /// с восемью байтами «encrcdsa» в token называет незашифрованным, а набитый нулями заголовок —
+    /// зашифрованным, но без единого пароля. Поэтому требуем оба признака: шифрование и хотя бы
+    /// один пароль, которым его можно открыть.
+    ///
+    /// У подключённого образа `isencrypted` не отвечает: заголовок держит подсистема образов.
+    /// Прежде из-за этого только что открытый сейф выглядел незашифрованным — «класть в него
+    /// нельзя», — и перенос в сейф вставал. Про подключённый образ спрашиваем `hdiutil info`:
+    /// ключ `image-encrypted` приходит от самой подсистемы, и подделать его файлом нельзя.
+    public func status(attached: [String: Attachment]? = nil) -> Status {
+        guard exists else { return Status(exists: false, isEncrypted: false, info: nil, mountPoint: nil, isAttached: false) }
+        if let attachment = (attached ?? Self.attachedImages())[Paths.resolve(imageURL).path] {
+            return Status(exists: true, isEncrypted: attachment.encrypted, info: nil,
+                          mountPoint: attachment.mountPoint, isAttached: true)
+        }
+        let info = Self.hasEncryptionHeader(imageURL) ? Self.encryptionInfo(of: imageURL) : nil
+        return Status(exists: true, isEncrypted: info?.opensWithPassword ?? false, info: info, mountPoint: nil, isAttached: false)
     }
 
     /// Что подсистема образов знает о шифровании образа, не открывая его.
@@ -259,8 +341,9 @@ public struct SecretsVault: Sendable {
     /// и растяжение повторяется. Итог сверяется по размеру раздела, а не по кодам возврата.
     /// Оборвётся посередине — данные целы, а повтор с тем же пределом доделает начатое.
     public func grow(to maxBytes: Int64, password: String) throws {
-        guard currentMountPoint() == nil else { throw VaultError.busy }
-        guard isEncrypted else { throw VaultError.notEncrypted }
+        let status = self.status()
+        guard !status.isAttached else { throw VaultError.busy }
+        guard status.isEncrypted else { throw VaultError.notEncrypted }
         let current = sizeLimit ?? 0
         // hdiutil округляет размер образа вверх, поэтому повтор с тем же пределом видит
         // чуть больший нынешний — это не уменьшение.
@@ -372,10 +455,10 @@ public struct SecretsVault: Sendable {
     /// снятая раньше, по-прежнему открывается СТАРЫМ паролем.
     public func changePassword(old: String, new: String) throws {
         guard PasswordStrength.evaluate(new).isAcceptable else { throw VaultError.weakPassword }
-        // Сначала — открыт ли: у подключённого образа isencrypted не отвечает, и открытый
-        // сейф иначе выглядел бы незашифрованным.
-        guard currentMountPoint() == nil else { throw VaultError.busy }
-        guard isEncrypted else { throw VaultError.notEncrypted }
+        // Сначала — открыт ли: заголовок открытого сейфа держит подсистема образов.
+        let status = self.status()
+        guard !status.isAttached else { throw VaultError.busy }
+        guard status.isEncrypted else { throw VaultError.notEncrypted }
         // Оба пароля — через stdin, каждый с нулём в конце, в порядке «старый, новый».
         var input = Data(old.utf8); input.append(0); input.append(contentsOf: Data(new.utf8)); input.append(0)
         let result = try Runner.run("hdiutil", ["chpass", "-oldstdinpass", "-newstdinpass", imageURL.path],
@@ -388,8 +471,9 @@ public struct SecretsVault: Sendable {
     /// удаления так и лежат, пока не сжать). Нужны пароль и закрытый сейф.
     @discardableResult
     public func compact(password: String) throws -> String {
-        guard currentMountPoint() == nil else { throw VaultError.busy }
-        guard isEncrypted else { throw VaultError.notEncrypted }
+        let status = self.status()
+        guard !status.isAttached else { throw VaultError.busy }
+        guard status.isEncrypted else { throw VaultError.notEncrypted }
         let result = try Runner.run("hdiutil", ["compact", "-stdinpass", imageURL.path], stdin: Data(password.utf8), timeout: 3600)
         guard result.succeeded else { throw Self.passwordError(result.stderr) }
         return String(decoding: result.stdout, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -420,10 +504,14 @@ public struct SecretsVault: Sendable {
         public var token: Data
     }
 
+    /// Только у закрытого сейфа: у открытого macOS не называет UUID заголовка, а без него
+    /// при восстановлении не отличить копию этого сейфа от копии чужого.
     public func backupHeader(to directory: URL) throws -> URL {
-        guard isEncrypted else { throw VaultError.notEncrypted }
+        let status = self.status()
+        guard !status.isAttached else { throw VaultError.busy }
+        guard status.isEncrypted else { throw VaultError.notEncrypted }
         let token = try Data(contentsOf: imageURL.appendingPathComponent("token"))
-        let backup = HeaderBackup(imageName: imageURL.lastPathComponent, uuid: Self.encryptionInfo(of: imageURL)?.uuid,
+        let backup = HeaderBackup(imageName: imageURL.lastPathComponent, uuid: status.info?.uuid,
                                   created: Date(), token: token)
         let stamp = ISO8601DateFormatter().string(from: backup.created).prefix(10)
         let base = (imageURL.lastPathComponent as NSString).deletingPathExtension
@@ -441,7 +529,7 @@ public struct SecretsVault: Sendable {
     /// Возвращает заголовок из копии. Прежний откладывается, копия ставится на место, и сейф
     /// пробуется открыть паролем; не открылся — прежний заголовок возвращается как был.
     public func restoreHeader(from file: URL, password: String) throws {
-        guard currentMountPoint() == nil else { throw VaultError.busy }
+        guard !status().isAttached else { throw VaultError.busy }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         guard let data = try? Data(contentsOf: file), data.count < 4 << 20,
@@ -472,8 +560,15 @@ public struct SecretsVault: Sendable {
     }
 
     public func attach(password: String) throws -> URL {
+        let status = self.status()
+        // Уже открыт — Offload, Finder или hdiutil: второй раз не подключаем, берём ту же точку.
+        // Шифрование открытого тома подтверждает сама подсистема образов (`hdiutil info`).
+        if let mount = status.mountPoint {
+            guard status.isEncrypted else { throw VaultError.notEncrypted }
+            return mount
+        }
         // Дешёвый отсев до запуска hdiutil: обычный образ примет любой пароль.
-        guard isEncrypted else { throw VaultError.notEncrypted }
+        guard status.isEncrypted else { throw VaultError.notEncrypted }
         let result = try Runner.run("hdiutil", ["attach", "-stdinpass", "-nobrowse", "-owners", "on", "-plist", imageURL.path],
                                     stdin: Data(password.utf8), timeout: 180)
         guard result.succeeded else { throw Self.passwordError(result.stderr) }
@@ -494,35 +589,47 @@ public struct SecretsVault: Sendable {
         return mountPoint
     }
 
-    /// Точка монтирования, если контейнер уже открыт — например, вручную через hdiutil.
-    public func currentMountPoint() -> URL? {
-        guard let result = try? Runner.run("hdiutil", ["info", "-plist"], timeout: 30), result.succeeded,
-              let plist = try? PropertyListSerialization.propertyList(from: result.stdout, format: nil) as? [String: Any],
-              let images = plist["images"] as? [[String: Any]] else { return nil }
-        let target = imageURL.standardizedFileURL.path
-        for image in images {
-            guard let path = image["image-path"] as? String,
-                  URL(fileURLWithPath: path).standardizedFileURL.path == target,
-                  let entities = image["system-entities"] as? [[String: Any]],
-                  let mount = entities.compactMap({ $0["mount-point"] as? String }).first else { continue }
-            return URL(fileURLWithPath: mount, isDirectory: true)
-        }
-        return nil
-    }
+    /// Точка монтирования, если контейнер уже открыт — например, вручную через hdiutil или в Finder.
+    public func currentMountPoint() -> URL? { status().mountPoint }
 
     /// Закрыть сейф. Без force: если в нём открыты файлы, закрытие откажет с `.busy`, и чужая
     /// работа не оборвётся. С force — как «Dismount all» в VeraCrypt с принудительным режимом.
-    public static func detach(_ mountPoint: URL, force: Bool = false) throws {
-        let result = try Runner.run("hdiutil", ["detach"] + (force ? ["-force"] : []) + [mountPoint.path], timeout: 120)
-        guard result.succeeded else { throw passwordError(result.stderr) }
+    ///
+    /// Сразу после записи том на несколько секунд держат Spotlight и быстрый просмотр: первая
+    /// попытка тогда отвечает «занят», хотя человек ничего не открывал. Поэтому занятый том
+    /// пробуем закрыть ещё несколько раз с паузой и только потом говорим, что в нём открыты файлы.
+    public static func detach(_ mountPoint: URL, force: Bool = false, attempts: Int = 5) throws {
+        // Том уже закрыли в обход Offload (Finder, «Извлечь»): закрывать нечего.
+        guard FileManager.default.fileExists(atPath: mountPoint.path) else { return }
+        for attempt in 1...max(1, attempts) {
+            let result = try Runner.run("hdiutil", ["detach"] + (force ? ["-force"] : []) + [mountPoint.path], timeout: 120)
+            if result.succeeded { return }
+            let error = detachError(result.stderr)
+            guard error == .busy, !force, attempt < attempts else { throw error }
+            Thread.sleep(forTimeInterval: 1.5)
+        }
+    }
+
+    static func detachError(_ stderr: String) -> VaultError {
+        switch passwordError(stderr) {
+        case .busy: return .busy
+        default: return .closeFailed(stderr.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
     }
 
     /// Закрыть том во что бы то ни стало и молча. Нужно там, где мы сами его только что
     /// открыли и уже решили, что пользоваться им нельзя: оставить чужой образ подключённым
     /// хуже, чем не суметь красиво сообщить об ошибке отсоединения.
     public static func detachIgnoringErrors(_ mountPoint: URL) {
-        if (try? detach(mountPoint)) != nil { return }
+        if (try? detach(mountPoint, attempts: 1)) != nil { return }
         _ = try? Runner.run("hdiutil", ["detach", "-force", mountPoint.path], timeout: 120)
+    }
+
+    /// Зашифрованный ли это образ диска — `.dmg` в Загрузках, копия в группе одинаковых файлов.
+    /// Подключённый образ `isencrypted` не читает, про него отвечает `hdiutil info`.
+    public static func isEncryptedImage(_ url: URL, attached: [String: Attachment]? = nil) -> Bool {
+        if let attachment = (attached ?? attachedImages())[Paths.resolve(url).path] { return attachment.encrypted }
+        return encryptionInfo(of: url)?.encrypted == true
     }
 
     /// Складывает в открытый контейнер: ~/.ssh с правами, дотфайлы, учётку GitHub CLI

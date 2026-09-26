@@ -185,6 +185,8 @@ final class CleanupModel {
             let found = await Task.detached(priority: .userInitiated) { () -> [CleanupSuggestion] in
                 let regenerable = CleanupPlanner.regenerable(home: rules.home)
                 let roots = CleanupPlanner.roots(home: rules.home)
+                // Подключённый образ `isencrypted` не читает — про такие отвечает `hdiutil info`.
+                let attached = SecretsVault.attachedImages()
                 var seen = Set<String>()
                 let urls = (roots.flatMap { SpaceScanner.children(of: $0) }
                             + regenerable.keys.sorted().map { URL(fileURLWithPath: $0, isDirectory: true) })
@@ -202,7 +204,7 @@ final class CleanupModel {
                         inBackup: sources.contains { path == $0 || path.hasPrefix($0 + "/") },
                         // `hdiutil isencrypted` отвечает без пароля и окон не открывает (в отличие от imageinfo).
                         isEncryptedImage: !item.isDirectory && item.url.pathExtension.lowercased() == "dmg"
-                            && SecretsVault.encryptionInfo(of: item.url)?.encrypted == true)
+                            && SecretsVault.isEncryptedImage(item.url, attached: attached))
                     collector.append(observation)
                     // Промежуточный итог — по тем же правилам, что и список: видно, что поиск чего-то стоит.
                     var progress = tally.add(planner.suggest(observation), counted: planner.isWorthShowing)

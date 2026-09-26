@@ -6,6 +6,7 @@ struct ContentView: View {
 
     var body: some View {
         @Bindable var app = app
+        @Bindable var safe = app.safe
         NavigationSplitView {
             List(SidebarSection.allCases, selection: $app.section) { section in
                 Label(section.title, systemImage: section.systemImage)
@@ -36,6 +37,13 @@ struct ContentView: View {
         .tint(Theme.brand)
         // Сменили диск — перечитываем, есть ли на нём сейф и открыт ли он.
         .task(id: app.destinationID) { app.safe.refresh(app: app) }
+        // Закрыть сейф не дали открытые в нём файлы — откуда бы ни закрывали: из панели, меню или раздела.
+        .alert("Сейф не закрывается", isPresented: $safe.closeBlocked) {
+            Button("Закрыть принудительно", role: .destructive) { app.safe.close(app: app, force: true) }
+            Button("Оставить открытым", role: .cancel) {}
+        } message: {
+            Text("В нём открыты файлы в других программах. Закройте их и повторите — или закройте сейф принудительно: несохранённое в этих программах может пропасть.")
+        }
         // Журнал нужен не только разделу «Перенесённое»: «Обзор» и «Сейф» по нему видят,
         // что лежит на диске открыто. Поэтому читается сразу и при каждой смене дисков и сейфа.
         .task(id: app.historyVolumes.map(\.id)) { app.history.reload(volumes: app.historyVolumes) }

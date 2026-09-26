@@ -74,26 +74,35 @@ struct NewPasswordFields: View {
 }
 
 /// Открыть сейф прямо там, где он понадобился: в окне переноса, в бэкапе, в панели.
-/// Пароль стирается из поля сразу после попытки — удачной или нет.
+/// Пароль стирается из поля сразу после попытки — удачной или нет, а почему не открылся,
+/// написано тут же, под полем.
 struct SafeUnlockRow: View {
     @Environment(AppModel.self) private var app
     @State private var password = ""
     var prompt = "Пароль сейфа"
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "lock.fill").foregroundStyle(.secondary)
-            SecureField(prompt, text: $password)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit(open)
-            if app.safe.activity != nil {
-                ProgressView().controlSize(.small)
-            } else {
-                Button("Открыть", action: open)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(password.isEmpty)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "lock.fill").foregroundStyle(.secondary)
+                SecureField(prompt, text: $password)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(open)
+                if app.safe.activity != nil {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Button("Открыть", action: open)
+                        .buttonStyle(.borderedProminent)
+                        .disabled(password.isEmpty)
+                }
+            }
+            if let error = app.safe.unlockError {
+                Label(error, systemImage: "xmark.circle.fill")
+                    .font(.caption).foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .onChange(of: password) { if !password.isEmpty { app.safe.unlockError = nil } }
     }
 
     private func open() {
@@ -227,7 +236,6 @@ struct SafeStatusPanel: View {
                                 }
                             }
                             SafeUnlockRow().frame(width: 300)
-                            if let message = safe.message, message.kind == .error { Notice(message) }
                         }
                         .padding(16)
                         .onChange(of: safe.isOpen) { if safe.isOpen { unlocking = false } }
