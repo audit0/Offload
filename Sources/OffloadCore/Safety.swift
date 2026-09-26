@@ -128,6 +128,10 @@ public struct SafetyRules: Sendable {
         return .safe
     }
 
+    /// Папки ~/Library, где приложения называют свои папки идентификаторами.
+    static let appFolderParents: Set<String> = ["Containers", "Group Containers", "Caches", "Application Support",
+                                                "Application Scripts", "HTTPStorages", "WebKit", "Saved Application State"]
+
     /// Идентификатор приложения или группы: «com.utmapp.UTM», «WDNLXAD4W8.com.utmapp.UTM».
     static func isIdentifier(_ name: String) -> Bool {
         !name.contains(" ") && name.split(separator: ".", omittingEmptySubsequences: false).count >= 3
@@ -157,9 +161,11 @@ public struct SafetyRules: Sendable {
             return .blocked("Виртуальная машина приложения Claude — она нужна ему для работы.")
         }
         // Пакеты в ~/Library запрещены, как и везде. Кроме имени сразу под Containers, Caches
-        // и т. п., похожего на идентификатор: это папка приложения, а не пакет.
+        // и т. п., похожего на идентификатор: это папка приложения, а не пакет. Только там:
+        // в Logs и прочих местах, откуда переносить можно, «a.b.utm» — машина, и её не трогаем.
         if let bundle = parts.indices.first(where: { index in
-            Self.isRegisteredBundle(parts[index]) && !(index == 2 && Self.isIdentifier(parts[index]))
+            Self.isRegisteredBundle(parts[index])
+                && !(index == 2 && Self.appFolderParents.contains(parts[1]) && Self.isIdentifier(parts[index]))
         }) {
             return Self.bundleBlocked(parts[bundle])
         }

@@ -652,6 +652,7 @@ checksHardenLocal()
 checksHardenRestore()
 checksSafe()
 checksCleanup()
+checksFormat()
 checksQuestions()
 section("Разбор: в Корзине — тот самый файл") { try checksTrashIdentity() }
 if env["OFFLOAD_SKIP_INTEGRATION"] != "1" {
