@@ -5,13 +5,14 @@ import OffloadCore
 /// Порядок разделов — это и есть сценарий: посмотреть, что с Mac; завести сейф;
 /// освободить место переносом в него; видеть и возвращать перенесённое; бэкапить.
 enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
-    case overview, safe, space, history, backup, docker
+    case overview, cleanup, safe, space, history, backup, docker
 
     var id: Self { self }
 
     var title: String {
         switch self {
         case .overview: return "Обзор"
+        case .cleanup: return "Разобрать"
         case .safe: return "Сейф"
         case .space: return "Освободить место"
         case .history: return "Перенесённое"
@@ -23,6 +24,7 @@ enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
     var systemImage: String {
         switch self {
         case .overview: return "gauge.with.dots.needle.50percent"
+        case .cleanup: return "wand.and.stars"
         case .safe: return "lock.shield"
         case .space: return "chart.bar.doc.horizontal"
         case .history: return "clock.arrow.circlepath"
@@ -55,6 +57,10 @@ final class AppModel {
     let history = HistoryModel()
     let backup = BackupModel()
     let docker = DockerModel()
+    let cleanup = CleanupModel()
+
+    /// Только что подключённый внешний диск: «Обзор» предлагает разобрать Mac одной кнопкой.
+    var connectedPrompt: String?
 
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private var cancellers: [UUID: @Sendable () -> Void] = [:]
@@ -129,8 +135,15 @@ final class AppModel {
             observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self else { return }
+                    let known = Set(self.volumes.map(\.id))
                     self.refreshVolumes()
                     self.safe.refresh(app: self)
+                    // Появился новый диск — не сейф, который сейчас открывается (его том может
+                    // называться как угодно, у старых сейфов — «Secrets»), а настоящий внешний.
+                    if name == NSWorkspace.didMountNotification, self.safe.activity == nil,
+                       let added = self.volumes.first(where: { !known.contains($0.id) && $0.name != SecretsVault.safeVolumeName }) {
+                        self.connectedPrompt = added.name
+                    }
                 }
             })
         }

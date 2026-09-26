@@ -7,6 +7,9 @@ struct OverviewView: View {
     var body: some View {
         let model = app.overview
         PageScroll {
+            if let disk = app.connectedPrompt {
+                ConnectedPrompt(disk: disk)
+            }
             if !app.hasFullDiskAccess { FullDiskAccessBanner() }
             // Три карточки одной высоты: fixedSize по вертикали отдаёт ряду высоту самой высокой,
             // а карточки с fillsHeight растягиваются до неё.
@@ -233,7 +236,7 @@ struct ScenarioCard: View {
         if host != nil {
             if let state = safe.state, state.exists, state.isEncrypted, let limit = state.sizeLimit, limit < 20 << 30 {
                 steps.append(Step(id: 2, state: .warning, title: "Сейф мал для переноса",
-                                  detail: "«\(state.displayName)» ограничен \(Format.bytes(limit)): для ключей хватит, для больших папок — нет. Заведите сейф на весь диск.",
+                                  detail: "«\(state.displayName)» ограничен \(Format.bytes(limit)): для ключей хватит, для больших папок — нет. Предел можно увеличить без потери содержимого.",
                                   action: ("Сейф", .safe)))
             } else if let state = safe.state, state.exists, state.isEncrypted {
                 steps.append(Step(id: 2, state: .done,
@@ -326,6 +329,35 @@ private struct StepRow: View {
                 .foregroundStyle(isNext ? Theme.brand : Color.secondary)
                 .frame(width: 22, height: 22)
                 .overlay { Circle().strokeBorder(isNext ? Theme.brand : Color.secondary.opacity(0.5), lineWidth: 1.5) }
+        }
+    }
+}
+
+/// Только что подключили внешний диск — самое время разобрать Mac.
+struct ConnectedPrompt: View {
+    @Environment(AppModel.self) private var app
+    let disk: String
+
+    var body: some View {
+        Card(tint: Theme.brand) {
+            HStack(alignment: .top, spacing: 14) {
+                IconTile(systemImage: "externaldrive.fill.badge.plus", size: 40)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Подключён «\(disk)»").font(.headline)
+                    Text("Разобрать Mac: что удалить, что убрать в сейф, что добавить в бэкап. Ничего не произойдёт, пока вы не подтвердите.")
+                        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    HStack {
+                        Button {
+                            app.connectedPrompt = nil
+                            app.section = .cleanup
+                            app.cleanup.scan(app: app)
+                        } label: { Label("Разобрать", systemImage: "wand.and.stars") }
+                            .buttonStyle(.borderedProminent)
+                        Button("Не сейчас") { app.connectedPrompt = nil }
+                    }
+                    .padding(.top, 2)
+                }
+            }
         }
     }
 }

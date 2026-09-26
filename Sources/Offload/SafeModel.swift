@@ -153,18 +153,43 @@ final class SafeModel {
         }
     }
 
-    func create(password: String, app: AppModel) {
+    /// Сейф на выбранном диске с пределом `limit`. Образ разрежённый: места он занимает
+    /// ровно столько, сколько в нём лежит, а предел потом можно увеличить (`grow`).
+    func create(password: String, limit: Int64, app: AppModel) {
         guard let host = app.destination else { return }
         let vault = SecretsVault(imageURL: host.mountPoint.appendingPathComponent(SecretsVault.safeImageName, isDirectory: true))
-        // Предел — весь диск: образ разрежённый и занимает ровно столько, сколько в нём лежит.
-        // Растянуть APFS внутри образа потом нельзя, поэтому запас закладывается сразу.
-        let limit = host.totalBytes
+        let limit = min(max(limit, 1 << 30), host.totalBytes)
         perform("Создаю сейф…", app: app, {
             try vault.create(password: password, maxBytes: limit, volumeName: SecretsVault.safeVolumeName)
             return Notice.Message(.success, "Сейф создан: AES-256, пароль знаете только вы. Если его забыть, данные не восстановит никто — даже Offload.")
         }, after: { [weak self] in
             self?.preferredImages[host.id] = vault.imageURL.path
         })
+    }
+
+    /// Увеличивает предел закрытого сейфа; содержимое остаётся на месте.
+    func grow(to limit: Int64, password: String, app: AppModel) {
+        guard let state, state.exists, state.mount == nil else { return }
+        let vault = SecretsVault(imageURL: state.imageURL)
+        perform("Увеличиваю сейф…", app: app) {
+            try vault.grow(to: limit, password: password)
+            return Notice.Message(.success, "Предел сейфа — \(Format.bytes(vault.sizeLimit ?? limit)). Содержимое на месте, а места на диске образ занимает столько же, сколько занимал.")
+        }
+    }
+
+    /// Какие пределы предложить: круглые размеры больше `above` и меньше диска, и весь диск.
+    static func limitChoices(host: VolumeInfo, above: Int64 = 0) -> [Int64] {
+        let gigabyte: Int64 = 1_000_000_000
+        let presets: [Int64] = [8, 16, 32, 64, 128, 256, 512, 1000, 2000, 4000].map { $0 * gigabyte }
+        return presets.filter { $0 > above && $0 < host.totalBytes * 9 / 10 } + (host.totalBytes > above ? [host.totalBytes] : [])
+    }
+
+    /// Сколько примерно ещё поместится в сейф. Открыт — точно (с учётом места на диске);
+    /// закрыт — предел минус занятое образом, но не больше свободного на диске.
+    func roomLeft(host: VolumeInfo?, volume: VolumeInfo?) -> Int64? {
+        if let volume { return volume.availableBytes }
+        guard let host, let state, state.volumeID == host.id, state.isEncrypted, let limit = state.sizeLimit else { return nil }
+        return max(0, min(limit - state.allocated, host.availableBytes))
     }
 
     func open(password: String, app: AppModel) {

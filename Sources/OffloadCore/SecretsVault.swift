@@ -10,6 +10,8 @@ public enum VaultError: LocalizedError, Equatable {
     case busy
     /// Резервная копия заголовка не от этого сейфа или не открывается паролем.
     case headerRejected(String)
+    /// Предел не увеличился: образ не растянулся или файловая система внутри не заняла новое место.
+    case growFailed(String)
 
     public var errorDescription: String? {
         switch self {
@@ -23,6 +25,7 @@ public enum VaultError: LocalizedError, Equatable {
         case .mountFailed(let message): return "Не удалось открыть сейф: \(message)"
         case .busy: return "В сейфе открыты файлы. Закройте их в других программах и повторите."
         case .headerRejected(let reason): return "Заголовок не восстановлен: \(reason)"
+        case .growFailed(let reason): return "Предел сейфа не увеличен: \(reason)"
         }
     }
 }
@@ -231,9 +234,8 @@ public struct SecretsVault: Sendable {
         try create(password: password, maxBytes: Int64(sizeGB) << 30, volumeName: Self.volumeName)
     }
 
-    /// Разрежённый образ: предел можно ставить во весь диск — места он занимает ровно
-    /// столько, сколько в нём лежит. Внутренний APFS после создания не растягивается
-    /// (hdiutil resize умеет только HFS+), поэтому предел выбирается сразу с запасом.
+    /// Разрежённый образ: места он занимает ровно столько, сколько в нём лежит, а предел —
+    /// сколько выбрал человек. Мало окажется — предел увеличивается (`grow`), данные остаются.
     public func create(password: String, maxBytes: Int64, volumeName: String) throws {
         guard PasswordStrength.evaluate(password).isAcceptable else { throw VaultError.weakPassword }
         guard !exists else { throw VaultError.alreadyExists }
@@ -242,6 +244,127 @@ public struct SecretsVault: Sendable {
                                      "-encryption", "AES-256", "-volname", volumeName, "-stdinpass", "-quiet",
                                      imageURL.path], stdin: Data(password.utf8), timeout: 600)
         guard isEncrypted else { throw VaultError.notEncrypted }
+    }
+
+    /// Увеличивает предел сейфа, не трогая содержимое. Нужны пароль и закрытый сейф.
+    ///
+    /// Только APFS — так Offload создаёт сейфы сам. Формат проверяется до того, как образ
+    /// хоть как-то изменится: на HFS+ после роста не проходит проверка файловой системы
+    /// (проверено), и такой сейф лучше не трогать вовсе.
+    ///
+    /// Сначала растёт сам образ: `hdiutil resize` целиком, а если он не берётся — только образ
+    /// (`-imageonly`). Затем образ подключается без монтирования, и раздел занимает новое место
+    /// (`diskutil apfs resizeContainer … 0`). Если раздел не видит нового места (карта разделов
+    /// всё ещё кончается там, где кончался прежний образ), карта чинится `diskutil repairDisk`
+    /// и растяжение повторяется. Итог сверяется по размеру раздела, а не по кодам возврата.
+    /// Оборвётся посередине — данные целы, а повтор с тем же пределом доделает начатое.
+    public func grow(to maxBytes: Int64, password: String) throws {
+        guard currentMountPoint() == nil else { throw VaultError.busy }
+        guard isEncrypted else { throw VaultError.notEncrypted }
+        let current = sizeLimit ?? 0
+        // hdiutil округляет размер образа вверх, поэтому повтор с тем же пределом видит
+        // чуть больший нынешний — это не уменьшение.
+        guard maxBytes >= current - (64 << 20) else { throw VaultError.growFailed("уменьшать сейф нельзя — только увеличивать") }
+        let pass = Data(password.utf8)
+
+        let content = try withRawDevices(pass) { _, partition in Self.diskInfo(partition)?["Content"] as? String }
+        guard content == "Apple_APFS" else {
+            throw VaultError.growFailed("внутри не APFS (\(content ?? "неизвестно")) — такой сейф Offload не растягивает. Создайте новый сейф нужного размера и перенесите содержимое.")
+        }
+
+        if maxBytes > current {
+            let size = "\(maxBytes >> 20)m"
+            let full = try Runner.run("hdiutil", ["resize", "-size", size, "-stdinpass", imageURL.path], stdin: pass, timeout: 1800)
+            if !full.succeeded {
+                let imageOnly = try Runner.run("hdiutil", ["resize", "-size", size, "-imageonly", "-stdinpass", imageURL.path],
+                                               stdin: pass, timeout: 600)
+                guard imageOnly.succeeded else { throw Self.growError(imageOnly.stderr) }
+            }
+        }
+
+        // Раздел занимает весь образ, кроме карты разделов в начале и её копии в конце.
+        let target = (sizeLimit ?? maxBytes) - (16 << 20)
+        try withRawDevices(pass) { whole, partition in
+            func partitionSize() -> Int64 { (Self.diskInfo(partition)?["Size"] as? NSNumber)?.int64Value ?? 0 }
+            func output(_ result: CommandResult) -> String {
+                (String(decoding: result.stdout, as: UTF8.self) + "\n" + result.stderr).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            let resize = ["apfs", "resizeContainer", partition, "0"]
+            var log: [String] = []
+            if partitionSize() < target {
+                log.append(output(try Runner.run("diskutil", resize, timeout: 1800)))
+            }
+            if partitionSize() < target {
+                // «The new size must be different than the existing size»: раздел упирается в конец
+                // прежней карты. repairDisk переносит её копию в новый конец образа; спрашивает
+                // подтверждение — отвечаем «y», данные раздела он не трогает.
+                log.append(output(try Runner.run("diskutil", ["repairDisk", whole], stdin: Data("y\n".utf8), timeout: 600)))
+                log.append(output(try Runner.run("diskutil", resize, timeout: 1800)))
+            }
+            let reached = partitionSize()
+            guard reached >= target else {
+                let layout = (try? Runner.run("diskutil", ["list", whole], timeout: 30)).map(output) ?? ""
+                throw VaultError.growFailed("раздел занимает \(reached) байт из \(target). " + (log + [layout]).joined(separator: "\n"))
+            }
+        }
+    }
+
+    /// Подключает образ без монтирования (файлы не видны ни Finder, ни программам), отдаёт
+    /// диск образа и раздел на нём и отключает, что бы ни случилось.
+    private func withRawDevices<T>(_ pass: Data, _ body: (_ whole: String, _ partition: String) throws -> T) throws -> T {
+        let attached = try Runner.run("hdiutil", ["attach", "-nomount", "-nobrowse", "-plist", "-stdinpass", imageURL.path],
+                                      stdin: pass, timeout: 180)
+        guard attached.succeeded else { throw Self.growError(attached.stderr) }
+        let devices = Self.devices(fromAttachPlist: attached.stdout)
+        guard let whole = devices.whole else {
+            throw VaultError.growFailed("hdiutil не сообщил, каким диском подключился образ")
+        }
+        defer {
+            if (try? Runner.run("hdiutil", ["detach", whole], timeout: 120))?.succeeded != true {
+                _ = try? Runner.run("hdiutil", ["detach", "-force", whole], timeout: 120)
+            }
+        }
+        guard let partition = devices.partition else {
+            throw VaultError.growFailed("в образе не нашёлся раздел с файловой системой")
+        }
+        return try body(whole, partition)
+    }
+
+    /// Из ответа `hdiutil attach -plist`: весь диск образа (/dev/diskN) и раздел на нём
+    /// с файловой системой (/dev/diskNsM). У APFS в ответе есть ещё синтезированный контейнер —
+    /// отдельный диск, — поэтому раздел ищем именно на диске образа.
+    static func devices(fromAttachPlist data: Data) -> (whole: String?, partition: String?) {
+        guard let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              let entities = plist["system-entities"] as? [[String: Any]] else { return (nil, nil) }
+        let entries = entities.compactMap { entity -> (device: String, hint: String)? in
+            guard let device = entity["dev-entry"] as? String else { return nil }
+            return (device, entity["content-hint"] as? String ?? "")
+        }
+        func isWhole(_ device: String) -> Bool {
+            let name = device.dropFirst("/dev/disk".count)
+            return device.hasPrefix("/dev/disk") && !name.isEmpty && name.allSatisfy(\.isNumber)
+        }
+        let wholes = entries.filter { isWhole($0.device) }
+        guard let whole = (wholes.first { $0.hint.contains("partition_scheme") } ?? wholes.first)?.device else { return (nil, nil) }
+        let slices = entries.map(\.device).filter {
+            $0.hasPrefix(whole + "s") && $0.dropFirst(whole.count + 1).allSatisfy(\.isNumber)
+        }
+        // Служебный раздел EFI, если он есть, идёт первым и маленький — нужен последний.
+        let partition = slices.max { (Int($0.dropFirst(whole.count + 1)) ?? 0) < (Int($1.dropFirst(whole.count + 1)) ?? 0) }
+        return (whole, partition)
+    }
+
+    /// Что diskutil знает о разделе: «Content» (Apple_APFS, Apple_HFS…), «Size» и прочее.
+    static func diskInfo(_ device: String) -> [String: Any]? {
+        guard let result = try? Runner.run("diskutil", ["info", "-plist", device], timeout: 30), result.succeeded else { return nil }
+        return try? PropertyListSerialization.propertyList(from: result.stdout, format: nil) as? [String: Any]
+    }
+
+    static func growError(_ stderr: String) -> VaultError {
+        switch passwordError(stderr) {
+        case .mountFailed(let message): return .growFailed(message)
+        case let other: return other
+        }
     }
 
     /// Смена пароля. Ключ шифрования данных при этом не меняется — перешифровывается только

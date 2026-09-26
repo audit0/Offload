@@ -148,6 +148,55 @@ func checksSafe() {
                     matching: { if case VaultError.headerRejected = $0 { return true }; return false })
     }
 
+    section("Сейф: увеличение предела") {
+        let folder = scratch.appendingPathComponent("safe-grow", isDirectory: true)
+        try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        let password = "пароль для роста сейфа 2026 года"
+        let capacity: (URL) throws -> Int64 = { mount in
+            Int64(try mount.resourceValues(forKeys: [.volumeTotalCapacityKey]).volumeTotalCapacity ?? 0)
+        }
+
+        // APFS — так Offload создаёт сейфы сам.
+        let vault = SecretsVault(imageURL: folder.appendingPathComponent("Растущий.sparsebundle", isDirectory: true))
+        try vault.create(password: password, maxBytes: 200 << 20, volumeName: "OffloadCheckGrow")
+        var mount = try vault.attach(password: password)
+        let before = try capacity(mount)
+        try write("должно пережить рост", to: mount.appendingPathComponent("данные.txt"))
+        expectError("открытый сейф не растягивается", { try vault.grow(to: 1 << 30, password: password) },
+                    matching: { ($0 as? VaultError) == .busy })
+        try SecretsVault.detach(mount)
+        expectError("уменьшить нельзя", { try vault.grow(to: 100 << 20, password: password) },
+                    matching: { if case VaultError.growFailed = $0 { return true }; return false })
+        expectError("чужим паролем не растягивается", { try vault.grow(to: 1 << 30, password: "совсем не тот пароль 2026 года") })
+        try vault.grow(to: 1 << 30, password: password)
+        check((vault.sizeLimit ?? 0) >= 1 << 30, "предел образа вырос: \(vault.sizeLimit ?? 0)")
+        check(vault.allocatedBytes < 200 << 20, "образ остался разрежённым: \(vault.allocatedBytes) байт")
+        check(vault.currentMountPoint() == nil, "после роста сейф закрыт, как и был")
+        mount = try vault.attach(password: password)
+        let after = try capacity(mount)
+        check(after > 900 << 20 && after > before * 3, "файловая система внутри заняла новое место: было \(before), стало \(after)")
+        check((try? String(contentsOf: mount.appendingPathComponent("данные.txt"), encoding: .utf8)) == "должно пережить рост",
+              "содержимое сейфа после роста на месте")
+        try SecretsVault.detach(mount)
+        try vault.grow(to: 1 << 30, password: password)
+        check(vault.isEncrypted, "повтор с тем же пределом проходит, сейф по-прежнему зашифрован")
+
+        // HFS+ — такие образы бывают, если их создавали вручную. Растягивать их Offload
+        // отказывается до того, как что-то изменит: образ остаётся как был и открывается.
+        let hfsImage = folder.appendingPathComponent("Старый HFS.sparsebundle", isDirectory: true)
+        try Runner.check("hdiutil", ["create", "-size", "200m", "-type", "SPARSEBUNDLE", "-fs", "HFS+J", "-encryption", "AES-256",
+                                     "-volname", "OffloadCheckHFS", "-stdinpass", "-quiet", hfsImage.path],
+                         stdin: Data(password.utf8), timeout: 300)
+        let hfs = SecretsVault(imageURL: hfsImage)
+        let hfsLimit = hfs.sizeLimit
+        expectError("сейф на HFS+ не растягивается", { try hfs.grow(to: 1 << 30, password: password) },
+                    matching: { if case VaultError.growFailed = $0 { return true }; return false })
+        check(hfs.sizeLimit == hfsLimit, "образ HFS+ не изменился: \(hfs.sizeLimit ?? 0)")
+        check(hfs.currentMountPoint() == nil, "после отказа образ HFS+ отключён")
+        mount = try hfs.attach(password: password)
+        try SecretsVault.detach(mount)
+    }
+
     section("Сейф: зашифровать перенесённое") {
         let hostMount = try safeHostMount("safe-host.sparseimage", fs: "ExFAT", volumeName: "OFFSAFEHOST", sizeMB: 2048)
         defer { _ = try? Runner.run("hdiutil", ["detach", "-force", hostMount.path], timeout: 60) }

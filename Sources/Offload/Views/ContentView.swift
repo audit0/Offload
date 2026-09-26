@@ -22,6 +22,7 @@ struct ContentView: View {
                 Group {
                     switch app.section ?? .overview {
                     case .overview: OverviewView()
+                    case .cleanup: CleanupView()
                     case .safe: SafeView()
                     case .space: SpaceView()
                     case .history: HistoryView()
