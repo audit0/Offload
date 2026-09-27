@@ -33,6 +33,10 @@ public struct ContentReport: Sendable, Equatable {
     /// файлы (uchg, uappnd). Удаление оригинала остановилось бы на них посередине.
     public var undeletable = 0
     public var undeletableExamples: [String] = []
+    /// Файлы с именем «._X» рядом с файлом X. На exFAT и FAT macOS хранит в «._X» расширенные
+    /// атрибуты X и перезаписывает такой файл сама — положить туда ваш файл целым нельзя.
+    public var appleDoubleNamed = 0
+    public var appleDoubleExamples: [String] = []
 
     public init() {}
 }
@@ -148,6 +152,12 @@ public enum Inspector {
             case FTS_F, FTS_DEFAULT:
                 report.files += 1
                 if name == ".DS_Store" { report.dsStoreFiles += 1 }
+                if name.hasPrefix("._"), name.count > 2,
+                   FileManager.default.fileExists(atPath: ((path as NSString).deletingLastPathComponent as NSString)
+                       .appendingPathComponent(String(name.dropFirst(2)))) {
+                    report.appleDoubleNamed += 1
+                    if report.appleDoubleExamples.count < 5 { report.appleDoubleExamples.append(relative(path)) }
+                }
                 noteRegistered(name, path)
                 if let status = entry.pointee.fts_statp {
                     let logical = Int64(status.pointee.st_size)

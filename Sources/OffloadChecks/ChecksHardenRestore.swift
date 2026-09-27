@@ -239,27 +239,41 @@ func checksHardenRestore() {
         let rules = SafetyRules(home: scratch.appendingPathComponent("home-audit", isDirectory: true))
         let mover = SafeMover(rules: rules)
 
-        // Файлы человека с именами на «._» рядом с одноимёнными: с FAT-флешки, из Windows. Один — просто
-        // данные, другой — в формате AppleDouble. Оба в списке сумм и обязаны вернуться.
+        // Файлы человека с именами на «._» рядом с одноимёнными: с FAT-флешки, из Windows. На exFAT
+        // их положить нельзя — macOS хранит там в «._X» атрибуты X и перезапишет их, — поэтому план отказывает.
         let photos = rules.home.appendingPathComponent("Downloads/photos", isDirectory: true)
         try write("jpeg", to: photos.appendingPathComponent("photo.jpg"))
         try write("данные человека", to: photos.appendingPathComponent("._photo.jpg"))
+        let refused = mover.plan(source: photos, volume: volume)
+        check(!refused.check.isOK && refused.check.blockers.joined().contains("._photo.jpg"),
+              "на exFAT перенос с настоящими «._»-файлами отклоняется заранее, с объяснением: \(refused.check.blockers)")
+
+        // На APFS (как и в сейфе) они переносятся и обязаны вернуться — раньше возврат их пропускал
+        // и удалял вместе с архивом. Один — просто данные, другой — в формате AppleDouble.
+        let hfs = try hardenMount("harden-audit-apfs.sparseimage", fs: "APFS", volumeName: "OFFAUDAPFS")
+        defer { _ = try? Runner.run("hdiutil", ["detach", "-force", hfs.path], timeout: 60) }
+        guard let hfsVolume = Volumes.info(for: hfs) else { throw CopyError.unreadable(hfs.path) }
         try write("jpeg3", to: photos.appendingPathComponent("photo3.jpg"))
         try Data([0x00, 0x05, 0x16, 0x07, 0x00, 0x02, 0x00, 0x00, 0x55]).write(to: photos.appendingPathComponent("._photo3.jpg"))
-        try write("jpeg2", to: photos.appendingPathComponent("photo2.jpg"))
-        let record = try mover.execute(mover.plan(source: photos, volume: volume), deleteOriginal: true, acceptCautions: true)
-        let archive = URL(fileURLWithPath: record.archivedPath)
-        // А этот двойник macOS «наплодила» уже на диске: его в списке нет, и возвращать его не надо.
-        try Data([0x00, 0x05, 0x16, 0x07, 0x00, 0x02, 0x00, 0x00]).write(to: archive.appendingPathComponent("._photo2.jpg"))
+        let record = try mover.execute(mover.plan(source: photos, volume: hfsVolume), deleteOriginal: true, acceptCautions: true)
         let outcome = try mover.restore(record, deleteArchive: true)
         check(outcome.record.restored, "возврат прошёл: \(outcome.notes)")
         check((try? String(contentsOf: photos.appendingPathComponent("._photo.jpg"), encoding: .utf8)) == "данные человека",
               "настоящий файл «._photo.jpg» вернулся, а не удалён вместе с архивом")
-        check(fm.fileExists(atPath: photos.appendingPathComponent("._photo3.jpg").path),
-              "файл человека в формате AppleDouble из списка сумм вернулся")
-        check(!fm.fileExists(atPath: photos.appendingPathComponent("._photo2.jpg").path),
-              "служебный двойник, созданный macOS на диске, не вернулся")
-        check(!fm.fileExists(atPath: archive.path), "архив удалён после сверенного возврата")
+        check(fm.fileExists(atPath: photos.appendingPathComponent("._photo3.jpg").path), "файл человека в формате AppleDouble вернулся")
+        check(!fm.fileExists(atPath: record.archivedPath), "архив удалён после сверенного возврата")
+
+        // А служебный двойник, который macOS «наплодила» на exFAT уже после переноса, в списке сумм не значится
+        // и обратно не везётся.
+        let clean = rules.home.appendingPathComponent("Downloads/clean", isDirectory: true)
+        try write("jpeg2", to: clean.appendingPathComponent("photo2.jpg"))
+        let cleanRecord = try mover.execute(mover.plan(source: clean, volume: volume), deleteOriginal: true, acceptCautions: true)
+        try Data([0x00, 0x05, 0x16, 0x07, 0x00, 0x02, 0x00, 0x00]).write(
+            to: URL(fileURLWithPath: cleanRecord.archivedPath).appendingPathComponent("._photo2.jpg"))
+        _ = try mover.restore(cleanRecord, deleteArchive: false)
+        check(fm.fileExists(atPath: clean.appendingPathComponent("photo2.jpg").path), "файл вернулся")
+        check(!fm.fileExists(atPath: clean.appendingPathComponent("._photo2.jpg").path),
+              "служебный двойник, созданный macOS на exFAT, не вернулся")
 
         // Подготовленный диск: на месте будущего списка сумм — ссылка на файл с Mac.
         let victim = rules.home.appendingPathComponent("Documents/диплом.docx")

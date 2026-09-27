@@ -273,6 +273,9 @@ extension SafetyRules {
         if content.taggedFiles > 0 {
             check.notes.append("У \(content.taggedFiles) объектов есть метки Finder, комментарии или другие расширенные атрибуты. Данные и права копируются, а эти пометки — нет: после возврата их не будет.")
         }
+        if volume.createsAppleDouble, content.appleDoubleNamed > 0 {
+            check.blockers.append("На \(volume.fsDisplayName) macOS хранит служебные данные файла X в файле «._X» и перезаписывает его сама, а у вас такие файлы есть (\(content.appleDoubleExamples.prefix(3).joined(separator: ", "))). Целыми они туда не лягут — переносите в сейф или на диск APFS.")
+        }
         if volume.createsAppleDouble {
             check.notes.append("macOS создаст рядом служебные файлы ._* — Offload удалит их после сверки.")
         }

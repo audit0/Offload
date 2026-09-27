@@ -381,9 +381,10 @@ enum SafeFile {
         defer { try? handle.close() }
         var info = stat()
         guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size <= limit else { return nil }
-        guard let data = try? handle.read(upToCount: limit + 1) else { return nil }
-        let result = data ?? Data()
-        return result.count <= limit ? result : nil
+        // Пустой файл read отдаёт как nil — это не ошибка, а ноль байт.
+        let data: Data
+        do { data = try handle.read(upToCount: limit + 1) ?? Data() } catch { return nil }
+        return data.count <= limit ? data : nil
     }
 
     /// Создаёт новый файл: существующий файл или подложенная на его месте ссылка — ошибка, а не перезапись.
