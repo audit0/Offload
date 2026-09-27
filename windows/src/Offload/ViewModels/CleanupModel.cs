@@ -168,13 +168,16 @@ public sealed class CleanupModel : Observable
     /// <summary>Освободилось на компьютере — по замеру свободного места.</summary>
     public long? Freed => freeBefore is { } before && freeNow is { } now ? now - before : null;
 
+    /// <summary>Свободно на компьютере по последнему замеру.</summary>
+    public long? FreeNow => freeNow;
+
     void SetAnswer(QuestionKind kind, Answer answer)
     {
         answers = new Dictionary<QuestionKind, Answer>(answers) { [kind] = answer };
         RaiseAnswers();
     }
 
-    void RaiseAnswers() => Raise(nameof(Asking), nameof(PendingBytes), nameof(TrashedItems), nameof(HasDone), nameof(IsSettled), nameof(Freed),
+    void RaiseAnswers() => Raise(nameof(Asking), nameof(PendingBytes), nameof(TrashedItems), nameof(HasDone), nameof(IsSettled), nameof(Freed), nameof(FreeNow),
                                  nameof(Hints), "AnswerVersion", nameof(IsBusy));
 
     /// <summary>«Да» на вопрос о сейфе требует открытого сейфа: сначала спросить пароль.</summary>

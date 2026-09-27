@@ -25,7 +25,6 @@ public partial class CleanupView : UserControl
     string? shownForgetProblem;
     List<string>? shownIgnored;
     string? shownIgnoreProblem;
-    (long? Value, DateTime At) freeNow;
 
     /// <summary>Где разбор ищет — чтобы было видно, что личное в AppData он не трогает.</summary>
     static readonly (string Glyph, string Title)[] PlaceList =
@@ -392,18 +391,8 @@ public partial class CleanupView : UserControl
     {
         if (Model.TrashedItems.Count > 0)
             return "Удалённое лежит в Корзине и занимает место, пока её не очистят, — ниже можно удалить это насовсем.";
-        if (FreeNow() is { } now) return $"Свободно на компьютере {Format.Bytes(now)}.";
+        if (Model.HasDone && Model.FreeNow is { } now) return $"Свободно на компьютере {Format.Bytes(now)}.";
         return "Ответы запомнены: что вы вернули из Корзины, больше не предложу.";
-    }
-
-    /// <summary>Сколько свободно на системном диске сейчас. Модель замеряет это сама, но наружу отдаёт только разницу,
-    /// поэтому здесь — свой замер, не чаще раза в пару секунд. В демонстрации диск не замеряется.</summary>
-    long? FreeNow()
-    {
-        if (Demo.IsOn || !Model.HasDone) return null;
-        if (DateTime.UtcNow - freeNow.At > TimeSpan.FromSeconds(2))
-            freeNow = (Volumes.Info(app.Rules.Home)?.AvailableBytes, DateTime.UtcNow);
-        return freeNow.Value;
     }
 
     /// <summary>Docker стоит, но не запущен: что в нём можно убрать, узнать нельзя — сказать, как это исправить.</summary>
