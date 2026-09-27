@@ -2,9 +2,66 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:Offload">
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
-        <StackPanel Margin="32" MaxWidth="980">
-            <TextBlock Text="Space" Style="{StaticResource Title}" />
-        </StackPanel>
-    </ScrollViewer>
+    <DockPanel>
+        <!-- Где мы, сколько здесь всего и на что это делится по пометкам. -->
+        <Border DockPanel.Dock="Top" Padding="28,24,28,16" BorderThickness="0,0,0,1" BorderBrush="#14000000">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="UpButton" Padding="12,7" Click="Up_Click" ToolTip="Наверх" VerticalAlignment="Center">
+                        <TextBlock Text="&#xE76B;" FontFamily="{StaticResource IconFont}" FontSize="12" />
+                    </Button>
+                    <StackPanel Grid.Column="1" Margin="12,0,12,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="TitleText" Style="{StaticResource Title}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                        <TextBlock x:Name="SubtitleText" Style="{StaticResource Caption}" Margin="0,1,0,0" />
+                    </StackPanel>
+                    <ProgressBar x:Name="ScanSpinner" Grid.Column="2" Style="{StaticResource Spinner}" Margin="0,0,12,0" Visibility="Collapsed" />
+                    <Button Grid.Column="3" Click="Rescan_Click" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}" FontSize="13" VerticalAlignment="Center" Margin="0,1,8,0" />
+                            <TextBlock Text="Пересчитать" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+                <StackPanel x:Name="Breakdown" Margin="0,16,0,0" Visibility="Collapsed">
+                    <local:StackedBar x:Name="Parts" BarHeight="8" />
+                    <WrapPanel Margin="0,9,0,0">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,18,0">
+                            <Ellipse Width="8" Height="8" Fill="{StaticResource Ink}" VerticalAlignment="Center" Margin="0,1,6,0" />
+                            <TextBlock Text="Можно перенести" Style="{StaticResource Caption}" Margin="0,0,6,0" />
+                            <TextBlock x:Name="MovableText" Style="{StaticResource Caption}" Foreground="{StaticResource Ink}" FontWeight="Medium" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,18,0">
+                            <Ellipse Width="8" Height="8" Fill="{StaticResource Faint}" VerticalAlignment="Center" Margin="0,1,6,0" />
+                            <TextBlock Text="С оговорками" Style="{StaticResource Caption}" Margin="0,0,6,0" />
+                            <TextBlock x:Name="CautionText" Style="{StaticResource Caption}" Foreground="{StaticResource Ink}" FontWeight="Medium" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="8" Height="8" Fill="{StaticResource Line}" VerticalAlignment="Center" Margin="0,1,6,0" />
+                            <TextBlock Text="Не трогать" Style="{StaticResource Caption}" Margin="0,0,6,0" />
+                            <TextBlock x:Name="BlockedText" Style="{StaticResource Caption}" Foreground="{StaticResource Ink}" FontWeight="Medium" />
+                        </StackPanel>
+                    </WrapPanel>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <Grid>
+            <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                <StackPanel Margin="18,10,18,16">
+                    <StackPanel x:Name="RowsPanel" />
+                    <TextBlock x:Name="HiddenText" Style="{StaticResource Caption}" Margin="10,12,10,12" Visibility="Collapsed" />
+                </StackPanel>
+            </ScrollViewer>
+            <StackPanel x:Name="EmptyScanning" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed">
+                <ProgressBar Style="{StaticResource Spinner}" HorizontalAlignment="Center" />
+                <TextBlock Text="Считаю размеры…" Style="{StaticResource Callout}" Margin="0,10,0,0" HorizontalAlignment="Center" />
+            </StackPanel>
+        </Grid>
+    </DockPanel>
 </UserControl>

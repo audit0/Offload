@@ -1,0 +1,65 @@
+<local:SheetWindow x:Class="Offload.HistoryImportSheet"
+                   xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                   xmlns:local="clr-namespace:Offload"
+                   Width="600" Glyph="&#xE710;" Heading="Добавить перенесённое вручную"
+                   Subtitle="Для папок и файлов, которые вы уже перенесли на внешний диск без Offload. Запись появится в списке, и вернуть их на компьютер можно будет как обычно — со сверкой.">
+    <!-- Регистрация переноса, сделанного без Offload. -->
+    <StackPanel>
+        <Border CornerRadius="10" Background="#0A000000">
+            <StackPanel>
+                <Grid Margin="14,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="На диске" VerticalAlignment="Center" />
+                    <TextBlock x:Name="ArchiveText" Grid.Column="1" Text="не выбрано" Foreground="{StaticResource Muted}" TextTrimming="CharacterEllipsis"
+                               HorizontalAlignment="Right" VerticalAlignment="Center" Margin="12,0,12,0" />
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Button Content="Папку…" Style="{StaticResource SmallButton}" Click="PickArchiveFolder_Click" ToolTip="Что лежит на внешнем диске — папка" />
+                        <Button Content="Файл…" Style="{StaticResource SmallButton}" Margin="6,0,0,0" Click="PickArchiveFile_Click"
+                                ToolTip="Что лежит на внешнем диске — файл" />
+                    </StackPanel>
+                </Grid>
+                <Separator Style="{StaticResource RowDivider}" />
+                <Grid Margin="14,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Было на компьютере в папке" VerticalAlignment="Center" />
+                    <TextBlock x:Name="ParentText" Grid.Column="1" Text="не выбрано" Foreground="{StaticResource Muted}" TextTrimming="CharacterEllipsis"
+                               HorizontalAlignment="Right" VerticalAlignment="Center" Margin="12,0,12,0" />
+                    <Button Grid.Column="2" Content="Выбрать…" Style="{StaticResource SmallButton}" Click="PickParent_Click" />
+                </Grid>
+                <Separator Style="{StaticResource RowDivider}" />
+                <local:FormRow Title="Под именем">
+                    <!-- Подсказка в пустом поле — своя: у общего стиля TextBox её нет. -->
+                    <Grid Width="280">
+                        <TextBox x:Name="NameBox" TextChanged="Name_Changed" />
+                        <TextBlock x:Name="NameHint" Text="имя папки или файла" Foreground="{StaticResource Faint}" IsHitTestVisible="False"
+                                   Margin="10,0,10,0" VerticalAlignment="Center" />
+                    </Grid>
+                </local:FormRow>
+            </StackPanel>
+        </Border>
+        <CheckBox x:Name="RemovedCheck" Content="Оригинал уже удалён с компьютера" IsChecked="True" Margin="0,14,0,0" />
+        <Grid Margin="0,12,0,0">
+            <TextBox x:Name="NoteBox" TextWrapping="Wrap" AcceptsReturn="True" MaxLines="3" MinLines="1" TextChanged="Note_Changed" />
+            <TextBlock x:Name="NoteHint" Text="Заметка, например «упаковано в zip» (необязательно)" Foreground="{StaticResource Faint}"
+                       IsHitTestVisible="False" Margin="10,6,10,0" VerticalAlignment="Top" />
+        </Grid>
+        <local:NoticeView x:Name="ErrorNotice" Kind="Error" Margin="0,12,0,0" Visibility="Collapsed" />
+    </StackPanel>
+
+    <local:SheetWindow.Actions>
+        <StackPanel Orientation="Horizontal">
+            <Button Content="Отмена" IsCancel="True" Click="Cancel_Click" />
+            <Button x:Name="AddButton" Content="Добавить" Style="{StaticResource ProminentButton}" IsDefault="True" Margin="8,0,0,0" IsEnabled="False"
+                    Click="Add_Click" />
+        </StackPanel>
+    </local:SheetWindow.Actions>
+</local:SheetWindow>

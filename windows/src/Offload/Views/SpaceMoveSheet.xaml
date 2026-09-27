@@ -1,0 +1,110 @@
+<local:SheetWindow x:Class="Offload.SpaceMoveSheet"
+                   xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                   xmlns:local="clr-namespace:Offload"
+                   Width="600" Glyph="&#xEDA2;">
+    <!-- Перенос одного объекта: куда (с замком), проверка, план с оговорками, копирование со сверкой, итог. -->
+    <StackPanel>
+        <!-- Когда класть некуда, эта же строка и объясняет почему. -->
+        <local:TargetSummary ProblemTone="Caution" />
+
+        <!-- Сейф закрыт — открываем прямо здесь, не уходя из окна переноса. -->
+        <StackPanel x:Name="UnlockPanel" Margin="0,14,0,0" Visibility="Collapsed">
+            <local:SafeUnlockRow />
+            <Button x:Name="OpenInsteadButton" Style="{StaticResource LinkButton}" Margin="0,10,0,0" Click="OpenInstead_Click">
+                <TextBlock x:Name="OpenInsteadText" FontSize="11.5" />
+            </Button>
+        </StackPanel>
+
+        <StackPanel x:Name="StagePanel" Margin="0,14,0,0" Visibility="Collapsed">
+            <!-- Проверка. -->
+            <StackPanel x:Name="InspectingPanel" Orientation="Horizontal" Visibility="Collapsed">
+                <ProgressBar Style="{StaticResource Spinner}" />
+                <TextBlock x:Name="InspectingText" Style="{StaticResource Body}" Foreground="{StaticResource Muted}" Margin="10,0,0,0"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+
+            <!-- План. -->
+            <StackPanel x:Name="ReadyPanel" Visibility="Collapsed">
+                <Border CornerRadius="10" Padding="12" Background="#0A000000">
+                    <StackPanel>
+                        <local:InfoRow Title="Размер">
+                            <TextBlock x:Name="SizeText" />
+                        </local:InfoRow>
+                        <local:InfoRow Title="Куда" Margin="0,8,0,0">
+                            <TextBlock x:Name="TargetText" TextTrimming="CharacterEllipsis" />
+                        </local:InfoRow>
+                    </StackPanel>
+                </Border>
+                <local:NoticeView x:Name="OpenNotice" Kind="Warning" Margin="0,12,0,0"
+                                  Text="Копия ляжет на диск открыто: кто получит диск, прочтёт её без пароля. Чтобы зашифровать, выберите внизу боковой панели «В сейф»." />
+                <local:NoticeView x:Name="BlockedNotice" Kind="Error" Margin="0,12,0,0" />
+                <ItemsControl x:Name="CautionList" Focusable="False">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <local:NoticeView Kind="Warning" Text="{Binding}" Margin="0,12,0,0" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <CheckBox x:Name="AcceptCheck" Content="Понимаю, переносить всё равно" Margin="0,12,0,0" Click="Accept_Click" />
+                <ItemsControl x:Name="BlockerList" Focusable="False">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <local:NoticeView Kind="Error" Text="{Binding}" Margin="0,12,0,0" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <ItemsControl x:Name="NoteList" Focusable="False">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <local:NoticeView Kind="Info" Text="{Binding}" Margin="0,12,0,0" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <CheckBox x:Name="DeleteCheck" Content="Удалить оригинал после сверки" Margin="0,12,0,0" Click="Delete_Click" />
+                <TextBlock x:Name="DeleteText" Style="{StaticResource Caption}" Margin="26,4,0,0" />
+            </StackPanel>
+
+            <!-- Копирование и сверка. -->
+            <StackPanel x:Name="RunningPanel" Visibility="Collapsed">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="PhaseText" FontWeight="Medium" />
+                    <TextBlock x:Name="BytesText" Grid.Column="1" Style="{StaticResource Callout}" />
+                </Grid>
+                <ProgressBar x:Name="RunProgress" Maximum="1" Margin="0,8,0,0" />
+                <TextBlock x:Name="ItemText" Style="{StaticResource Caption}" Margin="0,8,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+
+            <!-- Итог. -->
+            <StackPanel x:Name="DonePanel" Visibility="Collapsed">
+                <local:NoticeView x:Name="DoneNotice" Kind="Success" />
+                <StackPanel x:Name="EncryptedRow" Orientation="Horizontal" Margin="0,10,0,0">
+                    <TextBlock Text="&#xE72E;" Style="{StaticResource Icon}" Foreground="{StaticResource Ink}" Margin="0,0,8,0" />
+                    <TextBlock Text="Лежит в сейфе — зашифровано." Style="{StaticResource Body}" FontSize="12.5" VerticalAlignment="Center" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                    <Button Content="Показать на диске" Click="RevealArchive_Click" />
+                    <TextBlock Text="Вернуть обратно можно в разделе «Перенесённое»." Style="{StaticResource Caption}" Margin="10,0,0,0"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+            </StackPanel>
+
+            <local:NoticeView x:Name="FailedNotice" Kind="Error" Visibility="Collapsed" />
+        </StackPanel>
+    </StackPanel>
+
+    <local:SheetWindow.Actions>
+        <StackPanel Orientation="Horizontal">
+            <Button x:Name="CancelButton" Content="Отменить" Click="Cancel_Click" Visibility="Collapsed" />
+            <Button x:Name="CloseButton" Content="Закрыть" Click="Close_Click" Visibility="Collapsed" />
+            <Button x:Name="RunButton" Content="Перенести" Style="{StaticResource ProminentButton}" Margin="8,0,0,0"
+                    Click="Run_Click" Visibility="Collapsed" />
+            <Button x:Name="DoneButton" Content="Готово" Style="{StaticResource ProminentButton}"
+                    Click="Close_Click" Visibility="Collapsed" />
+        </StackPanel>
+    </local:SheetWindow.Actions>
+</local:SheetWindow>
