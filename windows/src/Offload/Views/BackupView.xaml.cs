@@ -27,6 +27,7 @@ public partial class BackupView : UserControl
             app.PropertyChanged += Changed;
             app.Backup.PropertyChanged += Changed;
             app.Safe.PropertyChanged += Changed;
+            app.Pro.PropertyChanged += Changed;
             Update();
         };
         Unloaded += (_, _) =>
@@ -34,6 +35,7 @@ public partial class BackupView : UserControl
             app.PropertyChanged -= Changed;
             app.Backup.PropertyChanged -= Changed;
             app.Safe.PropertyChanged -= Changed;
+            app.Pro.PropertyChanged -= Changed;
         };
     }
 
@@ -79,6 +81,7 @@ public partial class BackupView : UserControl
             CopiedText.Text = Format.Bytes(model.CopiedBytes);
             RunButton.Visibility = Show(!model.IsRunning);
             RunButton.IsEnabled = model.Sources.Count > 0;
+            ProTag.Update(RunButton, !app.Pro.Allows(ProFeature.ProjectBackup));
 
             if (model.Report is { } report)
             {

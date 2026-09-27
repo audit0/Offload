@@ -6,6 +6,8 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.Management" Version="10.0.0" />
+    <!-- Ed25519 для ключей Offload Pro: в .NET своего нет. Только проверка подписи, без сети. -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Offload.Checks" />

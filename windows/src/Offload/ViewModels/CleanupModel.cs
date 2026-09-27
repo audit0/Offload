@@ -196,15 +196,25 @@ public sealed class CleanupModel : Observable
             return;
         }
         if (NeedsSafe(kind, app)) return;
+        if (kind.ProFeature() is { } feature && !app.Pro.Allows(feature))
+        {
+            app.Pro.Offer(feature);
+            return;
+        }
         SetAnswer(kind, Answer.Queued);
         queue.Add(kind);
         Pump(app);
     }
 
-    /// <summary>«Разрешить всё»: «да» на каждый вопрос, кроме установщиков. Ответ — остался ли вопрос о сейфе ждать пароля.</summary>
+    /// <summary>Вопрос из Offload Pro, а Pro на этом компьютере нет: «да» открывает окно Pro, «не сейчас» работает как всегда.</summary>
+    public bool IsLocked(QuestionKind kind, AppModel app) => kind.ProFeature() is { } feature && !app.Pro.Allows(feature);
+
+    /// <summary>«Разрешить всё»: «да» на каждый вопрос, кроме установщиков и вопросов из Offload Pro без ключа.
+    /// Ответ — остался ли вопрос о сейфе ждать пароля.</summary>
     public bool RespondAll(AppModel app)
     {
-        foreach (var question in Asking.Where(q => q.AnsweredTogether && !NeedsSafe(q.Kind, app))) Respond(question.Kind, true, app);
+        foreach (var question in Asking.Where(q => q.AnsweredTogether && !NeedsSafe(q.Kind, app) && !IsLocked(q.Kind, app)))
+            Respond(question.Kind, true, app);
         return Asking.Any(q => q.Kind == QuestionKind.Of(CleanupModule.Safe));
     }
 
@@ -565,7 +575,9 @@ public sealed class CleanupModel : Observable
         Clear();
         var rules = app.Rules;
         var memory = SafeGet(() => store?.LastDecisions()) ?? new Dictionary<string, CleanupAction>(Paths.Comparer);
-        var habitModel = SafeGet(() => store?.History()) is { } history ? new HabitModel(history, rules.Home) : null;
+        // Привычки — в Pro. Решения запоминаются и без него: купил — привычки действуют сразу.
+        var habitModel = app.Pro.Allows(ProFeature.Habits) && SafeGet(() => store?.History()) is { } history
+            ? new HabitModel(history, rules.Home) : null;
         var ignoredPaths = (SafeGet(() => store?.IgnoredPaths()) ?? []).ToHashSet(Paths.Comparer);
         if (Demo.IsOn)
         {

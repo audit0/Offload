@@ -35,6 +35,10 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = app;
         StatusPanel.App = app;
+        ProRowHost.Content = new ProSidebarRow(app);
+        app.Pro.Offered += ShowPro;
+        // Пробный период считается днями: окно могло простоять открытым со вчера.
+        Activated += (_, _) => app.Pro.Refresh();
         SidebarList.ItemsSource = items;
         app.PropertyChanged += App_PropertyChanged;
         app.History.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(HistoryModel.PendingCount)) UpdateBadges(); };
@@ -74,6 +78,17 @@ public partial class MainWindow : Window
                 "Закрыть принудительно", "Оставить открытым", Tone.Caution, Glyphs.Lock);
             if (force) app.Safe.Close(app, force: true);
         }
+    }
+
+    ProSheet? proSheet;
+
+    /// <summary>Окно «Offload Pro» — одно: уже открыто — просто вперёд.</summary>
+    void ShowPro(ProFeature? reason)
+    {
+        if (proSheet != null) { proSheet.Activate(); return; }
+        proSheet = new ProSheet(app, reason) { Owner = this };
+        proSheet.Closed += (_, _) => proSheet = null;
+        proSheet.ShowDialog();
     }
 
     void UpdateBadges()

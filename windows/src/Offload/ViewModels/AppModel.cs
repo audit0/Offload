@@ -64,6 +64,8 @@ public sealed class AppModel : Observable
         }
     }
 
+    /// <summary>Первым: он смотрит, пользовались ли Offload раньше, — до того как остальные модели заведут свои файлы.</summary>
+    public ProModel Pro { get; } = new();
     public SafetyRules Rules { get; } = new();
     public SafeModel Safe { get; } = new();
     public OverviewModel Overview { get; } = new();

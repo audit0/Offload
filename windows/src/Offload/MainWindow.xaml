@@ -19,6 +19,7 @@
             <Border Background="#47FFFFFF">
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Bottom" Margin="10">
+                        <ContentControl x:Name="ProRowHost" Focusable="False" Margin="0,0,0,4" />
                         <local:SafeStatusPanel x:Name="StatusPanel" />
                         <Button Style="{StaticResource LinkButton}" Margin="6,10,0,0" Click="About_Click" Foreground="{StaticResource Muted}">
                             <TextBlock FontSize="11.5">О программе Offload</TextBlock>
