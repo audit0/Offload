@@ -5,7 +5,7 @@ import OffloadCore
 /// Порядок разделов — это и есть сценарий: посмотреть, что с Mac; завести сейф;
 /// освободить место переносом в него; видеть и возвращать перенесённое; бэкапить.
 enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
-    case overview, cleanup, safe, space, history, backup, docker
+    case overview, cleanup, safe, space, history, backup, icloud, docker
 
     var id: Self { self }
 
@@ -17,6 +17,7 @@ enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
         case .space: return "Освободить место"
         case .history: return "Перенесённое"
         case .backup: return "Бэкап"
+        case .icloud: return "Из iCloud"
         case .docker: return "Docker"
         }
     }
@@ -29,6 +30,7 @@ enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
         case .space: return "chart.bar.doc.horizontal"
         case .history: return "clock.arrow.circlepath"
         case .backup: return "externaldrive.badge.checkmark"
+        case .icloud: return "icloud.and.arrow.down"
         case .docker: return "shippingbox"
         }
     }
@@ -63,6 +65,7 @@ final class AppModel {
     let backup = BackupModel()
     let docker = DockerModel()
     let cleanup = CleanupModel()
+    let cloud = CloudRestoreModel()
 
     /// Только что подключённый внешний диск: «Обзор» предлагает разобрать Mac одной кнопкой.
     var connectedPrompt: String?
