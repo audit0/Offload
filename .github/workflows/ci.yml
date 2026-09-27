@@ -42,3 +42,41 @@ jobs:
             dist/Offload.zip
             dist/Offload.dmg
           retention-days: 7
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Сборка
+        run: dotnet build Offload.Windows.slnx -c Release
+
+      # BitLocker на серверных образах GitHub не установлен, Docker не запущен: эти части проверок
+      # гоняются на настоящей Windows 11 Pro перед релизом.
+      - name: Проверки
+        env:
+          OFFLOAD_SKIP_DOCKER: "1"
+          OFFLOAD_SKIP_VAULT: "1"
+        run: dotnet run -c Release --no-build --project src/Offload.Checks
+
+      - name: Сборка Offload.exe и упаковка
+        run: |
+          ./scripts/build.ps1 -Runtime win-x64 -Version 0.0.0
+          ./scripts/make-release.ps1 -Runtime win-x64
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Offload-Windows-ci
+          path: windows/dist/Offload-Windows-x64.zip
+          retention-days: 7
