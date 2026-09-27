@@ -10,8 +10,64 @@ public sealed class AssistantModel : Observable
     public enum StageKind { Idle, Scanning, Thinking, Done, Failed }
 
     const string ConsentKey = "assistant.consent";
+    const string KindKey = "assistant.provider";
+    const string ApiKeyKey = "assistant.apiKey";
+    const string LocalModelKey = "assistant.ollamaModel";
+    const string ServerKey = "assistant.server";
 
-    public IAssistantProvider Provider { get; } = new ClaudeCodeAssistant();
+    /// <summary>Где думает помощник — по порядку: Claude Code на компьютере, ключ API, локальная модель, сервер OffLoadAI.</summary>
+    public enum Kind { ClaudeCode, ApiKey, Local, Server }
+
+    public static string Title(Kind kind) => kind switch
+    {
+        Kind.ClaudeCode => "Claude Code",
+        Kind.ApiKey => "Ключ API",
+        Kind.Local => "На компьютере",
+        _ => "Сервер OffLoadAI",
+    };
+
+    readonly Dictionary<Kind, IAssistantProvider> providers;
+
+    public AssistantModel(Func<string?> license)
+    {
+        providers = new()
+        {
+            [Kind.ClaudeCode] = new ClaudeCodeAssistant(),
+            [Kind.ApiKey] = new ApiKeyAssistant(() => ApiKeyAssistant.Unprotect(Settings.Get<string>(ApiKeyKey))),
+            [Kind.Local] = new OllamaAssistant(() => Settings.Get<string>(LocalModelKey)),
+            [Kind.Server] = new BotAssistant(license, () => Settings.Get<string>(ServerKey), "offloadai-windows/" + Dialogs.Version),
+        };
+        provider = Enum.TryParse<Kind>(Settings.Get<string>(KindKey), out var saved) ? saved : Kind.ClaudeCode;
+    }
+
+    Kind provider;
+    public Kind ProviderKind
+    {
+        get => provider;
+        set
+        {
+            if (!Set(ref provider, value)) return;
+            Settings.Set(KindKey, value.ToString());
+            Error = null;
+            Raise(nameof(Provider));
+        }
+    }
+    public IAssistantProvider Provider => providers[provider];
+    public OllamaAssistant Local => (OllamaAssistant)providers[Kind.Local];
+
+    public bool HasApiKey => !string.IsNullOrEmpty(Settings.Get<string>(ApiKeyKey));
+    public void SaveApiKey(string? key)
+    {
+        Settings.Set(ApiKeyKey, string.IsNullOrWhiteSpace(key) ? null : ApiKeyAssistant.Protect(key));
+        Error = null;
+        Raise(nameof(HasApiKey), nameof(Provider));
+    }
+
+    public string? LocalModel
+    {
+        get => Settings.Get<string>(LocalModelKey);
+        set { Settings.Set(LocalModelKey, value); Raise(); }
+    }
 
     StageKind stage;
     public StageKind Stage { get => stage; private set { if (Set(ref stage, value)) Raise(nameof(IsBusy)); } }
@@ -63,7 +119,7 @@ public sealed class AssistantModel : Observable
         try
         {
             List<SpaceItem> measured;
-            if (Demo.IsOn) measured = Demo.SpaceItems();
+            if (Demo.IsOn) measured = DemoDownloads(app.Rules.Home);
             else
             {
                 var found = new List<SpaceItem>();
@@ -137,20 +193,33 @@ public sealed class AssistantModel : Observable
         }
     }
 
-    /// <summary>Ответ для снимков и демонстрации: без сети, по вымышленным папкам.</summary>
+    /// <summary>Вымышленные «Загрузки» для снимков и демонстрации: что там обычно лежит.</summary>
+    static List<SpaceItem> DemoDownloads(string home)
+    {
+        var folder = Path.Combine(home, "Downloads");
+        SpaceItem Item(string name, double gigabytes, int daysAgo, bool isFolder = false) =>
+            new(Path.Combine(folder, name), (long)(gigabytes * 1_000_000_000), DateTime.Now.AddDays(-daysAgo), isFolder, false, Verdict.Safe, true);
+        return
+        [
+            Item("Отпуск 2023 (1).mp4", 4.1, 380), Item("Фото с дачи.zip", 2.3, 410), Item("Win11_24H2_Russian_x64.iso", 5.8, 290),
+            Item("temp-export", 0.8, 200, isFolder: true), Item("node-v22.11.0-x64.msi", 0.03, 320), Item("ChromeSetup.exe", 0.0014, 500),
+            Item("Договор аренды 2026.pdf", 0.002, 40), Item("Выписка ЕГРН.pdf", 0.001, 95),
+        ];
+    }
+
+    /// <summary>Ответ для снимков и демонстрации: без сети, по вымышленным «Загрузкам».</summary>
     static AssistantAnswer DemoAnswer(IReadOnlyList<FileFact> facts)
     {
         var advice = facts.Select(fact => Paths.Name(fact.Path) switch
         {
-            "AppData" => new Advice(fact.Id, Importance.Important, AdviceAction.Keep, "Данные программ: без них они не запустятся."),
-            "Downloads" => new Advice(fact.Id, Importance.Minor, AdviceAction.Safe, "Скачанное: в основном дистрибутивы и архивы — нужны редко."),
-            "Videos" => new Advice(fact.Id, Importance.Minor, AdviceAction.Safe, "Старые съёмки: смотрят редко, место занимают больше всего."),
-            "Pictures" or "Documents" => new Advice(fact.Id, Importance.Important, AdviceAction.Keep, "Личные документы и фото — незаменимы."),
-            "Projects" => new Advice(fact.Id, Importance.Important, AdviceAction.Keep, "Рабочие проекты с git — с ними работают каждый день."),
-            "Music" => new Advice(fact.Id, Importance.Minor, AdviceAction.Safe, "Музыка: можно держать в сейфе и возвращать по надобности."),
-            _ => new Advice(fact.Id, Importance.Junk, AdviceAction.Trash, "Временные файлы — программы создадут их заново."),
+            "Отпуск 2023 (1).mp4" => new Advice(fact.Id, Importance.Minor, AdviceAction.Safe, "Видео из отпуска с «(1)» в имени — похоже на повторную загрузку; сохранить стоит, но не на диске компьютера."),
+            "Фото с дачи.zip" => new Advice(fact.Id, Importance.Minor, AdviceAction.Safe, "Архив с личными фото: нужен, но редко — место ему в сейфе."),
+            "Win11_24H2_Russian_x64.iso" => new Advice(fact.Id, Importance.Junk, AdviceAction.Trash, "Образ установки Windows: скачивается заново с сайта Microsoft."),
+            "temp-export" => new Advice(fact.Id, Importance.Junk, AdviceAction.Trash, "Временная выгрузка, которую давно не открывали."),
+            "node-v22.11.0-x64.msi" or "ChromeSetup.exe" => new Advice(fact.Id, Importance.Junk, AdviceAction.Trash, "Установщик уже поставленной программы."),
+            _ => new Advice(fact.Id, Importance.Important, AdviceAction.Keep, "Личный документ — оставить на месте."),
         }).ToList();
-        return new AssistantAnswer("Больше всего места занимают старые видео и загрузки — их можно убрать в сейф и освободить около 200 ГБ. Документы, фото и проекты лучше оставить.",
+        return new AssistantAnswer("В «Загрузках» почти 7 ГБ мусора — образ Windows, установщики и старая выгрузка. Видео и архив с фото лучше убрать в сейф, документы оставить.",
                                    advice, "Демонстрация");
     }
 }

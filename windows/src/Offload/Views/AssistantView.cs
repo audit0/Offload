@@ -24,7 +24,13 @@ public sealed class AssistantView : UserControl
         this.app = app;
         Content = Pages.Scroll(root);
         Model.PropertyChanged += Changed;
-        Loaded += (_, _) => Update();
+        Loaded += (_, _) =>
+        {
+            Update();
+            // Снимки для README показывают ответ: в демонстрации он вымышленный и без сети.
+            if (Demo.IsOn && Environment.GetEnvironmentVariable("OFFLOAD_SNAPSHOT_DIR") != null && Model.Answer == null && !Model.IsBusy)
+                Model.Run(Path.Combine(app.Rules.Home, "Downloads"), null, app);
+        };
         Update();
     }
 
@@ -47,11 +53,9 @@ public sealed class AssistantView : UserControl
             Style = Res("Callout"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, Theme.SectionSpacing),
         });
         if (!Model.Consent) { root.Children.Add(ConsentCard()); return; }
-        if (Model.Provider.Problem() is { } problem && !Demo.IsOn)
-        {
-            root.Children.Add(ProblemCard(problem));
-            return;
-        }
+        var problem = Demo.IsOn ? null : Model.Provider.Problem();
+        root.Children.Add(ProviderCard(problem));
+        if (problem != null) return;
         root.Children.Add(AskCard());
         if (Model.Error is { } error)
             root.Children.Add(new NoticeView { Message = new NoticeMessage(NoticeKind.Error, error), Margin = new Thickness(0, 16, 0, 0) });
@@ -71,7 +75,8 @@ public sealed class AssistantView : UserControl
         });
         body.Children.Add(new TextBlock
         {
-            Text = "Думает Claude от Anthropic — через Claude Code на этом компьютере, под вашей учётной записью Claude. " +
+            Text = "Куда — выбираете вы: Claude от Anthropic через Claude Code на этом компьютере или по вашему ключу API, сервер OffLoadAI " +
+                   "(он передаёт вопрос Claude и ничего не хранит) — или локальная модель, и тогда сведения не покидают компьютер вовсе. " +
                    "Остальной OffLoadAI по-прежнему работает без сети; помощник выходит в сеть, только когда вы его спрашиваете.",
             Style = Res("Callout"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0),
         });
@@ -81,14 +86,73 @@ public sealed class AssistantView : UserControl
         return new Card { Content = body };
     }
 
-    FrameworkElement ProblemCard(string problem)
+    /// <summary>Где думает помощник, и что для этого нужно.</summary>
+    FrameworkElement ProviderCard(string? problem)
     {
         var body = new StackPanel();
-        body.Children.Add(new NoticeView { Message = new NoticeMessage(NoticeKind.Warning, problem) });
-        var retry = new Button { Content = "Проверить снова", Margin = new Thickness(0, 12, 0, 0) };
-        retry.Click += (_, _) => Update();
-        body.Children.Add(retry);
-        return new Card { Content = body };
+        body.Children.Add(new TextBlock { Text = "Где думает помощник", Style = Res("Headline") });
+        var kinds = new WrapPanel { Margin = new Thickness(0, 10, 0, 0) };
+        foreach (var kind in Enum.GetValues<AssistantModel.Kind>())
+        {
+            var button = new Button
+            {
+                Content = AssistantModel.Title(kind), Margin = new Thickness(0, 0, 8, 8), IsEnabled = !Model.IsBusy,
+                Style = kind == Model.ProviderKind ? Res("ProminentButton") : Res("PillButton"),
+            };
+            button.Click += (_, _) => Model.ProviderKind = kind;
+            kinds.Children.Add(button);
+        }
+        body.Children.Add(kinds);
+        body.Children.Add(new TextBlock
+        {
+            Text = Model.ProviderKind switch
+            {
+                AssistantModel.Kind.ClaudeCode => "Claude Code, установленный на этом компьютере, под вашей учётной записью Claude. Ключ не нужен.",
+                AssistantModel.Kind.ApiKey => "Ваш ключ Anthropic API: платите по счёту API за каждый вопрос. Ключ хранится зашифрованным средствами Windows.",
+                AssistantModel.Kind.Local => "Модель в Ollama на этом компьютере: сведения о файлах не покидают его. Медленнее и проще, чем Claude.",
+                _ => "Сервер OffLoadAI передаёт вопрос Claude и ничего не хранит. Входит в Offload Pro — ни Claude Code, ни ключа не нужно.",
+            },
+            Style = Res("Callout"), TextWrapping = TextWrapping.Wrap,
+        });
+
+        if (Model.ProviderKind == AssistantModel.Kind.ApiKey)
+        {
+            if (Model.HasApiKey)
+            {
+                var remove = new Button { Content = "Убрать ключ", Margin = new Thickness(0, 12, 0, 0) };
+                remove.Click += (_, _) => Model.SaveApiKey(null);
+                body.Children.Add(new TextBlock { Text = "Ключ сохранён.", Style = Res("Body"), Margin = new Thickness(0, 12, 0, 0) });
+                body.Children.Add(remove);
+            }
+            else
+            {
+                var entry = new Grid { Margin = new Thickness(0, 12, 0, 0) };
+                entry.ColumnDefinitions.Add(new ColumnDefinition());
+                entry.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                var box = new PasswordBox { Tag = "sk-ant-…" };
+                entry.Children.Add(box);
+                var save = new Button { Content = "Сохранить ключ", Margin = new Thickness(8, 0, 0, 0) };
+                save.Click += (_, _) => { Model.SaveApiKey(box.Password); box.Clear(); };
+                Grid.SetColumn(save, 1);
+                entry.Children.Add(save);
+                body.Children.Add(entry);
+            }
+        }
+        if (Model.ProviderKind == AssistantModel.Kind.Local && Model.Local.Models.Count > 0)
+        {
+            var picker = new ComboBox { ItemsSource = Model.Local.Models, Width = 280, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 12, 0, 0) };
+            picker.SelectedItem = Model.LocalModel is { } chosen && Model.Local.Models.Contains(chosen) ? chosen : null;
+            picker.SelectionChanged += (_, _) => { if (picker.SelectedItem is string model) Model.LocalModel = model; };
+            body.Children.Add(picker);
+        }
+        if (problem != null)
+        {
+            body.Children.Add(new NoticeView { Message = new NoticeMessage(NoticeKind.Warning, problem), Margin = new Thickness(0, 12, 0, 0) });
+            var retry = new Button { Content = "Проверить снова", Margin = new Thickness(0, 12, 0, 0) };
+            retry.Click += (_, _) => Update();
+            body.Children.Add(retry);
+        }
+        return new Card { Content = body, Margin = new Thickness(0, 0, 0, Theme.SectionSpacing) };
     }
 
     FrameworkElement AskCard()

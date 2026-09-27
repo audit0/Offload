@@ -78,6 +78,8 @@ public sealed class ClaudeCodeAssistant(string model = "sonnet") : IAssistantPro
         var text = (string?)root["result"] ?? "";
         if ((bool?)root["is_error"] == true)
         {
+            if (text.Contains("Unable to connect", StringComparison.OrdinalIgnoreCase) || text.Contains("ConnectionRefused", StringComparison.OrdinalIgnoreCase))
+                throw new AssistantException(AssistantErrorKind.Failed, "Claude Code не может связаться с Anthropic — проверьте интернет (или прокси, если он нужен).");
             var signIn = text.Contains("login", StringComparison.OrdinalIgnoreCase) || text.Contains("API key", StringComparison.OrdinalIgnoreCase)
                          || text.Contains("authenticat", StringComparison.OrdinalIgnoreCase);
             throw signIn

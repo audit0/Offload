@@ -8,6 +8,9 @@
     <PackageReference Include="System.Management" Version="10.0.0" />
     <!-- Ed25519 для ключей Offload Pro: в .NET своего нет. Только проверка подписи, без сети. -->
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
+    <!-- AI-помощник: официальный SDK Anthropic (вариант с ключом API) и DPAPI, чтобы хранить ключ зашифрованным. -->
+    <PackageReference Include="Anthropic" Version="12.50.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Offload.Checks" />

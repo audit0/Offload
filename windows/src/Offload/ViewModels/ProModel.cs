@@ -69,6 +69,9 @@ public sealed class ProModel : Observable
 
     public bool Allows(ProFeature feature) => Status.IsPro;
 
+    /// <summary>Сохранённый ключ как есть — им помощник входит на сервер OffLoadAI.</summary>
+    public string? LicenseText => license != null ? Settings.Get<string>(LicenseKey) : null;
+
     /// <summary>Открыть окно «Offload Pro» — из-за конкретной возможности или просто так.</summary>
     public void Offer(ProFeature? feature = null)
     {

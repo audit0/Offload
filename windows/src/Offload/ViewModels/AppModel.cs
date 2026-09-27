@@ -77,7 +77,7 @@ public sealed class AppModel : Observable
     public DockerModel Docker { get; } = new();
     public CleanupModel Cleanup { get; } = new();
     public CloudRestoreModel Cloud { get; } = new();
-    public AssistantModel Assistant { get; } = new();
+    public AssistantModel Assistant { get; }
 
     /// <summary>Только что подключённый внешний диск: «Обзор» предлагает разобрать компьютер одной кнопкой.</summary>
     string? connectedPrompt;
@@ -163,6 +163,7 @@ public sealed class AppModel : Observable
 
     public AppModel()
     {
+        Assistant = new AssistantModel(() => Pro.LicenseText);
         RefreshVolumes();
         Safe.StartGuards(this);
         Safe.Refresh(this);
