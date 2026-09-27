@@ -334,7 +334,7 @@ public sealed class SafeMover(SafetyRules? rules = null)
         var original = record.OriginalPath;
         if (!Paths.IsPlainLocal(archived) || !Paths.IsPlainLocal(original))
             throw new MoveException(MoveErrorKind.UnsafeRecord, "пути должны быть полными, на диске с буквой и без «..»");
-        // Не только папка OffLoadAI: переносы, сделанные вручную, лежат где угодно на внешнем диске.
+        // Не только папка Offload: переносы, сделанные вручную, лежат где угодно на внешнем диске.
         if (Paths.Same(Paths.Root(archived), Paths.SystemDrive) || Paths.Parts(archived[3..]).Length < 1)
             throw new MoveException(MoveErrorKind.UnsafeRecord, "архив должен лежать на внешнем диске");
         if (!Paths.Same(Paths.Resolve(archived), archived))
