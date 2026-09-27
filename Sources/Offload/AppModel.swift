@@ -2,10 +2,10 @@ import AppKit
 import Observation
 import OffloadCore
 
-/// Порядок разделов — это и есть сценарий: посмотреть, что с Mac; завести сейф;
+/// Порядок разделов — это и есть сценарий: посмотреть, что с Mac (и спросить помощника); завести сейф;
 /// освободить место переносом в него; видеть и возвращать перенесённое; бэкапить.
 enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
-    case overview, cleanup, safe, space, history, backup, icloud, docker
+    case overview, cleanup, assistant, safe, space, history, backup, icloud, docker
 
     var id: Self { self }
 
@@ -13,6 +13,7 @@ enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .overview: return "Обзор"
         case .cleanup: return "Разобрать"
+        case .assistant: return "Помощник"
         case .safe: return "Сейф"
         case .space: return "Освободить место"
         case .history: return "Перенесённое"
@@ -26,6 +27,7 @@ enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .overview: return "gauge.with.dots.needle.50percent"
         case .cleanup: return "wand.and.stars"
+        case .assistant: return "lightbulb"
         case .safe: return "lock.shield"
         case .space: return "chart.bar.doc.horizontal"
         case .history: return "clock.arrow.circlepath"
@@ -67,6 +69,7 @@ final class AppModel {
     let backup = BackupModel()
     let docker = DockerModel()
     let cleanup = CleanupModel()
+    let assistant = AssistantModel()
     let cloud = CloudRestoreModel()
 
     /// Только что подключённый внешний диск: «Обзор» предлагает разобрать Mac одной кнопкой.

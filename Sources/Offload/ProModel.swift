@@ -98,6 +98,11 @@ final class ProModel {
         refresh()
     }
 
+    /// Сохранённый ключ как есть — им помощник входит на сервер OffLoadAI. Только если ключ подошёл.
+    var licenseText: String? {
+        license != nil ? UserDefaults.standard.string(forKey: Self.licenseKey) : nil
+    }
+
     /// Одной строкой — для боковой колонки.
     var summary: String {
         switch status {

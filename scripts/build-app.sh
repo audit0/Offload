@@ -56,6 +56,7 @@ for s in 16 32 128 256 512; do
 done
 iconutil -c icns "$ASSETS/AppIcon.iconset" -o "$APP/Contents/Resources/AppIcon.icns"
 
+# NSAllowsLocalNetworking — помощник на локальной модели ходит к Ollama по http://127.0.0.1:11434; в интернет — только https.
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -80,6 +81,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>NSDownloadsFolderUsageDescription</key><string>Offload показывает, что занимает место в «Загрузках», и переносит выбранное на внешний диск.</string>
   <key>NSRemovableVolumesUsageDescription</key><string>Offload переносит данные и делает бэкап на внешний диск.</string>
   <key>NSNetworkVolumesUsageDescription</key><string>Offload может переносить данные на сетевой диск.</string>
+  <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict>
 </plist>
 PLIST
