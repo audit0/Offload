@@ -30,6 +30,8 @@ func checksSafe() {
         }
         check(PasswordStrength.evaluate("лось ест сено у реки в пять утра").level >= .good, "фраза из случайных слов оценивается как надёжная")
         check(PasswordStrength.evaluate("").bits == 0, "пустой пароль — ноль бит")
+        check(!PasswordStrength.evaluate("лось ест сено у реки\u{0}в пять утра").isAcceptable,
+              "пароль с нулевым байтом не принимается: hdiutil обрезал бы его на нём")
         check(PasswordStrength.evaluate("password-and-more-words").advice.contains { $0.contains("password") },
               "словарное слово названо в совете, а не просто снижает оценку")
     }

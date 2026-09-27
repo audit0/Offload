@@ -81,6 +81,12 @@ public final class DecisionStore: @unchecked Sendable {
         } else {
             path = ":memory:"
         }
+        // Файл базы создаётся сразу с правами 0600: SQLite создал бы его по umask (0644), и до chmod
+        // его успели бы прочитать. Журналы -wal и -shm SQLite заводит с правами самой базы.
+        if url != nil {
+            let descriptor = open(path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+            if descriptor >= 0 { close(descriptor) }
+        }
         var handle: OpaquePointer?
         guard sqlite3_open_v2(path, &handle, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK else {
             let message = handle.map { String(cString: sqlite3_errmsg($0)) } ?? "не открывается"

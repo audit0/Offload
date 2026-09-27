@@ -387,8 +387,8 @@ enum SafeFile {
     }
 
     /// Создаёт новый файл: существующий файл или подложенная на его месте ссылка — ошибка, а не перезапись.
-    static func createExclusive(_ url: URL, contents: Data) throws {
-        let descriptor = open(url.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o644)
+    static func createExclusive(_ url: URL, contents: Data, mode: mode_t = 0o644) throws {
+        let descriptor = open(url.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, mode)
         guard descriptor >= 0 else {
             let code = errno
             if code == EEXIST { throw CopyError.destinationExists(url.path) }

@@ -132,8 +132,13 @@ public struct SecretsVault: Sendable {
     }
 
     /// Все подключённые сейчас образы: развёрнутый путь образа → подключение. Пароля не просит.
-    public static func attachedImages() -> [String: Attachment] {
-        guard let result = try? Runner.run("hdiutil", ["info", "-plist"], timeout: 30), result.succeeded else { return [:] }
+    public static func attachedImages() -> [String: Attachment] { attachedImagesIfKnown() ?? [:] }
+
+    /// То же, но `nil`, если hdiutil не ответил: «не знаю» — не то же самое, что «ничего не подключено».
+    /// Иначе открытый сейф на время сбоя выглядел бы закрытым, и автозакрытие его бы не трогало.
+    public static func attachedImagesIfKnown() -> [String: Attachment]? {
+        guard let result = try? Runner.run("hdiutil", ["info", "-plist"], timeout: 30), result.succeeded,
+              (try? PropertyListSerialization.propertyList(from: result.stdout, format: nil)) != nil else { return nil }
         return attachments(fromInfoPlist: result.stdout)
     }
 
@@ -402,15 +407,25 @@ public struct SecretsVault: Sendable {
         guard let whole = devices.whole else {
             throw VaultError.growFailed("hdiutil не сообщил, каким диском подключился образ")
         }
-        defer {
-            if (try? Runner.run("hdiutil", ["detach", whole], timeout: 120))?.succeeded != true {
-                _ = try? Runner.run("hdiutil", ["detach", "-force", whole], timeout: 120)
+        // Отключаем что бы ни случилось — и не молчим, если не вышло: подключённый без монтирования
+        // образ держит ключ в памяти, а автозакрытие его не видит (точки монтирования нет).
+        func release() throws {
+            if (try? Runner.run("hdiutil", ["detach", whole], timeout: 120))?.succeeded == true { return }
+            if (try? Runner.run("hdiutil", ["detach", "-force", whole], timeout: 120))?.succeeded == true { return }
+            throw VaultError.growFailed("образ остался подключённым как \(whole). Отключите его: hdiutil detach -force \(whole)")
+        }
+        let result: T
+        do {
+            guard let partition = devices.partition else {
+                throw VaultError.growFailed("в образе не нашёлся раздел с файловой системой")
             }
+            result = try body(whole, partition)
+        } catch {
+            try? release()
+            throw error
         }
-        guard let partition = devices.partition else {
-            throw VaultError.growFailed("в образе не нашёлся раздел с файловой системой")
-        }
-        return try body(whole, partition)
+        try release()
+        return result
     }
 
     /// Из ответа `hdiutil attach -plist`: весь диск образа (/dev/diskN) и раздел на нём
@@ -519,10 +534,14 @@ public struct SecretsVault: Sendable {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        // O_EXCL: копия заголовка не должна молча затереть другую.
+        // O_EXCL: копия заголовка не должна молча затереть другую. Права 0600 — сразу при создании,
+        // а не после записи: копия заголовка — материал для перебора пароля.
         guard !FileManager.default.fileExists(atPath: url.path) else { throw VaultError.alreadyExists }
-        try encoder.encode(backup).write(to: url, options: .withoutOverwriting)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        do {
+            try SafeFile.createExclusive(url, contents: try encoder.encode(backup), mode: 0o600)
+        } catch CopyError.destinationExists {
+            throw VaultError.alreadyExists
+        }
         return url
     }
 
@@ -543,7 +562,11 @@ public struct SecretsVault: Sendable {
         let token = imageURL.appendingPathComponent("token")
         let aside = imageURL.appendingPathComponent("token.offload-previous")
         let fm = FileManager.default
-        try? fm.removeItem(at: aside)
+        // Отложенный заголовок от прерванного восстановления может оказаться единственным настоящим:
+        // молча удалить его значило бы потерять сейф.
+        guard !SafeMover.exists(aside) else {
+            throw VaultError.headerRejected("в сейфе остался отложенный заголовок от прерванного восстановления (token.offload-previous). Если сейф не открывается, верните его на место token вручную")
+        }
         if fm.fileExists(atPath: token.path) { try fm.moveItem(at: token, to: aside) }
         do {
             try backup.token.write(to: token, options: .withoutOverwriting)
@@ -551,7 +574,13 @@ public struct SecretsVault: Sendable {
             try? Self.detach(mount)
         } catch {
             try? fm.removeItem(at: token)
-            if fm.fileExists(atPath: aside.path) { try? fm.moveItem(at: aside, to: token) }
+            if fm.fileExists(atPath: aside.path) {
+                do {
+                    try fm.moveItem(at: aside, to: token)
+                } catch {
+                    throw VaultError.headerRejected("копия не подошла, а прежний заголовок вернуть не удалось: \(error.localizedDescription). Он лежит в token.offload-previous внутри сейфа — переименуйте его в token")
+                }
+            }
             if case VaultError.wrongPassword = error { throw VaultError.headerRejected("пароль к этой копии не подходит") }
             throw error
         }
@@ -576,6 +605,11 @@ public struct SecretsVault: Sendable {
         guard let plist = try? PropertyListSerialization.propertyList(from: result.stdout, format: nil) as? [String: Any],
               let entities = plist["system-entities"] as? [[String: Any]],
               let mount = entities.compactMap({ $0["mount-point"] as? String }).first else {
+            // Образ подключён, но не смонтирован: ключ уже в памяти, а без точки монтирования
+            // автозакрытие его не увидит. Отключаем по диску образа.
+            if let whole = Self.devices(fromAttachPlist: result.stdout).whole {
+                _ = try? Runner.run("hdiutil", ["detach", "-force", whole], timeout: 120)
+            }
             throw VaultError.mountFailed("hdiutil не сообщил точку монтирования")
         }
         let mountPoint = URL(fileURLWithPath: mount, isDirectory: true)
@@ -673,7 +707,21 @@ public struct SecretsVault: Sendable {
                                                                permissions: entry.permissions, isCancelled: isCancelled)
                         if copied { report.copied += 1 } else { report.unchanged += 1 }
                     case .symlink:
-                        continue
+                        // Дотфайлы часто — ссылки (stow, chezmoi): ~/.zshrc → ~/dotfiles/zshrc. Раньше такие
+                        // молча пропускались, и в сейфе не оказывалось самого нужного. Копируем то, на что
+                        // ссылка ведёт, если это обычный файл; иначе говорим об этом.
+                        let real = from.resolvingSymlinksInPath()
+                        guard let attributes = try? fm.attributesOfItem(atPath: real.path),
+                              attributes[.type] as? FileAttributeType == .typeRegular else {
+                            report.problems.append("\(from.path): символическая ссылка не на обычный файл — не скопирована")
+                            continue
+                        }
+                        try fm.createDirectory(at: to.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        let copied = try BackupEngine.syncFile(from: real, to: to, size: (attributes[.size] as? NSNumber)?.int64Value ?? 0,
+                                                               modified: attributes[.modificationDate] as? Date,
+                                                               permissions: (attributes[.posixPermissions] as? NSNumber)?.intValue,
+                                                               isCancelled: isCancelled)
+                        if copied { report.copied += 1 } else { report.unchanged += 1 }
                     }
                 } catch {
                     report.problems.append("\(from.path): \(error.localizedDescription)")
@@ -681,23 +729,40 @@ public struct SecretsVault: Sendable {
             }
         }
 
+        /// Обход, который не молчит о провале: папка есть, а прочитать её не удалось.
+        func walk(_ url: URL, strict: Bool) -> [TreeEntry]? {
+            do {
+                return try TreeWalker.walk(url, strict: strict, isCancelled: isCancelled).entries
+            } catch {
+                if SafeMover.exists(url) { report.problems.append("\(url.path): \(error.localizedDescription)") }
+                return nil
+            }
+        }
+        func isFileOrLink(_ entry: TreeEntry) -> Bool {
+            if case .symlink = entry.kind { return true }
+            return entry.isFile
+        }
+
         let ssh = home.appendingPathComponent(".ssh", isDirectory: true)
-        if let walk = try? TreeWalker.walk(ssh, strict: false, isCancelled: isCancelled) {
+        do {
+            let walk = try TreeWalker.walk(ssh, strict: false, isCancelled: isCancelled)
             sync(walk.entries, from: ssh, to: mountPoint.appendingPathComponent("ssh", isDirectory: true))
             report.problems += walk.problems.map { ".ssh/\($0)" }
             report.unprotectedKeys = unprotectedKeys(walk.entries, root: ssh)
+        } catch {
+            if SafeMover.exists(ssh) { report.problems.append("\(ssh.path): \(error.localizedDescription)") }
         }
 
         let dotfilesTarget = mountPoint.appendingPathComponent("dotfiles", isDirectory: true)
         for name in dotfiles {
             let url = home.appendingPathComponent(name)
-            guard let walk = try? TreeWalker.walk(url, strict: true), let entry = walk.entries.first, entry.isFile else { continue }
+            guard let entry = walk(url, strict: true)?.first, isFileOrLink(entry) else { continue }
             sync([entry], from: url, to: dotfilesTarget.appendingPathComponent(name))
         }
 
         let gh = home.appendingPathComponent(".config/gh", isDirectory: true)
-        if let walk = try? TreeWalker.walk(gh, strict: false, isCancelled: isCancelled) {
-            sync(walk.entries, from: gh, to: mountPoint.appendingPathComponent("config/gh", isDirectory: true))
+        if let entries = walk(gh, strict: false) {
+            sync(entries, from: gh, to: mountPoint.appendingPathComponent("config/gh", isDirectory: true))
         }
 
         // Пути внутри project-secrets — относительно папки с проектами, чтобы вернуть всё одной командой
@@ -705,9 +770,15 @@ public struct SecretsVault: Sendable {
         let projectTarget = mountPoint.appendingPathComponent("project-secrets", isDirectory: true)
         var claimed: [String: String] = [:]
         for root in projectRoots {
-            guard let walk = try? TreeWalker.walk(root, strict: false, exclude: { relative, isDirectory in
-                isDirectory && BackupEngine.defaultExcludedNames.contains((relative as NSString).lastPathComponent)
-            }, isCancelled: isCancelled) else { continue }
+            let walk: (entries: [TreeEntry], problems: [String])
+            do {
+                walk = try TreeWalker.walk(root, strict: false, exclude: { relative, isDirectory in
+                    isDirectory && BackupEngine.defaultExcludedNames.contains((relative as NSString).lastPathComponent)
+                }, isCancelled: isCancelled)
+            } catch {
+                report.problems.append("\(root.path): \(error.localizedDescription)")
+                continue
+            }
             var secrets: [TreeEntry] = []
             for entry in walk.entries where entry.isFile && BackupEngine.isSecretPath(entry.relativePath, in: root) {
                 if let owner = claimed[entry.relativePath], owner != root.path {
@@ -726,7 +797,7 @@ public struct SecretsVault: Sendable {
             let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
             for name in names.sorted() where (name as NSString).pathExtension.lowercased() == "kdbx" {
                 let url = directory.appendingPathComponent(name)
-                guard let walk = try? TreeWalker.walk(url, strict: true), let entry = walk.entries.first, entry.isFile else { continue }
+                guard let entry = walk(url, strict: true)?.first, isFileOrLink(entry) else { continue }
                 sync([entry], from: url, to: keepassTarget.appendingPathComponent(name))
             }
         }

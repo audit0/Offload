@@ -150,6 +150,9 @@ struct CleanupView: View {
     @State private var unlockingSafe = false
     @State private var forgetting = false
     @State private var erasing = false
+    /// Уйти из разбора, когда в Корзине лежит отправленное им: «Вернуть» у вопросов пропадёт.
+    /// nil — не спрашиваем; иначе — начать ли потом новый поиск.
+    @State private var leaving: Bool?
 
     var body: some View {
         let model = app.cleanup
@@ -177,10 +180,35 @@ struct CleanupView: View {
                 model.answer(.module(.safe), yes: true, app: app)
             }
         }
+        .confirmationDialog("Закончить разбор?", isPresented: Binding(get: { leaving != nil }, set: { if !$0 { leaving = nil } })) {
+            Button("Закончить") {
+                let scan = leaving == true
+                leaving = nil
+                finishLeaving(thenScan: scan)
+            }
+            Button("Остаться", role: .cancel) { leaving = nil }
+        } message: {
+            Text("В Корзине лежит \(model.trashedItems.count) объектов, отправленных этим разбором. Кнопки «Вернуть» у вопросов после этого не будет: вернуть их можно будет только вручную из Корзины.")
+        }
     }
 
     private func beginScan() {
         app.cleanup.scan(app: app)
+    }
+
+    /// «Готово», «Отмена», «Разобрать ещё раз». Список отправленного в Корзину живёт только в этом
+    /// разборе, поэтому, пока он не пуст, сначала спрашиваем — раньше он пропадал молча.
+    private func leave(thenScan: Bool = false) {
+        if app.cleanup.trashedItems.isEmpty {
+            finishLeaving(thenScan: thenScan)
+        } else {
+            leaving = thenScan
+        }
+    }
+
+    private func finishLeaving(thenScan: Bool) {
+        app.cleanup.reset(app: app)
+        if thenScan { beginScan() }
     }
 
     /// «Да». Для сейфа, если он закрыт, сначала пароль — и выполнение начнётся, как только сейф откроется.
@@ -444,7 +472,7 @@ struct CleanupView: View {
                 Label("Спрашивать не о чем: мусора и лишнего нет, а всё крупное либо используется, либо уже на своём месте.",
                       systemImage: "checkmark.seal.fill")
                     .foregroundStyle(Theme.ok)
-                Button("Готово") { model.reset(app: app) }
+                Button("Готово") { leave() }
             }
             dockerIdleCard
         } else {
@@ -465,11 +493,8 @@ struct CleanupView: View {
             trashCard
             if model.isSettled {
                 HStack {
-                    Button("Готово") { model.reset(app: app) }
-                    Button("Разобрать ещё раз") {
-                        model.reset(app: app)
-                        beginScan()
-                    }
+                    Button("Готово") { leave() }
+                    Button("Разобрать ещё раз") { leave(thenScan: true) }
                 }
                 .disabled(model.isBusy)
             }
@@ -519,7 +544,7 @@ struct CleanupView: View {
                               : "Ответить «да» на все вопросы")
                     }
                     if !model.isSettled {
-                        Button("Отмена") { model.reset(app: app) }
+                        Button("Отмена") { leave() }
                             .buttonStyle(InkLinkStyle())
                             .disabled(model.isBusy)
                     }

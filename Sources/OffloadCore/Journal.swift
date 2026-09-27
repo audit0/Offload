@@ -86,7 +86,10 @@ public enum Journal {
             } else {
                 records.append(record)
             }
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            // Локальный журнал хранит пути и имена всего перенесённого, в том числе в сейф: папка — только для владельца.
+            let folderAttributes: [FileAttributeKey: Any]? = url == localURL ? [.posixPermissions: 0o700] : nil
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
+                                                    attributes: folderAttributes)
             try encoder.encode(records).write(to: url, options: .atomic)
             if volume.createsAppleDouble { SafeMover.removeSidecar(of: url) }
         }

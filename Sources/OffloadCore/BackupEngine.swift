@@ -14,10 +14,12 @@ public struct BackupReport: Sendable {
 
 public enum BackupError: LocalizedError, Equatable {
     case destinationInsideSource(String)
+    case destinationThroughLink(String)
 
     public var errorDescription: String? {
         switch self {
         case .destinationInsideSource(let path): return "Папка бэкапа не может лежать внутри копируемой папки «\(path)»."
+        case .destinationThroughLink(let path): return "Путь к папке бэкапа проходит через символическую ссылку «\(path)» — писать по нему не буду: бэкап оказался бы не там, где вы думаете."
         }
     }
 }
@@ -118,6 +120,7 @@ public enum BackupEngine {
                 throw BackupError.destinationInsideSource(source.path)
             }
         }
+        try assertNoLinks(in: destination)
         try fm.createDirectory(at: destination, withIntermediateDirectories: true)
         let cleanAppleDouble = Volumes.info(for: destination)?.createsAppleDouble ?? false
 
@@ -144,8 +147,13 @@ public enum BackupEngine {
             }, isCancelled: isCancelled)
             report.problems += walk.problems.map { "\(rootName)/\($0): нет доступа" }
 
+            // Папки назначения, которые оказались не папками (например, ссылкой на чужом диске).
+            // O_NOFOLLOW защищает только последний компонент пути, поэтому внутрь такой папки
+            // не пишем ничего: иначе файлы ушли бы по ссылке за пределы бэкапа.
+            var refused: [String] = []
             for entry in walk.entries {
                 if isCancelled() { throw CancellationError() }
+                if refused.contains(where: { $0.isEmpty || entry.relativePath.hasPrefix($0 + "/") }) { continue }
                 let from = entry.relativePath.isEmpty ? source : source.appendingPathComponent(entry.relativePath)
                 let to = entry.relativePath.isEmpty ? target : target.appendingPathComponent(entry.relativePath)
                 let label = entry.relativePath.isEmpty ? rootName : rootName + "/" + entry.relativePath
@@ -179,12 +187,29 @@ public enum BackupEngine {
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
+                    if entry.isDirectory { refused.append(entry.relativePath) }
                     report.problems.append("\(label): \(error.localizedDescription)")
                 }
             }
             if cleanAppleDouble { VerifiedCopy.removeAppleDouble(for: walk.entries, at: target) }
         }
         return report
+    }
+
+    /// Ни один существующий компонент пути назначения не должен быть символической ссылкой:
+    /// на подготовленном диске «Offload Backup» может вести на папку на Mac.
+    /// Системные ссылки вроде /var → /private/var опасности не несут, поэтому проверяется только
+    /// путь внутри внешнего диска — от его корня до папки бэкапа.
+    static func assertNoLinks(in destination: URL) throws {
+        var current = destination.standardizedFileURL
+        guard current.path.hasPrefix("/Volumes/") else { return }
+        let stop = Volumes.info(for: destination)?.mountPoint.standardizedFileURL.path ?? "/Volumes"
+        while current.path != stop, current.path != "/" {
+            if (try? FileManager.default.attributesOfItem(atPath: current.path))?[.type] as? FileAttributeType == .typeSymbolicLink {
+                throw BackupError.destinationThroughLink(current.path)
+            }
+            current = current.deletingLastPathComponent()
+        }
     }
 
     static func ensureDirectory(_ url: URL) throws {

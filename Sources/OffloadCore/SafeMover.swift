@@ -191,6 +191,7 @@ public struct SafeMover: Sendable {
         progress(MoveProgress(phase: .inspecting, bytesDone: 0, bytesTotal: 0, item: source.lastPathComponent))
         // План мог часами простоять в окне подтверждения, и за это время файлы успели открыть.
         try Self.assertNotOpen(source)
+        if deleteOriginal, let reason = Self.undeletableReason(plan.content, source: source) { throw MoveError.blocked(reason) }
         // .DS_Store едет в копию вместе со всем остальным: это разложенные человеком вид окна
         // и положение иконок, а оригинал после переноса удаляется — не скопировав, мы их теряем.
         // От срыва переносов защищают сверки: assertMatches вычитает .DS_Store с обеих сторон,
@@ -257,6 +258,9 @@ public struct SafeMover: Sendable {
             progress(MoveProgress(phase: .removing, bytesDone: total, bytesTotal: total, item: source.lastPathComponent))
             try VerifiedCopy.assertUnchanged(entries, at: source)
             try Self.assertNotOpen(source)
+            if let reason = Self.undeletableReason(Inspector.inspect(source, isCancelled: isCancelled), source: source) {
+                throw MoveError.blocked(reason)
+            }
             try fm.removeItem(at: source)
             record.originalRemoved = true
             try? Journal.save(record, volume: plan.volume)
@@ -761,6 +765,18 @@ public struct SafeMover: Sendable {
     static func exists(_ url: URL) -> Bool {
         // attributesOfItem не переходит по символическим ссылкам.
         (try? FileManager.default.attributesOfItem(atPath: url.path)) != nil
+    }
+
+    /// Почему оригинал нельзя удалить целиком — или `nil`. removeItem останавливается на первой папке
+    /// без права записи и оставляет оригинал удалённым наполовину, а возврат потом отказывает:
+    /// «уже существует». Поэтому проверяем до того, как удалить хоть что-то.
+    static func undeletableReason(_ content: ContentReport, source: URL) -> String? {
+        let parent = source.deletingLastPathComponent()
+        if access(parent.path, W_OK | X_OK) != 0 {
+            return "Оригинал не удалить: нет права записи в «\(parent.lastPathComponent)». Копия на диске цела, оригинал не тронут."
+        }
+        guard content.undeletable > 0 else { return nil }
+        return "Оригинал не удалить целиком: внутри папки только для чтения или защищённые файлы (\(content.undeletableExamples.prefix(3).joined(separator: ", "))). Ничего не удалено; перенесите без удаления оригинала или снимите защиту."
     }
 
     /// Предел для служебных файлов рядом с архивом: они лежат на недоверенном диске.

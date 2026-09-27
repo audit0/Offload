@@ -94,7 +94,16 @@ public enum Runner {
         group.enter()
         DispatchQueue.global().async { collected.err = errPipe.fileHandleForReading.readDataToEndOfFile(); group.leave() }
 
-        try process.run()
+        do {
+            try process.run()
+        } catch {
+            // Процесс не запустился, а читатели ждут конца каналов: без закрытия концов для записи
+            // оба потока висели бы вечно — по два на каждую такую ошибку.
+            try? outPipe.fileHandleForWriting.close()
+            try? errPipe.fileHandleForWriting.close()
+            group.wait()
+            throw error
+        }
         if let inPipe, let stdin {
             try? inPipe.fileHandleForWriting.write(contentsOf: stdin)
             try? inPipe.fileHandleForWriting.close()
@@ -103,9 +112,14 @@ public enum Runner {
             let deadline = Date().addingTimeInterval(timeout)
             while process.isRunning, Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
             if process.isRunning {
+                // SIGTERM можно проигнорировать: через пять секунд — SIGKILL. Каналы могут держать
+                // и порождённые процессы, поэтому их дочитывание тоже ограничено по времени.
                 process.terminate()
+                let grace = Date().addingTimeInterval(5)
+                while process.isRunning, Date() < grace { Thread.sleep(forTimeInterval: 0.05) }
+                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
                 process.waitUntilExit()
-                group.wait()
+                _ = group.wait(timeout: .now() + 5)
                 throw RunnerError.timedOut(tool)
             }
         }

@@ -77,9 +77,13 @@ public struct CleanupObservation: Sendable, Hashable {
     public var inBackup: Bool
     /// Зашифрованный образ диска: такой человек делает сам для своих данных, это не установщик.
     public var isEncryptedImage: Bool
+    /// Когда файл появился в своей папке. Дату изменения curl -R и wget ставят по серверу, и только что
+    /// скачанный установщик выглядел бы старым; «появился в папке» — то, что видит Finder.
+    public var added: Date?
 
     public init(url: URL, bytes: Int64, modified: Date?, isDirectory: Bool, verdict: Verdict,
-                isProject: Bool = false, inBackup: Bool = false, isEncryptedImage: Bool = false) {
+                isProject: Bool = false, inBackup: Bool = false, isEncryptedImage: Bool = false, added: Date? = nil) {
+        self.added = added
         self.url = url
         self.bytes = bytes
         self.modified = modified
@@ -222,7 +226,9 @@ public struct CleanupPlanner: Sendable {
             && Self.installerExtensions.contains(item.url.pathExtension.lowercased())
 
         var allowed: [CleanupAction] = []
-        if regenerableReason != nil || (isInstaller && (days ?? 0) >= installerDays) { allowed.append(.trash) }
+        // Установщик старый, только если он и не менялся, и не появлялся в папке последнюю неделю.
+        let installerDays = [days, item.added.map { max(0, now.timeIntervalSince($0)) / 86_400 }].compactMap { $0 }.min()
+        if regenerableReason != nil || (isInstaller && (installerDays ?? 0) >= self.installerDays) { allowed.append(.trash) }
         if regenerableReason == nil, !item.verdict.isBlocked { allowed.append(.safe) }
         if regenerableReason == nil, item.isDirectory, !item.verdict.isBlocked, !item.inBackup { allowed.append(.backup) }
         allowed.append(.keep)

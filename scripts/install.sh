@@ -43,9 +43,27 @@ main() {
   actual="$(shasum -a 256 "$tmp/Offload.zip" | awk '{print $1}')"
   [[ "$expected" =~ '^[0-9a-f]{64}$' && "$expected" == "$actual" ]] || fail "Контрольная сумма не совпала — установка отменена."
 
+  # Сумма лежит в том же релизе и от подмены релиза не защищает. Подтверждение сборки (attestation)
+  # подписано Sigstore и говорит, что архив собран workflow release.yml этого репозитория.
+  # Проверить его может gh — если он установлен и вход выполнен.
+  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    print "→ проверяю подтверждение сборки (gh attestation verify)"
+    if gh attestation verify "$tmp/Offload.zip" --repo "$repo" \
+         --signer-workflow "$repo/.github/workflows/release.yml" >/dev/null 2>&1; then
+      print "  сборка подтверждена: собрана GitHub Actions из $repo"
+    elif [[ "${OFFLOAD_ALLOW_UNATTESTED:-0}" == 1 ]]; then
+      print -u2 -- "⚠️  Подтверждения сборки нет — продолжаю, потому что задано OFFLOAD_ALLOW_UNATTESTED=1."
+    else
+      fail "Архив не подтверждён как сборка $repo. Релизы до v0.3.1 подтверждений не имеют: для них задайте OFFLOAD_ALLOW_UNATTESTED=1."
+    fi
+  else
+    print "  (подтверждение сборки не проверено: нет gh или не выполнен вход; проверить вручную — gh attestation verify Offload.zip --repo $repo)"
+  fi
+
   ditto -x -k "$tmp/Offload.zip" "$tmp/unpacked"
   local app="$tmp/unpacked/Offload.app"
   [[ -d "$app" ]] || fail "В архиве нет Offload.app."
+  # Подпись ad-hoc: подтверждает только, что файлы приложения не изменены после подписи, но не кто его собрал.
   codesign --verify --strict "$app" 2>/dev/null || fail "Подпись приложения повреждена."
   [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" == "$bundle_id" ]] \
     || fail "Неожиданный идентификатор приложения — установка отменена."

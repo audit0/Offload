@@ -216,6 +216,9 @@ public struct SafetyRules: Sendable {
             notes.append("Менялось \(Format.relative(date, now: now)) — возможно, ещё используется.")
         }
         if content.containsGitRepo { notes.append("Внутри git-репозиторий — похоже на рабочий проект.") }
+        if content.undeletable > 0 {
+            notes.append("Удалить оригинал не получится: внутри папки только для чтения или защищённые файлы (\(content.undeletableExamples.prefix(3).joined(separator: ", "))). Перенести можно только копией, оставив оригинал на месте.")
+        }
         return notes.isEmpty ? .safe : .caution(notes)
     }
 }

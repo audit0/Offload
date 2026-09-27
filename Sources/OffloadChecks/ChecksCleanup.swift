@@ -35,6 +35,11 @@ func checksCleanup() {
         check(learnedTrash.action == .trash && learnedTrash.learned, "если в прошлый раз установщик удалили — предлагается то же")
         let fresh = planner.suggest(item("Downloads/Figma.dmg", gb: 0.3, daysAgo: 2, directory: false))
         check(!fresh.allowed.contains(.trash), "установщик, скачанный на днях, удалить не предлагается: его могли ещё не поставить")
+        let serverDated = planner.suggest(CleanupObservation(
+            url: home.appendingPathComponent("Downloads/Tool.dmg"), bytes: 300_000_000, modified: now.addingTimeInterval(-300 * 86_400),
+            isDirectory: false, verdict: .safe, added: now.addingTimeInterval(-86_400)))
+        check(!serverDated.allowed.contains(.trash),
+              "установщик с датой сервера (curl -R), появившийся в папке вчера, старым не считается")
         let video = planner.suggest(item("Downloads/film.mkv", gb: 3, daysAgo: 400, directory: false))
         check(!video.allowed.contains(.trash), "личный файл удалить нельзя вовсе — только в сейф или оставить")
         check(video.action == .safe, "большой и давно не менявшийся файл — в сейф")

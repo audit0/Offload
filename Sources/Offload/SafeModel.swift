@@ -117,9 +117,11 @@ final class SafeModel {
         if state?.volumeID != host.id { state = nil }
         let preferred = preferredImages[host.id].map { URL(fileURLWithPath: $0, isDirectory: true) }
         Task {
-            let (found, mounts) = await Task.detached(priority: .utility) { () -> (State, Set<String>) in
+            let answer = await Task.detached(priority: .utility) { () -> (State, Set<String>)? in
                 // Один `hdiutil info` на всё: открыт ли сейф, какие образы открыты вообще.
-                let attached = SecretsVault.attachedImages()
+                // Нет ответа — состояние не трогаем: открытый сейф не должен на время сбоя
+                // «закрыться» в интерфейсе и выпасть из автозакрытия.
+                guard let attached = SecretsVault.attachedImagesIfKnown() else { return nil }
                 let vault = SecretsVault(on: host, preferred: preferred, attached: attached)
                 let status = vault.status(attached: attached)
                 let state = State(volumeID: host.id, imageURL: vault.imageURL, exists: status.exists, isEncrypted: status.isEncrypted,
@@ -129,6 +131,7 @@ final class SafeModel {
                                   hostEncrypted: Volumes.isVolumeEncrypted(host))
                 return (state, Self.mounts(of: attached))
             }.value
+            guard let (found, mounts) = answer else { return }
             updateEncryptedMounts(mounts, app: app)
             guard self.generation == generation, app.destinationID == found.volumeID else { return }
             var snapshot = found

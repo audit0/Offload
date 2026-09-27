@@ -387,6 +387,13 @@ final class CleanupModel {
                     outcome.problems.append("«\(name)» осталось на месте. \(busy)")
                     continue items
                 }
+                // Кеши Homebrew, pip, npm, Gradle, Go держат не программы с окном, а консольные процессы
+                // (brew install, демон Gradle, xcodebuild) — их видно только по открытым файлам.
+                if let holders = await Task.detached(priority: .userInitiated, operation: { SafeMover.openFiles(in: url) }).value,
+                   !holders.isEmpty {
+                    outcome.problems.append("«\(name)» осталось на месте: его сейчас использует \(holders.prefix(3).joined(separator: ", ")).")
+                    continue items
+                }
                 do {
                     let trashedAt = try await Task.detached(priority: .userInitiated) { try Self.trash(url) }.value
                     outcome.done += 1
@@ -472,7 +479,13 @@ final class CleanupModel {
             answers[kind] = .running(Progress(index: 1, count: 1, item: "Docker", phase: "Жду, пока Docker вернёт место Mac", fraction: 1))
             _ = await DockerModel.settle(service, before: rawBefore)
             outcome.done = 1
-            outcome.bytes = reclaimed ?? question.bytes
+            // Не сказал, сколько освободил, — так и пишем, а не подставляем оценку из вопроса.
+            outcome.bytes = reclaimed ?? 0
+            if reclaimed == nil { outcome.problems.append("Docker не сообщил, сколько места освободил.") }
+        } catch DockerError.pruneIncomplete(let done, let reclaimed, let message) {
+            outcome.done = done
+            outcome.bytes = reclaimed ?? 0
+            outcome.problems.append("Docker очистил только часть, дальше остановился: \(message)")
         } catch {
             outcome.problems.append("Docker: \(error.localizedDescription)")
         }
@@ -615,7 +628,9 @@ final class CleanupModel {
                         inBackup: sources.contains { path == $0 || path.hasPrefix($0 + "/") },
                         // `hdiutil isencrypted` отвечает без пароля и окон не открывает (в отличие от imageinfo).
                         isEncryptedImage: !item.isDirectory && item.url.pathExtension.lowercased() == "dmg"
-                            && SecretsVault.isEncryptedImage(item.url, attached: attached))
+                            && SecretsVault.isEncryptedImage(item.url, attached: attached),
+                        added: item.isDirectory ? nil
+                            : (try? item.url.resourceValues(forKeys: [.addedToDirectoryDateKey]))?.addedToDirectoryDate)
                     collector.append(observation)
                     // Промежуточный итог — по тем же правилам, что и вопросы: видно, что поиск чего-то стоит.
                     var progress = planner.isIgnored(path) ? tally.skip() : tally.add(planner.suggest(observation), counted: planner.isWorthShowing)
@@ -753,8 +768,10 @@ final class CleanupModel {
         finishing = "Удаляю из Корзины…"
         let home = app.rules.home
         Task {
-            let (gone, problems) = await Self.erase(items)
-            let erasedPaths = Set(gone.map(\.inTrash))
+            let (gone, missing, problems) = await Self.erase(items)
+            // Чего в Корзине уже не было, из списка убираем, но в «удалено насовсем» не считаем:
+            // место от этого не освободилось.
+            let erasedPaths = Set((gone + missing).map(\.inTrash))
             for question in questions {
                 guard case .done(var outcome) = answer(for: question.kind) else { continue }
                 outcome.trashedItems.removeAll { erasedPaths.contains($0.inTrash) }
@@ -799,27 +816,31 @@ final class CleanupModel {
         }.value
     }
 
-    nonisolated private static func erase(_ items: [TrashedItem]) async -> ([TrashedItem], [String]) {
-        await Task.detached(priority: .userInitiated) { () -> ([TrashedItem], [String]) in
+    nonisolated private static func erase(_ items: [TrashedItem]) async -> (gone: [TrashedItem], missing: [TrashedItem], problems: [String]) {
+        await Task.detached(priority: .userInitiated) { () -> ([TrashedItem], [TrashedItem], [String]) in
             var gone: [TrashedItem] = []
+            var missing: [TrashedItem] = []
             var problems: [String] = []
             for item in items {
                 do {
                     // Удаляется насовсем, поэтому только то самое, что туда отправил разбор: файл,
                     // выброшенный потом с тем же именем, мог лечь на тот же путь.
-                    if FileManager.default.fileExists(atPath: item.inTrash.path) {
-                        guard item.isStillInTrash else {
-                            problems.append("«\(item.original.lastPathComponent)»: в Корзине под этим именем теперь другой файл — его не трогаю.")
-                            continue
-                        }
-                        try FileManager.default.removeItem(at: item.inTrash)
+                    guard FileManager.default.fileExists(atPath: item.inTrash.path) else {
+                        missing.append(item)
+                        problems.append("«\(item.original.lastPathComponent)»: в Корзине его уже нет — вернули или Корзину очистили.")
+                        continue
                     }
+                    guard item.isStillInTrash else {
+                        problems.append("«\(item.original.lastPathComponent)»: в Корзине под этим именем теперь другой файл — его не трогаю.")
+                        continue
+                    }
+                    try FileManager.default.removeItem(at: item.inTrash)
                     gone.append(item)
                 } catch {
                     problems.append("«\(item.original.lastPathComponent)»: \(error.localizedDescription)")
                 }
             }
-            return (gone, problems)
+            return (gone, missing, problems)
         }.value
     }
 

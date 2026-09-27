@@ -84,6 +84,8 @@ public enum DockerError: LocalizedError, Equatable {
     case failed(String)
     case verificationFailed(String)
     case remoteDaemon(String)
+    /// Часть целей очищена, на следующей Docker ответил ошибкой.
+    case pruneIncomplete(done: Int, reclaimed: Int64?, message: String)
 
     public var errorDescription: String? {
         switch self {
@@ -95,6 +97,9 @@ public enum DockerError: LocalizedError, Equatable {
         case .diskGuard(let reason): return "Остановлено, чтобы не забить диск Mac: \(reason)"
         case .failed(let message): return message
         case .verificationFailed(let name): return "Архив тома «\(name)» не совпал с томом — том не тронут."
+        case .pruneIncomplete(let done, let reclaimed, let message):
+            let freed = reclaimed.map { ", освобождено \(Format.bytes($0))" } ?? ""
+            return "Docker очистил только часть выбранного (\(done) из выбранных пунктов\(freed)), а дальше остановился: \(message)"
         case .remoteDaemon(let host): return "Docker сейчас смотрит не на этот Mac, а на «\(host)» (контекст Docker или DOCKER_HOST). Очищать и архивировать чужой Docker Offload не будет: переключитесь на локальный контекст (docker context use desktop-linux или default) и повторите."
         }
     }
@@ -337,10 +342,18 @@ public struct DockerService: Sendable {
     public func prune(_ targets: Set<DockerPruneTarget>, status: (DockerPruneTarget) -> Void = { _ in }) throws -> Int64? {
         try ensureRunning()
         var reclaimed: Int64?
+        var done = 0
         for target in Self.pruneOrder(targets) {
             status(target)
-            let result = try Runner.check("docker", Self.pruneArguments(target), timeout: 1800)
-            if let bytes = Self.parseReclaimed(result.output) { reclaimed = (reclaimed ?? 0) + bytes }
+            do {
+                let result = try Runner.check("docker", Self.pruneArguments(target), timeout: 1800)
+                if let bytes = Self.parseReclaimed(result.output) { reclaimed = (reclaimed ?? 0) + bytes }
+                done += 1
+            } catch {
+                // Удалённое до ошибки уже не вернуть: «не получилось» было бы неправдой.
+                guard done > 0 else { throw error }
+                throw DockerError.pruneIncomplete(done: done, reclaimed: reclaimed, message: error.localizedDescription)
+            }
         }
         return reclaimed
     }
@@ -386,6 +399,11 @@ public struct DockerService: Sendable {
         let fm = FileManager.default
         try fm.createDirectory(at: directory, withIntermediateDirectories: true)
         let compressed = Runner.locate("zstd") != nil
+        if rawDiskBytes() == nil {
+            // Не Docker Desktop (OrbStack, Colima) или Docker.raw лежит в другом месте: за ростом его
+            // диска следить нечем. Остаётся защита по свободному месту на Mac — и об этом надо сказать.
+            status("Диск Docker не найден: за его ростом не слежу, только за свободным местом на Mac")
+        }
         let final = SafeMover.unique(directory.appendingPathComponent(compressed ? "\(name).tar.zst" : "\(name).tar"))
         let partial = directory.appendingPathComponent(".\(name).partial-\(UUID().uuidString)")
         do {
@@ -400,6 +418,13 @@ public struct DockerService: Sendable {
             status("Сверка: список файлов архива")
             let archiveDigest = try digest(ofArchive: partial, compressed: compressed, isCancelled: isCancelled)
             guard !volumeDigest.isEmpty, volumeDigest == archiveDigest else { throw DockerError.verificationFailed(name) }
+            // Оба отпечатка считает один и тот же вспомогательный образ. Независимо от него архив
+            // читает системный tar на Mac: число записей должно совпасть с числом путей в томе.
+            status("Сверка: архив читается на Mac")
+            guard let listed = Self.archiveEntryCount(partial, compressed: compressed, isCancelled: isCancelled),
+                  listed == Int(volumeDigest.split(separator: " ").first ?? "") else {
+                throw DockerError.verificationFailed(name)
+            }
             try SafeMover.renameExclusive(partial, to: final)
         } catch {
             try? fm.removeItem(at: partial)
@@ -459,6 +484,52 @@ public struct DockerService: Sendable {
             }
             throw error
         }
+    }
+
+    /// Сколько записей в архиве по мнению /usr/bin/tar (libarchive) — без Docker и без
+    /// вспомогательного образа. `nil` — архив не читается.
+    static func archiveEntryCount(_ url: URL, compressed: Bool, isCancelled: () -> Bool) -> Int? {
+        guard let tar = try? Runner.makeProcess("tar", ["-tf", compressed ? "-" : url.path]) else { return nil }
+        var helpers: [Process] = []
+        if compressed {
+            guard let zstd = try? Runner.makeProcess("zstd", ["-dcq", "--", url.path]) else { return nil }
+            let pipe = Pipe()
+            zstd.standardOutput = pipe
+            zstd.standardError = FileHandle.nullDevice
+            tar.standardInput = pipe
+            helpers.append(zstd)
+        } else {
+            tar.standardInput = FileHandle.nullDevice
+        }
+        let output = Pipe()
+        tar.standardOutput = output
+        tar.standardError = FileHandle.nullDevice
+        let collected = Collected()
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global().async {
+            collected.out = output.fileHandleForReading.readDataToEndOfFile()
+            group.leave()
+        }
+        do {
+            for helper in helpers { try helper.run() }
+            try tar.run()
+        } catch {
+            for helper in helpers where helper.isRunning { helper.terminate() }
+            try? output.fileHandleForWriting.close()
+            group.wait()
+            return nil
+        }
+        while tar.isRunning || helpers.contains(where: \.isRunning) {
+            if isCancelled() {
+                tar.terminate()
+                for helper in helpers { helper.terminate() }
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        group.wait()
+        guard !isCancelled(), tar.terminationStatus == 0, helpers.allSatisfy({ $0.terminationStatus == 0 }) else { return nil }
+        return collected.out.reduce(0) { $0 + ($1 == 0x0A ? 1 : 0) }
     }
 
     static let restoreLabel = "io.github.audit0.offload.restore"

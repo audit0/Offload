@@ -283,5 +283,23 @@ func checksHardenRestore() {
                     { _ = try mover.restore(foreign, deleteArchive: false) },
                     matching: { if case MoveError.unsafeRecord = $0 { return true }; return false })
         check(!fm.fileExists(atPath: rules.home.appendingPathComponent(".vim").path), "в ~/.vim ничего не появилось")
+
+        // Бэкап на подготовленный диск: папка бэкапа — ссылка на Mac, папка проекта внутри — тоже.
+        let project = rules.home.appendingPathComponent("Projects/site", isDirectory: true)
+        try write("<h1>site</h1>", to: project.appendingPathComponent("src/index.html"))
+        let outside = rules.home.appendingPathComponent("Documents/чужое", isDirectory: true)
+        try fm.createDirectory(at: outside, withIntermediateDirectories: true)
+        let linkedRoot = mount.appendingPathComponent("Backup-link")
+        try fm.createSymbolicLink(atPath: linkedRoot.path, withDestinationPath: outside.path)
+        expectError("бэкап в папку-ссылку на подготовленном диске отклоняется",
+                    { _ = try BackupEngine.run(sources: [project], destination: linkedRoot) },
+                    matching: { if case BackupError.destinationThroughLink = $0 { return true }; return false })
+        let backupRoot = mount.appendingPathComponent("Offload Backup", isDirectory: true)
+        try fm.createDirectory(at: backupRoot.appendingPathComponent("site"), withIntermediateDirectories: true)
+        try fm.createSymbolicLink(atPath: backupRoot.appendingPathComponent("site/src").path, withDestinationPath: outside.path)
+        let report = try BackupEngine.run(sources: [project], destination: backupRoot)
+        check(((try? fm.contentsOfDirectory(atPath: outside.path)) ?? []).isEmpty,
+              "через подложенную ссылку внутри бэкапа на Mac ничего не записано")
+        check(!report.problems.isEmpty, "о подложенной ссылке сказано в отчёте бэкапа")
     }
 }

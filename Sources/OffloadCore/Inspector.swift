@@ -29,6 +29,10 @@ public struct ContentReport: Sendable, Equatable {
     public var unreadable = 0
     public var unreadableExamples: [String] = []
     public var truncated = false
+    /// Что нельзя удалить: папки без права записи (так лежит кеш модулей Go) и защищённые флагами
+    /// файлы (uchg, uappnd). Удаление оригинала остановилось бы на них посередине.
+    public var undeletable = 0
+    public var undeletableExamples: [String] = []
 
     public init() {}
 }
@@ -124,6 +128,14 @@ public enum Inspector {
                     if status.pointee.st_dev != rootDevice, report.mountedVolume == nil { report.mountedVolume = relative(path) }
                 } else {
                     rootDevice = status.pointee.st_dev
+                }
+            }
+            if let status = entry.pointee.fts_statp, info != FTS_NS {
+                let protected = status.pointee.st_flags & UInt32(UF_IMMUTABLE | UF_APPEND | SF_IMMUTABLE | SF_APPEND) != 0
+                let lockedFolder = info == FTS_D && access(path, W_OK | X_OK) != 0
+                if protected || lockedFolder {
+                    report.undeletable += 1
+                    if report.undeletableExamples.count < 5 { report.undeletableExamples.append(relative(path)) }
                 }
             }
             switch info {

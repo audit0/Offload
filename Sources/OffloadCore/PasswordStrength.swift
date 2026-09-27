@@ -42,6 +42,13 @@ public struct PasswordStrength: Sendable, Equatable {
         let characters = Array(password)
         let length = characters.count
         guard length > 0 else { return PasswordStrength(bits: 0, level: .weak, advice: [], length: 0) }
+        // hdiutil читает пароль из stdin до первого нулевого байта: «верный\0что угодно» открыл бы
+        // сейф одной первой частью, а оценка считала бы весь пароль. Управляющим символам в пароле не место.
+        if password.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }) {
+            return PasswordStrength(bits: 0, level: .weak,
+                                    advice: ["В пароле есть невидимые управляющие символы (перевод строки, табуляция, нулевой байт) — уберите их."],
+                                    length: length)
+        }
 
         var pool = 0
         var classes = Set<String>()

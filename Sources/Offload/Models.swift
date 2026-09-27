@@ -484,10 +484,13 @@ final class BackupModel {
         let mount = safe.mountPoint
         keysBusy = true
         keysMessage = nil
-        let operationID = app.beginOperation {}
+        // Отменяемо: закрытие сейфа по сну или блокировке с прерыванием операций должно остановить
+        // и запись ключей, а не ждать её конца.
+        let token = CancelToken()
+        let operationID = app.beginOperation { token.cancel() }
         Task {
             let report = await Task.detached(priority: .userInitiated) {
-                SecretsVault.fill(mount, home: home, projectRoots: roots)
+                SecretsVault.fill(mount, home: home, projectRoots: roots, isCancelled: { token.isCancelled })
             }.value
             keysReport = report
             let text = "В сейф сложено файлов: \(report.copied), без изменений: \(report.unchanged)" + (report.problems.isEmpty ? "." : ", проблем: \(report.problems.count).")
