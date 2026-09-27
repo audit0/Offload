@@ -35,7 +35,7 @@ public enum Runner {
     /// Каталоги сторонних инструментов. Они доступны пользователю на запись,
     /// поэтому системные программы оттуда никогда не берутся.
     public static let thirdPartyDirectories = ["/opt/homebrew/bin", "/usr/local/bin", "/Applications/Docker.app/Contents/Resources/bin"]
-    public static let thirdPartyTools: Set<String> = ["docker", "zstd"]
+    public static let thirdPartyTools: Set<String> = ["docker", "zstd", "restic"]
 
     /// Запись в закрытый канал иначе убивает приложение сигналом SIGPIPE.
     private static let ignoreSigpipe: Void = { signal(SIGPIPE, SIG_IGN) }()
@@ -127,6 +127,87 @@ public enum Runner {
         group.wait()
         return CommandResult(status: process.terminationStatus, stdout: collected.out,
                              stderr: String(decoding: collected.err, as: UTF8.self))
+    }
+
+    /// Как `run`, но вывод отдаётся построчно по мере появления, а работу можно прервать.
+    /// Нужен долгим командам с прогрессом (restic restore). Возвращённый `stdout` пуст:
+    /// всё прочитанное уже ушло в `onLine`. Прерванная работа — `CancellationError`.
+    @discardableResult
+    public static func stream(_ tool: String, _ arguments: [String], stdin: Data? = nil,
+                              isCancelled: @escaping @Sendable () -> Bool = { false },
+                              onErrorLine: @escaping @Sendable (String) -> Void = { _ in },
+                              onLine: @escaping @Sendable (String) -> Void) throws -> CommandResult {
+        let process = try makeProcess(tool, arguments)
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        process.standardOutput = outPipe
+        process.standardError = errPipe
+        let inPipe = stdin == nil ? nil : Pipe()
+        process.standardInput = inPipe ?? FileHandle.nullDevice
+
+        let collected = Collected()
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global().async {
+            readLines(outPipe.fileHandleForReading, onLine)
+            group.leave()
+        }
+        group.enter()
+        DispatchQueue.global().async {
+            // stderr — и построчно (restic пишет туда, чего ждёт), и целиком для итога.
+            let lines = LineLog(limit: 10_000)
+            readLines(errPipe.fileHandleForReading) { line in
+                lines.append(line)
+                onErrorLine(line)
+            }
+            collected.err = Data(lines.all.joined(separator: "\n").utf8)
+            group.leave()
+        }
+
+        do {
+            try process.run()
+        } catch {
+            try? outPipe.fileHandleForWriting.close()
+            try? errPipe.fileHandleForWriting.close()
+            group.wait()
+            throw error
+        }
+        if let inPipe, let stdin {
+            try? inPipe.fileHandleForWriting.write(contentsOf: stdin)
+            try? inPipe.fileHandleForWriting.close()
+        }
+        var cancelled = false
+        while process.isRunning {
+            if isCancelled() {
+                cancelled = true
+                process.terminate()
+                let grace = Date().addingTimeInterval(5)
+                while process.isRunning, Date() < grace { Thread.sleep(forTimeInterval: 0.05) }
+                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+                break
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        process.waitUntilExit()
+        _ = group.wait(timeout: .now() + 5)
+        if cancelled { throw CancellationError() }
+        return CommandResult(status: process.terminationStatus, stdout: Data(),
+                             stderr: String(decoding: collected.err, as: UTF8.self))
+    }
+
+    /// Читает канал до конца, отдавая по строке.
+    private static func readLines(_ handle: FileHandle, _ onLine: (String) -> Void) {
+        var buffer = Data()
+        while true {
+            let chunk = handle.availableData
+            if chunk.isEmpty { break }
+            buffer.append(chunk)
+            while let newline = buffer.firstIndex(of: 0x0A) {
+                onLine(String(decoding: buffer[buffer.startIndex..<newline], as: UTF8.self))
+                buffer.removeSubrange(buffer.startIndex...newline)
+            }
+        }
+        if !buffer.isEmpty { onLine(String(decoding: buffer, as: UTF8.self)) }
     }
 
     /// Как `run`, но ненулевой код завершения считается ошибкой.

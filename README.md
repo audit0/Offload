@@ -94,6 +94,8 @@ less install.sh && zsh install.sh
 
 **Бэкап.** Обновляемая копия папок с проектами — в сейф или, если так решите, открыто на диск. `node_modules`, `.venv`, `dist` и другие восстанавливаемые папки пропускаются. Ключи и токены (`~/.ssh`, учётка GitHub CLI, дотфайлы с токенами, базы KeePass, `.env`, `*.pem`, `*.key`, состояние Terraform, ключи сервисных аккаунтов, `.git/config` с паролем в адресе…) идут только в сейф, а в открытый бэкап проектов не попадают. Узнаются они по именам, папкам и содержимому небольших файлов настроек; токен в файле с необычным именем и форматом можно не узнать, поэтому надёжнее всего вести бэкап в сейф. Заодно Offload предупреждает о SSH-ключах без парольной фразы.
 
+**Из iCloud.** Вернуть файл или папку из бэкапа [restic](https://restic.net) в iCloud Drive — например, из копии внешнего диска, которую туда кладёт отдельная программа бэкапа. Offload сам находит хранилища в iCloud Drive (на два уровня вглубь; другое место можно выбрать), открывает их паролем — набранным (он уходит restic только через stdin) или из файла, который restic читает сам, — и показывает снимки: по папкам снимка можно ходить, а файл можно найти по части имени. Восстановленное ложится в новую папку «Из бэкапа …» и сверяется с бэкапом (`restic restore --verify`), существующее не перезаписывается. Хранилище Offload только читает (`--no-lock`: не пишет в него даже блокировку). Если часть бэкапа хранится только в облаке, Offload просит iCloud её скачать и говорит, что ждёт его. Пароль держится в памяти, пока хранилище открыто; сон и блокировка экрана его стирают. Нужен restic: `brew install restic`.
+
 **Docker.** Сколько внутри Docker занимают образы, кеш сборки, контейнеры и тома. «Освободить место…» сразу отмечает только кеш сборки и образы без имени (`<none>`, остатки пересборок). Все неиспользуемые образы — только если их отметить: собранный вами и никуда не отправленный образ не скачать заново. Остановленные контейнеры — тоже только по вашей отметке. Итог показывает, насколько после этого уменьшился `Docker.raw` на Mac. Тома очистка не трогает: в них данные. Список томов — с размером и контейнерами, которые их используют; неиспользуемые тома упаковываются в сейф (или на диск) со сверкой и возвращаются одной кнопкой.
 
 ### Как VeraCrypt и чем отличается
@@ -188,7 +190,7 @@ GitHub Actions прогонит проверки, соберёт universal-сб�
 
 ## English
 
-Offload frees up space on a Mac without risking data loss. It shows what takes up disk space, moves selected items to an external drive, keeps an incremental backup of projects and stores keys and tokens in an encrypted container. The original is deleted only after the copy has been re-read from disk and matched byte for byte (SHA-256).
+Offload frees up space on a Mac without risking data loss. It shows what takes up disk space, moves selected items to an external drive, keeps an incremental backup of projects, stores keys and tokens in an encrypted container and restores files from restic backups in iCloud Drive. The original is deleted only after the copy has been re-read from disk and matched byte for byte (SHA-256).
 
 It refuses to move things that would break apps — virtual machines and media libraries (even nested deep inside a folder), app data in `~/Library`, `~/.ssh` — and handles exFAT pitfalls (permissions, AppleDouble `._*` files, sparse files) and a Docker trap where the archive stream fills `Docker.raw` via container logs.
 

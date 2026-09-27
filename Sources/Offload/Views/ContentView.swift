@@ -37,6 +37,7 @@ struct ContentView: View {
                     case .space: SpaceView()
                     case .history: HistoryView()
                     case .backup: BackupView()
+                    case .icloud: CloudRestoreView()
                     case .docker: DockerView()
                     }
                 }

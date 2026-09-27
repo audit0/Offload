@@ -201,4 +201,32 @@ enum Demo {
             machine("macOS Sequoia", 24.9, logical: 80, daysAgo: 210),
         ]
     }
+
+    // MARK: - Из iCloud
+
+    static var cloudRepositories: [CloudRestore.Repository] {
+        [CloudRestore.Repository(url: CloudRestore.iCloudDrive.appendingPathComponent("Бэкапы/ssd-restic", isDirectory: true))]
+    }
+
+    static var cloudSnapshots: [CloudRestore.Snapshot] {
+        func snapshot(_ id: String, hoursAgo: Double) -> CloudRestore.Snapshot {
+            CloudRestore.Snapshot(id: id + String(repeating: "0", count: 56), shortID: id, time: Date().addingTimeInterval(-hoursAgo * 3_600),
+                                  paths: ["/Volumes/Samsung T7"], hostname: "mac", tags: ["ssd"], totalBytes: 162 * gigabyte)
+        }
+        return [snapshot("c00b9807", hoursAgo: 5), snapshot("3e18663f", hoursAgo: 30), snapshot("9a41d2e0", hoursAgo: 170)]
+    }
+
+    static let cloudDirectory = "/Volumes/Samsung T7"
+
+    static var cloudEntries: [CloudRestore.Entry] {
+        func entry(_ name: String, _ gb: Double? = nil, daysAgo: Double) -> CloudRestore.Entry {
+            CloudRestore.Entry(path: cloudDirectory + "/" + name, isDirectory: gb == nil, size: gb.map { Int64($0 * Double(gigabyte)) },
+                               modified: Date().addingTimeInterval(-daysAgo * 86_400))
+        }
+        return [
+            entry("Offload", daysAgo: 1), entry("Projects", daysAgo: 2), entry("Photos 2025", daysAgo: 60),
+            entry("Offload Safe.sparsebundle", daysAgo: 1), entry("Movies", daysAgo: 210),
+            entry("presentation.key", 0.4, daysAgo: 12), entry("taxes-2025.pdf", 0.002, daysAgo: 90),
+        ]
+    }
 }
