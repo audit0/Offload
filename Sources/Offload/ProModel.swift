@@ -10,8 +10,8 @@ import OffloadCore
 @MainActor
 @Observable
 final class ProModel {
-    /// Где купить: раздел README с ценами и способами оплаты.
-    static let purchaseURL = URL(string: "https://github.com/audit0/Offload#offload-pro")!
+    /// Где купить: бот в Telegram — оплата Stars, криптовалютой или по СБП, ключ приходит сообщением.
+    static let purchaseURL = URL(string: "https://t.me/SHILLVPN_bot?start=offload")!
 
     private(set) var status: ProStatus = .free
     private(set) var license: License?
