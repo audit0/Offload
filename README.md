@@ -135,7 +135,7 @@ Offload Pro добавляет инструменты для тех, у кого
 
 ### Как купить
 
-В Telegram-боте [@SHILLVPN_bot](https://t.me/SHILLVPN_bot?start=offload) (кнопка «Купить…» в окне «Offload Pro» ведёт туда же): оплата Telegram Stars, криптовалютой (CryptoBot, xRocket, USDT TRC20/TON, TON) или по СБП. Ключ приходит сообщением сразу после оплаты; вставьте его в окне «Offload Pro». Возврат — 14 дней, напишите в том же боте.
+В Telegram-боте [@OffLoadmg_bot](https://t.me/OffLoadmg_bot?start=pro) (кнопка «Купить…» в окне «Offload Pro» ведёт туда же): оплата Telegram Stars, криптовалютой (CryptoBot, xRocket, USDT TRC20/TON, TON) или по СБП. Ключ приходит сообщением сразу после оплаты; вставьте его в окне «Offload Pro». Возврат — 14 дней, напишите в том же боте. Новости и релизы — в канале [@offload_dmg](https://t.me/offload_dmg).
 
 ## Полный доступ к диску
 

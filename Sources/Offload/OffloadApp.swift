@@ -34,6 +34,7 @@ struct OffloadApp: App {
             }
             CommandGroup(replacing: .help) {
                 Link("Offload на GitHub", destination: Self.repositoryURL)
+                Link("Канал Offload в Telegram", destination: URL(string: "https://t.me/offload_dmg")!)
                 Link("Сообщить о проблеме", destination: Self.repositoryURL.appendingPathComponent("issues"))
             }
         }

@@ -11,7 +11,7 @@ import OffloadCore
 @Observable
 final class ProModel {
     /// Где купить: бот в Telegram — оплата Stars, криптовалютой или по СБП, ключ приходит сообщением.
-    static let purchaseURL = URL(string: "https://t.me/SHILLVPN_bot?start=offload")!
+    static let purchaseURL = URL(string: "https://t.me/OffLoadmg_bot?start=pro")!
 
     private(set) var status: ProStatus = .free
     private(set) var license: License?
