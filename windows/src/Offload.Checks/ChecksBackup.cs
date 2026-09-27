@@ -42,9 +42,6 @@ static partial class All
             Write("-----BEGIN OPENSSH PRIVATE KEY-----\n", Path.Combine(project, ".deploy_key"));
             Write("$env:OPENAI_KEY = 'sk-proj-abcdef'\n", Path.Combine(project, "setup.ps1"));
             Write("{\"name\": \"app\"}", Path.Combine(project, "package.json"));
-            // TODO(core): Paths.Extension(".deploy_key") отдаёт «deploy_key», а на Mac у имени с точкой в начале расширения нет.
-            // Из-за этого BackupEngine.IsSecretPath не заглядывает в содержимое скрытых файлов без расширения,
-            // и ключ «.deploy_key» уходит в открытый бэкап (и не попадает в сейф через SecretsVault.Fill).
             foreach (var relative in new[] { @".git\config", "gcp.json", @".config\gh\hosts.yml", ".deploy_key", "setup.ps1" })
                 Check(BackupEngine.IsSecretPath(relative, project), $"«{relative}» узнаётся как секрет по месту или содержимому");
             Check(!BackupEngine.IsSecretPath("package.json", project), "обычный package.json — не секрет");
@@ -72,7 +69,6 @@ static partial class All
             Check(!Exists(Path.Combine(backup, @"proj\.env")), ".env не попал в открытый бэкап");
             Check(!Exists(Path.Combine(backup, @"proj\.envrc")), ".envrc не попал в открытый бэкап");
             Check(!Exists(Path.Combine(backup, @"proj\.ssh")), "папка .ssh внутри проекта не попала в открытый бэкап");
-            // TODO(core): «.deploy_key» с приватным ключом должен быть пропущен — см. Paths.Extension выше.
             Check(!Exists(Path.Combine(backup, @"proj\.deploy_key")), "скрытый файл с приватным ключом не попал в открытый бэкап");
             Check(first.SecretsSkipped.Where(s => s != @"proj\.deploy_key").ToHashSet().SetEquals([@"proj\.env", @"proj\.envrc", @"proj\.ssh\"]),
                   $"пропущенные секреты отмечены в отчёте ({string.Join(", ", first.SecretsSkipped)})");

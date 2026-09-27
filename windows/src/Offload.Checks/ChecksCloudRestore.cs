@@ -24,9 +24,6 @@ static partial class All
             Check(snapshots[0].Root == "/Volumes/SSD", "корень снимка с одним путём");
             Check(snapshots[1].Root == "/a", "корень снимка с двумя путями — общая папка");
             Check(snapshots[2].ShortId == "99aa00bb", "короткий номер снимка — из длинного, если его нет");
-            // TODO(core): restic хранит в дереве снимка путь «C:\Users\q» как «/C/Users/q» (двоеточие буквы диска
-            // убирается, internal/archiver/tree.go, pathComponents), а Snapshot.Root/CommonDirectory дают «/C:/Users/q».
-            // С таким корнем List ничего не находит, и снимок, сделанный на Windows, открывается пустым.
             Check(snapshots[2].Root == "/C/Users/q/Documents", $"снимок с Windows: корень — как в дереве restic, «/C/…» ({snapshots[2].Root})");
             Check(CloudRestore.ParseTime("2026-09-26T18:44:07.123456789+03:00") == new DateTime(2026, 9, 26, 15, 44, 7, DateTimeKind.Utc),
                   "время с наносекундами читается и переводится во всемирное");

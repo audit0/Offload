@@ -20,7 +20,7 @@ public static unsafe class Reparse
     /// <summary>Ссылка по пути; null — это не ссылка (или не прочиталась).</summary>
     public static LinkInfo? Read(string path)
     {
-        using var handle = Native.CreateFileW(path, 0, Native.FILE_SHARE_ALL, IntPtr.Zero, Native.OPEN_EXISTING,
+        using var handle = Native.CreateFileW(Native.Long(path), 0, Native.FILE_SHARE_ALL, IntPtr.Zero, Native.OPEN_EXISTING,
                                               Native.FILE_FLAG_OPEN_REPARSE_POINT | Native.FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero);
         if (handle.IsInvalid) return null;
         if (Native.AttributesAndTag(handle) is not { } tagInfo) return null;
@@ -87,10 +87,10 @@ public static unsafe class Reparse
     /// <summary>Точка соединения: пустая папка и в ней указатель на другую папку.</summary>
     public static void CreateJunction(string path, string target)
     {
-        if (!Native.CreateDirectoryW(path, IntPtr.Zero)) throw Native.LastError();
+        if (!Native.CreateDirectoryW(Native.Long(path), IntPtr.Zero)) throw Native.LastError();
         try
         {
-            using var handle = Native.CreateFileW(path, Native.GENERIC_WRITE, 0, IntPtr.Zero, Native.OPEN_EXISTING,
+            using var handle = Native.CreateFileW(Native.Long(path), Native.GENERIC_WRITE, 0, IntPtr.Zero, Native.OPEN_EXISTING,
                                                   Native.FILE_FLAG_OPEN_REPARSE_POINT | Native.FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero);
             if (handle.IsInvalid) throw Native.LastError();
             // Для точки подключения тома («Volume{…}\») служебное имя — «\??\Volume{…}\».
@@ -117,7 +117,7 @@ public static unsafe class Reparse
         }
         catch
         {
-            Native.RemoveDirectoryW(path);
+            Native.RemoveDirectoryW(Native.Long(path));
             throw;
         }
     }

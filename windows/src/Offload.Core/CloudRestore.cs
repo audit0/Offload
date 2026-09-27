@@ -372,7 +372,12 @@ public static class CloudRestore
     public static string CommonDirectory(IReadOnlyList<string> paths)
     {
         if (paths.Count == 0) return "/";
-        static string[] Components(string p) => p.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        // Пути снимков Windows restic хранит без двоеточия у буквы диска: «C:\\Users\\q» лежит в дереве как «/C/Users/q».
+        static string[] Components(string p)
+        {
+            var path = p.Length >= 2 && char.IsAsciiLetter(p[0]) && p[1] == ':' ? p[0] + p[2..] : p;
+            return path.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        }
         var common = Components(paths[0]).ToList();
         foreach (var path in paths.Skip(1))
         {

@@ -207,9 +207,6 @@ static partial class All
             Check(Path.Combine(longSource, deep).Length > 260, $"есть путь длиннее 260 знаков ({Path.Combine(longSource, deep).Length})");
             var longPlan = mover.Plan(longSource, volume);
             MoveRecord? longRecord = null;
-            // TODO(core): FileHasher.Sha256 → UnbufferedReader.Open вызывает CreateFileW с путём как есть, без Native.Long:
-            // путь длиннее MAX_PATH не открывается, VerifiedCopy.Verify считает копию несовпавшей, и перенос папки
-            // с глубокой вложенностью всегда отказывает. То же у Reparse.Read и Paths.Final (Resolve) — они тоже без Native.Long.
             Check(() =>
             {
                 longRecord = mover.Execute(longPlan, deleteOriginal: true, acceptCautions: true);

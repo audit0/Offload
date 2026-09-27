@@ -50,9 +50,12 @@ public static class Paths
 
     public static string Parent(string path) => Path.GetDirectoryName(Trim(path)) ?? Trim(path);
 
+    /// <summary>Расширение строчными буквами, без точки. Точка в начале имени — признак скрытого файла, а не
+    /// расширение: у «.deploy_key» расширения нет (как и на Mac), а у «.env.production» — «production».</summary>
     public static string Extension(string name)
     {
-        var ext = Path.GetExtension(name);
+        var file = Path.GetFileName(name.TrimEnd('\\', '/')).TrimStart('.');
+        var ext = Path.GetExtension(file);
         return string.IsNullOrEmpty(ext) ? "" : ext[1..].ToLowerInvariant();
     }
 
@@ -82,7 +85,7 @@ public static class Paths
     /// <summary>Настоящий путь существующего объекта — со всеми ссылками, развёрнутыми системой.</summary>
     static string? Final(string path)
     {
-        using var handle = Native.CreateFileW(path, 0, Native.FILE_SHARE_ALL, IntPtr.Zero, Native.OPEN_EXISTING,
+        using var handle = Native.CreateFileW(Native.Long(path), 0, Native.FILE_SHARE_ALL, IntPtr.Zero, Native.OPEN_EXISTING,
                                               Native.FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero);
         if (handle.IsInvalid) return null;
         var final = Native.FinalPath(handle);

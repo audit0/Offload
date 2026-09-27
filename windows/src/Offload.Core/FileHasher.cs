@@ -73,7 +73,7 @@ public sealed unsafe class UnbufferedReader : IDisposable
     public static UnbufferedReader Open(string path)
     {
         const uint share = Native.FILE_SHARE_READ | Native.FILE_SHARE_WRITE | Native.FILE_SHARE_DELETE;
-        var handle = Native.CreateFileW(path, Native.GENERIC_READ, share, IntPtr.Zero, Native.OPEN_EXISTING,
+        var handle = Native.CreateFileW(Native.Long(path), Native.GENERIC_READ, share, IntPtr.Zero, Native.OPEN_EXISTING,
                                         Native.FILE_FLAG_NO_BUFFERING | Native.FILE_FLAG_SEQUENTIAL_SCAN, IntPtr.Zero);
         if (handle.IsInvalid)
         {
@@ -81,7 +81,7 @@ public sealed unsafe class UnbufferedReader : IDisposable
             handle.Dispose();
             if (code != Native.ERROR_INVALID_PARAMETER && code != Native.ERROR_NOT_SUPPORTED)
                 throw new IOException($"Не удалось прочитать «{path}».", new System.ComponentModel.Win32Exception(code));
-            handle = Native.CreateFileW(path, Native.GENERIC_READ, share, IntPtr.Zero, Native.OPEN_EXISTING,
+            handle = Native.CreateFileW(Native.Long(path), Native.GENERIC_READ, share, IntPtr.Zero, Native.OPEN_EXISTING,
                                         Native.FILE_FLAG_SEQUENTIAL_SCAN, IntPtr.Zero);
             if (handle.IsInvalid)
             {
