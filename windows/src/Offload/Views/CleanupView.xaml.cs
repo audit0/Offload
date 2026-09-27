@@ -173,7 +173,7 @@ public partial class CleanupView : UserControl
         if (!ReferenceEquals(shownIgnored, Model.Ignored) || shownIgnoreProblem != Model.IgnoreProblem) BuildIgnored();
     }
 
-    /// <summary>Чему Offload научился на решениях человека — и кнопка, чтобы всё это забыть.</summary>
+    /// <summary>Чему OffLoadAI научился на решениях человека — и кнопка, чтобы всё это забыть.</summary>
     void BuildLearned()
     {
         var habits = Model.Habits;
@@ -189,7 +189,7 @@ public partial class CleanupView : UserControl
             more.Click += (_, _) => app.Pro.Offer(ProFeature.Habits);
             Learned.Children.Add(Row(new IconTile { Glyph = Glyphs.Lightbulb, Tone = Tone.Neutral }, new TextBlock
             {
-                Text = "Привычки действуют в Offload Pro. Ваши ответы запоминаются и сейчас — с Pro похожее сразу начнёт попадать в нужный вопрос.",
+                Text = "Привычки действуют в OffLoadAI Pro. Ваши ответы запоминаются и сейчас — с Pro похожее сразу начнёт попадать в нужный вопрос.",
                 Style = Res("Callout"),
             }, more));
             Learned.Children.Add(Divider());
@@ -274,7 +274,7 @@ public partial class CleanupView : UserControl
     void Forget_Click(object sender, RoutedEventArgs e)
     {
         if (!Dialogs.Confirm(Window.GetWindow(this), "Забыть ваши решения?",
-                "Offload забудет ваши ответы по каждой папке и файлу и привычки, выученные на них. Итоги прошлых разборов и то, что вы просили не предлагать, останутся.",
+                "OffLoadAI забудет ваши ответы по каждой папке и файлу и привычки, выученные на них. Итоги прошлых разборов и то, что вы просили не предлагать, останутся.",
                 "Забыть", "Отмена", Tone.Danger, Glyphs.Warning, destructive: true)) return;
         Model.ForgetDecisions(app.Rules.Home);
     }
@@ -397,7 +397,7 @@ public partial class CleanupView : UserControl
         AllowAllButton.Visibility = Show(together.Count > 0);
         AllowAllText.Text = togetherBytes > 0 ? $"Разрешить всё · {Format.Bytes(togetherBytes)}" : "Разрешить всё";
         AllowAllButton.ToolTip = open.Count > together.Count
-            ? "Ответить «да» на все вопросы, кроме установщиков (их удаляю только по отдельному ответу) и вопросов из Offload Pro"
+            ? "Ответить «да» на все вопросы, кроме установщиков (их удаляю только по отдельному ответу) и вопросов из OffLoadAI Pro"
             : "Ответить «да» на все вопросы";
         CancelReviewButton.Visibility = Show(!Model.IsSettled);
         CancelReviewButton.IsEnabled = !Model.IsBusy;

@@ -1,4 +1,4 @@
-# Сборка Offload для Windows: один Offload.exe, которому не нужна установленная .NET.
+# Сборка OffLoadAI для Windows: один OffLoadAI.exe, которому не нужна установленная .NET.
 #   powershell -ExecutionPolicy Bypass -File windows\scripts\build.ps1 [-Runtime win-x64|win-arm64] [-Version 0.0.0]
 param(
     [ValidateSet('win-x64', 'win-arm64')] [string] $Runtime = 'win-x64',
@@ -12,7 +12,7 @@ $arguments = @('publish', (Join-Path $root 'src\Offload\Offload.csproj'), '-c', 
                '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true', '-p:EnableCompressionInSingleFile=true',
                '-p:DebugType=none', '-o', $out, '-nologo')
 if ($Version) { $arguments += "-p:Version=$Version" }
-# День выхода версии: ключ Offload Pro открывает версии, вышедшие до конца его обновлений. Берётся из последнего
+# День выхода версии: ключ OffLoadAI Pro открывает версии, вышедшие до конца его обновлений. Берётся из последнего
 # коммита, а не из часов сборки: пересборка той же версии через год не должна её «состарить».
 $releaseDate = $env:OFFLOAD_RELEASE_DATE
 if (-not $releaseDate) {
@@ -28,6 +28,6 @@ if ($releaseDate -notmatch '^\d{4}-\d{2}-\d{2}$') { $releaseDate = (Get-Date).To
 $arguments += "-p:OffloadReleaseDate=$releaseDate"
 & dotnet @arguments
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish завершился с кодом $LASTEXITCODE" }
-$exe = Join-Path $out 'Offload.exe'
-if (-not (Test-Path $exe)) { throw 'Offload.exe не собрался' }
+$exe = Join-Path $out 'OffLoadAI.exe'
+if (-not (Test-Path $exe)) { throw 'OffLoadAI.exe не собрался' }
 Write-Host "✅ $exe ($([math]::Round((Get-Item $exe).Length / 1MB)) МБ)"

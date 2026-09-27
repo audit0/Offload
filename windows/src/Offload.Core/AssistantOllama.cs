@@ -6,7 +6,7 @@ using System.Text.Json.Nodes;
 namespace Offload.Core;
 
 /// <summary>Помощник на локальной модели через Ollama: ничего не уходит с компьютера, обещание «сети нет» сохраняется.
-/// Ollama слушает только этот компьютер (127.0.0.1:11434); другой адрес Offload не принимает.</summary>
+/// Ollama слушает только этот компьютер (127.0.0.1:11434); другой адрес OffLoadAI не принимает.</summary>
 public sealed class OllamaAssistant(Func<string?> preferredModel) : IAssistantProvider
 {
     public static readonly Uri Endpoint = new("http://127.0.0.1:11434/");

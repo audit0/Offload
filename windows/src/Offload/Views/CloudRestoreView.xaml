@@ -71,7 +71,7 @@
 
         <!-- 1. Хранилище -->
         <local:CardSection Header="Хранилище" Number="1"
-                           Footer="Бэкапы restic из iCloud Drive — например, копия внешнего диска. Offload только читает хранилище и ничего в нём не меняет, а пароль держит в памяти, пока хранилище открыто: сон и блокировка экрана его стирают.">
+                           Footer="Бэкапы restic из iCloud Drive — например, копия внешнего диска. OffLoadAI только читает хранилище и ничего в нём не меняет, а пароль держит в памяти, пока хранилище открыто: сон и блокировка экрана его стирают.">
             <StackPanel>
                 <StackPanel x:Name="ResticMissing">
                     <StackPanel Margin="18">
@@ -230,7 +230,7 @@
                         <ProgressBar x:Name="RestoreBar" Maximum="1" Margin="0,8,0,0" />
                         <TextBlock x:Name="SizingText" Text="Считаю размер…" Style="{StaticResource Caption}" Margin="0,6,0,0" />
                         <local:NoticeView x:Name="WaitingNotice" Kind="Warning" Margin="0,8,0,0"
-                                          Text="Жду iCloud: часть бэкапа хранится только в облаке, и iCloud её ещё не скачал. Offload попросил скачать и ждёт. Если долго ничего не меняется, проверьте в Проводнике → iCloud Drive, что синхронизация идёт, — или остановите и попробуйте позже." />
+                                          Text="Жду iCloud: часть бэкапа хранится только в облаке, и iCloud её ещё не скачал. OffLoadAI попросил скачать и ждёт. Если долго ничего не меняется, проверьте в Проводнике → iCloud Drive, что синхронизация идёт, — или остановите и попробуйте позже." />
                     </StackPanel>
                     <local:NoticeView x:Name="RestoreNotice" Margin="0,12,0,0" />
                     <Button x:Name="RevealButton" Margin="0,10,0,0" Click="Reveal_Click">

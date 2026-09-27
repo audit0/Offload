@@ -33,11 +33,11 @@ sealed class VaultResponse
     public string? Error { get; set; }
 }
 
-/// <summary>Операции сейфа через отдельный процесс Offload с правами администратора.
+/// <summary>Операции сейфа через отдельный процесс OffLoadAI с правами администратора.
 ///
-/// Подключить образ и открыть BitLocker Windows разрешает только администратору. Запускать весь Offload
+/// Подключить образ и открыть BitLocker Windows разрешает только администратору. Запускать весь OffLoadAI
 /// с повышенными правами незачем: права нужны только сейфу. Поэтому при первой операции с сейфом Windows
-/// один раз спрашивает разрешение (UAC), запускается второй процесс Offload, и дальше до конца сеанса
+/// один раз спрашивает разрешение (UAC), запускается второй процесс OffLoadAI, и дальше до конца сеанса
 /// сейф открывается и закрывается через него — в том числе при сне и блокировке, когда спросить уже нельзя.
 ///
 /// Связь — именованный канал, доступный только этой учётной записи и администраторам. Пароль идёт по каналу,
@@ -91,7 +91,7 @@ sealed class ElevatedVault : IVaultBackend, IDisposable
             catch (IOException)
             {
                 Reset();
-                throw new VaultException(VaultErrorKind.Unavailable, "Процесс Offload с правами администратора закрылся. Повторите — Windows снова спросит разрешение.");
+                throw new VaultException(VaultErrorKind.Unavailable, "Процесс OffLoadAI с правами администратора закрылся. Повторите — Windows снова спросит разрешение.");
             }
         }
     }
@@ -127,7 +127,7 @@ sealed class ElevatedVault : IVaultBackend, IDisposable
         if (process == null)
         {
             server.Dispose();
-            throw new VaultException(VaultErrorKind.Unavailable, "Не удалось запустить Offload с правами администратора.");
+            throw new VaultException(VaultErrorKind.Unavailable, "Не удалось запустить OffLoadAI с правами администратора.");
         }
         try
         {
@@ -138,7 +138,7 @@ sealed class ElevatedVault : IVaultBackend, IDisposable
         {
             server.Dispose();
             try { process.Kill(); } catch (InvalidOperationException) { }
-            throw new VaultException(VaultErrorKind.Unavailable, "Процесс Offload с правами администратора не ответил.");
+            throw new VaultException(VaultErrorKind.Unavailable, "Процесс OffLoadAI с правами администратора не ответил.");
         }
         // На том конце — запущенный нами помощник, а не кто-то, кто успел подключиться к каналу первым.
         if (!GetNamedPipeClientProcessId(server.SafePipeHandle.DangerousGetHandle(), out var client) || client != process.Id)
@@ -192,7 +192,7 @@ sealed class ElevatedVault : IVaultBackend, IDisposable
     internal static extern bool GetNamedPipeServerProcessId(IntPtr pipe, out int processId);
 }
 
-/// <summary>Второй процесс Offload с правами администратора: выполняет операции сейфа по просьбе программы.</summary>
+/// <summary>Второй процесс OffLoadAI с правами администратора: выполняет операции сейфа по просьбе программы.</summary>
 static class VaultHelper
 {
     public static int Serve(string pipeName, int parentId)

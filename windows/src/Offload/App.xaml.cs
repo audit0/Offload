@@ -15,7 +15,7 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        // Второй процесс Offload с правами администратора: только операции сейфа, без окон.
+        // Второй процесс OffLoadAI с правами администратора: только операции сейфа, без окон.
         if (e.Args.Length == 3 && e.Args[0] == "--vault-helper" && int.TryParse(e.Args[2], out var parent))
         {
             int code = VaultHelper.Serve(e.Args[1], parent);
@@ -35,9 +35,9 @@ public partial class App : Application
                 Shutdown(1);
                 return;
             }
-            MessageBox.Show(args.Exception.Message, "Offload", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(args.Exception.Message, "OffLoadAI", MessageBoxButton.OK, MessageBoxImage.Warning);
         };
-        // Сейф: если Offload уже запущен от имени администратора, операции идут прямо здесь;
+        // Сейф: если OffLoadAI уже запущен от имени администратора, операции идут прямо здесь;
         // иначе — через второй процесс, который Windows запустит после запроса UAC.
         if (VaultOps.IsElevated) SecretsVault.Backend = new VaultOps();
         else SecretsVault.Backend = elevated = new ElevatedVault();
@@ -63,7 +63,7 @@ public partial class App : Application
         MainWindow = window;
         window.Show();
         // Снимки — только в демонстрационном режиме. Иначе любая программа под этой учётной записью запустила бы
-        // Offload и получила бы картинки с именами и размерами папок, записанные в любую папку.
+        // OffLoadAI и получила бы картинки с именами и размерами папок, записанные в любую папку.
         if (snapshots is { Length: > 0 } directory)
             Dispatcher.BeginInvoke(async () =>
             {

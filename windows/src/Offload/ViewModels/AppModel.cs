@@ -66,7 +66,7 @@ public sealed class AppModel : Observable
         }
     }
 
-    /// <summary>Первым: он смотрит, пользовались ли Offload раньше, — до того как остальные модели заведут свои файлы.</summary>
+    /// <summary>Первым: он смотрит, пользовались ли OffLoadAI раньше, — до того как остальные модели заведут свои файлы.</summary>
     public ProModel Pro { get; } = new();
     public SafetyRules Rules { get; } = new();
     public SafeModel Safe { get; } = new();
@@ -171,7 +171,7 @@ public sealed class AppModel : Observable
     }
 
     /// <summary>Подключили или отключили том (Windows сообщает об этом окну). Сейф — тоже том: его открытие
-    /// и закрытие приходят сюда же, в том числе если его открыли или закрыли в обход Offload.</summary>
+    /// и закрытие приходят сюда же, в том числе если его открыли или закрыли в обход OffLoadAI.</summary>
     public async void VolumesChanged(bool arrived)
     {
         var known = Volumes.Select(v => v.Id).ToHashSet(Paths.Comparer);

@@ -3,7 +3,7 @@
                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                    xmlns:local="clr-namespace:Offload"
                    Width="660" Glyph="&#xE7F4;" Heading="Виртуальные машины">
-    <!-- Переносить машины сам Offload не берётся: WSL, VirtualBox и VMware помнят машины по месту, а их диски
+    <!-- Переносить машины сам OffLoadAI не берётся: WSL, VirtualBox и VMware помнят машины по месту, а их диски
          растут по мере записи. Копия в обход программы потеряла бы и то и другое, поэтому лист ведёт в сами программы. -->
     <StackPanel>
         <StackPanel x:Name="LoadingRow" Orientation="Horizontal">

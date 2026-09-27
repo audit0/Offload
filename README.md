@@ -209,7 +209,7 @@ GitHub Actions прогонит проверки, соберёт universal-сб�
 irm https://raw.githubusercontent.com/audit0/Offload/main/windows/scripts/install.ps1 | iex
 ```
 
-Установщик скачивает архив последнего релиза, сверяет SHA-256 и (если стоит `gh`) подтверждение сборки, ставит `Offload.exe` в `%LOCALAPPDATA%\Programs\Offload` и добавляет ярлык в меню «Пуск». Права администратора не нужны. Нужна Windows 10 или 11, x64 или ARM. Отдельно .NET ставить не надо: `Offload.exe` самодостаточный.
+Установщик скачивает архив последнего релиза, сверяет SHA-256 и (если стоит `gh`) подтверждение сборки, ставит `OffLoadAI.exe` в `%LOCALAPPDATA%\Programs\OffLoadAI` и добавляет ярлык в меню «Пуск». Права администратора не нужны. Нужна Windows 10 или 11, x64 или ARM. Отдельно .NET ставить не надо: `OffLoadAI.exe` самодостаточный.
 
 Чем отличается от версии для Mac:
 
@@ -218,7 +218,7 @@ irm https://raw.githubusercontent.com/audit0/Offload/main/windows/scripts/instal
 - **Offload Pro** — то же, что на Mac: лишние копии, привычки, бэкап проектов и тома Docker в сейф; две недели пробы. Ключ один на обе системы и проверяется без сети.
 - Разбор знает кеши Windows-версий тех же программ (npm, pip, NuGet, Gradle, Cargo, Go, Chrome, Edge, VS Code, JetBrains, Spotify…) и не трогает `AppData`, реестр пользователя, OneDrive и медиатеки.
 - Журнал переносов в том же формате, что на Mac: подключив диск, заполненный на Mac, Windows покажет, что на нём лежит, но вернуть такой перенос можно только на Mac.
-- `Offload.exe` не подписан сертификатом: если скачать его браузером, SmartScreen при первом запуске предложит «Подробнее → Выполнить в любом случае». Установщик PowerShell этого не требует.
+- `OffLoadAI.exe` не подписан сертификатом: если скачать его браузером, SmartScreen при первом запуске предложит «Подробнее → Выполнить в любом случае». Установщик PowerShell этого не требует.
 
 Сборка из исходников — .NET SDK 10:
 
@@ -230,7 +230,7 @@ dotnet run --project windows\src\Offload.Checks
 powershell -ExecutionPolicy Bypass -File windows\scripts\install-local.ps1
 ```
 
-Проверки (`Offload.Checks`) прогоняют перенос и возврат на настоящем томе exFAT, создание, открытие, смену пароля и восстановление заголовка сейфа — эти части требуют прав администратора и Windows Pro; `OFFLOAD_SKIP_VAULT=1`, `OFFLOAD_SKIP_INTEGRATION=1` и `OFFLOAD_SKIP_DOCKER=1` их отключают. Режим снимков тот же: `OFFLOAD_DEMO=1` и `OFFLOAD_SNAPSHOT_DIR`. Релиз собирается тем же тегом: GitHub Actions выкладывает рядом с `Offload.dmg` архивы `Offload-Windows-x64.zip` и `Offload-Windows-arm64.zip`.
+Проверки (`Offload.Checks`) прогоняют перенос и возврат на настоящем томе exFAT, создание, открытие, смену пароля и восстановление заголовка сейфа — эти части требуют прав администратора и Windows Pro; `OFFLOAD_SKIP_VAULT=1`, `OFFLOAD_SKIP_INTEGRATION=1` и `OFFLOAD_SKIP_DOCKER=1` их отключают. Режим снимков тот же: `OFFLOAD_DEMO=1` и `OFFLOAD_SNAPSHOT_DIR`. Релиз собирается тем же тегом: GitHub Actions выкладывает рядом с `Offload.dmg` архивы `OffLoadAI-Windows-x64.zip` и `OffLoadAI-Windows-arm64.zip`.
 
 ## Лицензия
 

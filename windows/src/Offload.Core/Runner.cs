@@ -130,7 +130,7 @@ public static class Runner
         return null;
     }
 
-    /// <summary>Окружение для запускаемых программ: как у Offload, но PATH — только известные каталоги.</summary>
+    /// <summary>Окружение для запускаемых программ: как у OffLoadAI, но PATH — только известные каталоги.</summary>
     public static Dictionary<string, string> ChildEnvironment
     {
         get

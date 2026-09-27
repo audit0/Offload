@@ -32,7 +32,7 @@ static partial class All
             Write("", Path.Combine(disk, @"Archive-2026\docker-volumes\.hidden.tar"));
             Directory.CreateDirectory(Path.Combine(disk, @"Archive-2026\docker-volumes\folder.tar"));
             var found = DockerService.Archives(Fake("ntfs", mount: disk + "\\")).Select(Paths.Name).ToList();
-            Check(found.ToHashSet().SetEquals(["a.tar.zst", "b.tar"]), $"архивы томов находятся и в Offload, и в ручных папках docker-volumes ({string.Join(", ", found)})");
+            Check(found.ToHashSet().SetEquals(["a.tar.zst", "b.tar"]), $"архивы томов находятся и в OffLoadAI, и в ручных папках docker-volumes ({string.Join(", ", found)})");
         });
 
         Section("Docker: место внутри и очистка — разбор ответов docker", () =>

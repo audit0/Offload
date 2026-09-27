@@ -115,7 +115,7 @@ static class Helpers
     }
 
     /// <summary>Другая программа держит файл открытым без права на удаление — как это делает почти любая
-    /// программа. Сам Offload себя в «занятых» не считает, поэтому держит отдельный процесс PowerShell.</summary>
+    /// программа. Сам OffLoadAI себя в «занятых» не считает, поэтому держит отдельный процесс PowerShell.</summary>
     public sealed class Holder : IDisposable
     {
         readonly Process process;
@@ -160,7 +160,7 @@ static class Helpers
         return process.Id;
     }
 
-    /// <summary>Прямой доступ к SQLite — чтобы положить базу старой версии, как её оставил прошлый Offload.</summary>
+    /// <summary>Прямой доступ к SQLite — чтобы положить базу старой версии, как её оставил прошлый OffLoadAI.</summary>
     public static class RawSql
     {
         const string Library = "winsqlite3.dll";

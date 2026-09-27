@@ -5,15 +5,15 @@ using Offload.Core;
 
 namespace Offload;
 
-/// <summary>Offload Pro на этом компьютере: ключ, пробные две недели, ранние пользователи.
+/// <summary>OffLoadAI Pro на этом компьютере: ключ, пробные две недели, ранние пользователи.
 ///
 /// Ключ проверяется подписью, без сети; он тот же, что у версии для Mac. Всё хранится в настройках программы;
-/// сбросить пробу, удалив их, можно — Pro держится на честности тех, кому Offload полезен, а не на защите.</summary>
+/// сбросить пробу, удалив их, можно — Pro держится на честности тех, кому OffLoadAI полезен, а не на защите.</summary>
 public sealed class ProModel : Observable
 {
     /// <summary>Где купить: бот в Telegram — оплата Stars, криптовалютой или по СБП, ключ приходит сообщением.</summary>
     public const string PurchaseUrl = "https://t.me/OffLoadAIbot?start=pro";
-    /// <summary>Цена — одной строкой здесь и в README («Offload Pro»).</summary>
+    /// <summary>Цена — одной строкой здесь и в README («OffLoadAI Pro»).</summary>
     public const string Price = "1 490 ₽ или $19 — один раз";
     public const string Terms = "Ключ работает всегда. Новые версии — год, дальше продление за полцены; не продлили — остаётся последняя версия того года.";
 
@@ -35,7 +35,7 @@ public sealed class ProModel : Observable
     /// <summary>Ключ не подошёл — почему, одной фразой.</summary>
     public string? KeyProblem { get => keyProblem; set => Set(ref keyProblem, value); }
 
-    /// <summary>Попросили окно «Offload Pro» — из-за конкретной возможности (или просто так, null). Его открывает главное окно.</summary>
+    /// <summary>Попросили окно «OffLoadAI Pro» — из-за конкретной возможности (или просто так, null). Его открывает главное окно.</summary>
     public event Action<ProFeature?>? Offered;
 
     public ProModel()
@@ -53,7 +53,7 @@ public sealed class ProModel : Observable
         }
         if (Settings.Get<bool?>(EarlyKey) == null)
         {
-            // Первый запуск версии с Pro. Кто пользовался Offload раньше, получает всё, что было, навсегда:
+            // Первый запуск версии с Pro. Кто пользовался OffLoadAI раньше, получает всё, что было, навсегда:
             // забирать то, чем человек уже пользовался бесплатно, нечестно.
             var early = UsedBefore();
             Settings.Set(EarlyKey, early);
@@ -72,7 +72,7 @@ public sealed class ProModel : Observable
     /// <summary>Сохранённый ключ как есть — им помощник входит на сервер OffLoadAI.</summary>
     public string? LicenseText => license != null ? Settings.Get<string>(LicenseKey) : null;
 
-    /// <summary>Открыть окно «Offload Pro» — из-за конкретной возможности или просто так.</summary>
+    /// <summary>Открыть окно «OffLoadAI Pro» — из-за конкретной возможности или просто так.</summary>
     public void Offer(ProFeature? feature = null)
     {
         KeyProblem = null;
@@ -124,7 +124,7 @@ public sealed class ProModel : Observable
     /// <summary>Одной строкой — для боковой колонки.</summary>
     public string Summary => Status.Kind switch
     {
-        ProStatusKind.Licensed => "Offload Pro",
+        ProStatusKind.Licensed => "OffLoadAI Pro",
         ProStatusKind.Early => "Pro — ранний пользователь",
         ProStatusKind.Trial => $"Pro: пробный, {Status.DaysLeft} {Plural.Ru(Status.DaysLeft, "день", "дня", "дней")}",
         ProStatusKind.Expired => "Pro: продлите ключ",

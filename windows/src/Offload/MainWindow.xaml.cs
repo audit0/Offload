@@ -82,7 +82,7 @@ public partial class MainWindow : Window
 
     ProSheet? proSheet;
 
-    /// <summary>Окно «Offload Pro» — одно: уже открыто — просто вперёд.</summary>
+    /// <summary>Окно «OffLoadAI Pro» — одно: уже открыто — просто вперёд.</summary>
     void ShowPro(ProFeature? reason)
     {
         if (proSheet != null) { proSheet.Activate(); return; }
@@ -155,7 +155,7 @@ public partial class MainWindow : Window
 
     IntPtr WindowProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        // Подключили или отключили диск — в том числе сейф, открытый или закрытый в обход Offload.
+        // Подключили или отключили диск — в том числе сейф, открытый или закрытый в обход OffLoadAI.
         if (message == WM_DEVICECHANGE && (wParam == DBT_DEVICEARRIVAL || wParam == DBT_DEVICEREMOVECOMPLETE))
         {
             bool arrived = wParam == DBT_DEVICEARRIVAL;
@@ -206,7 +206,7 @@ public partial class MainWindow : Window
         catch (Exception)
         {
             bool force = Dialogs.Confirm(this, "Сейф не закрывается",
-                "В нём открыты файлы в других программах. Offload закрывает сейф, когда выходит сам: закрыть принудительно? Несохранённое в этих программах может пропасть.",
+                "В нём открыты файлы в других программах. OffLoadAI закрывает сейф, когда выходит сам: закрыть принудительно? Несохранённое в этих программах может пропасть.",
                 "Закрыть и выйти", "Не выходить", Tone.Caution, Glyphs.Lock);
             if (!force) return false;
             try { SecretsVault.Detach(mount, force: true); } catch (Exception) { }

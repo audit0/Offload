@@ -75,7 +75,7 @@ public sealed class DockerException : Exception
         DockerErrorKind.PruneIncomplete =>
             $"Docker очистил только часть выбранного ({done} из выбранных пунктов{(reclaimed is { } r ? $", освобождено {Format.Bytes(r)}" : "")}), а дальше остановился: {detail}",
         DockerErrorKind.RemoteDaemon =>
-            $"Docker сейчас смотрит не на этот компьютер, а на «{detail}» (контекст Docker или DOCKER_HOST). Очищать и архивировать чужой Docker Offload не будет: переключитесь на локальный контекст (docker context use desktop-linux или default) и повторите.",
+            $"Docker сейчас смотрит не на этот компьютер, а на «{detail}» (контекст Docker или DOCKER_HOST). Очищать и архивировать чужой Docker OffLoadAI не будет: переключитесь на локальный контекст (docker context use desktop-linux или default) и повторите.",
         _ => detail,
     };
 }

@@ -67,14 +67,14 @@ public interface IVaultBackend
 
 /// <summary>Сейф — зашифрованный BitLocker (XTS-AES-256) образ VHDX с NTFS внутри на внешнем диске.
 ///
-/// Пароль задаёт человек; Offload его не хранит и не пишет в командную строку, которую видят другие
-/// программы: он уходит напрямую в BitLocker через WMI. Своего шифрования Offload не изобретает —
+/// Пароль задаёт человек; OffLoadAI его не хранит и не пишет в командную строку, которую видят другие
+/// программы: он уходит напрямую в BitLocker через WMI. Своего шифрования OffLoadAI не изобретает —
 /// шифрует и проверяет Windows.</summary>
 public sealed class SecretsVault
 {
     public const string VolumeName = "Offload Safe";
     public const int MinimumPasswordLength = 16;
-    /// <summary>Имя, под которым Offload создаёт сейф в корне внешнего диска.</summary>
+    /// <summary>Имя, под которым OffLoadAI создаёт сейф в корне внешнего диска.</summary>
     public const string SafeImageName = "Offload Safe.vhdx";
     public const string SafeVolumeName = "Offload Safe";
 
@@ -278,7 +278,7 @@ public sealed class SecretsVault
         if (backup is not { Kind: "bitlocker-vhdx", Offsets.Length: 3, Blocks.Length: 3 }
             || backup.Blocks.Any(b => b.Length != BitLockerHeader.BlockRegion
                                       || System.Text.Encoding.ASCII.GetString(b, 0, 8) != "-FVE-FS-"))
-            throw new VaultException(VaultErrorKind.HeaderRejected, "файл не похож на копию заголовка Offload");
+            throw new VaultException(VaultErrorKind.HeaderRejected, "файл не похож на копию заголовка OffLoadAI");
         // Разметку берём из самого образа: раздел и места блоков. Испорчены блоки — места всё равно известны
         // из загрузочного сектора, а испорчен и он — из копии, если раздел тот же.
         var (partitionOffset, _, located) = BitLockerHeader.Locate(ImagePath);
@@ -330,7 +330,7 @@ public sealed class SecretsVault
     public string Attach(string password)
     {
         var status = GetStatus();
-        // Уже открыт — Offload или Проводником: второй раз не подключаем, берём тот же том.
+        // Уже открыт — OffLoadAI или Проводником: второй раз не подключаем, берём тот же том.
         if (status.MountPoint is { } mount)
         {
             if (!status.IsEncrypted) throw new VaultException(VaultErrorKind.NotEncrypted);
@@ -349,7 +349,7 @@ public sealed class SecretsVault
     /// пробуем закрыть ещё несколько раз с паузой.</summary>
     public static void Detach(string mountPoint, bool force = false, int attempts = 5)
     {
-        // Том уже закрыли в обход Offload (Проводник, «Извлечь»): закрывать нечего.
+        // Том уже закрыли в обход OffLoadAI (Проводник, «Извлечь»): закрывать нечего.
         if (!Directory.Exists(mountPoint)) return;
         for (int attempt = 1; ; attempt++)
         {

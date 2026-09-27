@@ -110,7 +110,7 @@ public sealed class AssistantView : UserControl
                 AssistantModel.Kind.ClaudeCode => "Claude Code, установленный на этом компьютере, под вашей учётной записью Claude. Ключ не нужен.",
                 AssistantModel.Kind.ApiKey => "Ваш ключ Anthropic API: платите по счёту API за каждый вопрос. Ключ хранится зашифрованным средствами Windows.",
                 AssistantModel.Kind.Local => "Модель в Ollama на этом компьютере: сведения о файлах не покидают его. Медленнее и проще, чем Claude.",
-                _ => "Сервер OffLoadAI передаёт вопрос Claude и ничего не хранит. Входит в Offload Pro — ни Claude Code, ни ключа не нужно.",
+                _ => "Сервер OffLoadAI передаёт вопрос Claude и ничего не хранит. Входит в OffLoadAI Pro — ни Claude Code, ни ключа не нужно.",
             },
             Style = Res("Callout"), TextWrapping = TextWrapping.Wrap,
         });

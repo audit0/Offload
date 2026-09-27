@@ -162,7 +162,7 @@ public partial class OverviewView : UserControl
             ? new Step(1, StepState.Done, $"Внешний диск «{host.Name}»",
                        $"{host.FsDisplayName} · свободно {Format.Bytes(host.AvailableBytes)}" + (state?.HostEncrypted == true ? " · зашифрован целиком" : ""))
             : new Step(1, StepState.Todo, "Подключите внешний диск",
-                       "На него Offload переносит то, что не нужно держать на компьютере, и там же живёт сейф."));
+                       "На него OffLoadAI переносит то, что не нужно держать на компьютере, и там же живёт сейф."));
 
         if (host != null)
         {

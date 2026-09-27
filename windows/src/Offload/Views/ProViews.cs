@@ -19,7 +19,7 @@ public static class ProTag
         {
             Name = Name, CornerRadius = new CornerRadius(999), BorderThickness = new Thickness(1), Padding = new Thickness(5, 0, 5, 1),
             Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Opacity = 0.75,
-            ToolTip = "Нужен Offload Pro",
+            ToolTip = "Нужен OffLoadAI Pro",
             Child = new TextBlock { Text = "Pro", FontSize = 10, FontWeight = FontWeights.Bold },
         };
         tag.SetBinding(Border.BorderBrushProperty, new Binding("(TextElement.Foreground)") { RelativeSource = RelativeSource.Self });
@@ -41,7 +41,7 @@ public static class ProTag
     }
 }
 
-/// <summary>Окно «Offload Pro»: что в нём, что бесплатно всегда, цена, ключ.</summary>
+/// <summary>Окно «OffLoadAI Pro»: что в нём, что бесплатно всегда, цена, ключ.</summary>
 public sealed class ProSheet : SheetWindow
 {
     readonly AppModel app;
@@ -55,7 +55,7 @@ public sealed class ProSheet : SheetWindow
         this.app = app;
         this.reason = reason;
         Width = 540;
-        Heading = "Offload Pro";
+        Heading = "OffLoadAI Pro";
         Glyph = Glyphs.CheckSeal;
         keyBox.KeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Enter) { EnterKey(); e.Handled = true; } };
         Pro.Refresh();
@@ -77,7 +77,7 @@ public sealed class ProSheet : SheetWindow
         Subtitle = status.Kind switch
         {
             ProStatusKind.Licensed => $"Ключ на имя «{status.License!.Name}»",
-            ProStatusKind.Early => "Вы пользовались Offload до Pro — всё открыто навсегда",
+            ProStatusKind.Early => "Вы пользовались OffLoadAI до Pro — всё открыто навсегда",
             ProStatusKind.Trial => $"Пробный период: осталось {status.DaysLeft} {Plural.Ru(status.DaysLeft, "день", "дня", "дней")}",
             ProStatusKind.Expired => "Обновления по ключу закончились",
             _ => ProModel.Price,
@@ -89,7 +89,7 @@ public sealed class ProSheet : SheetWindow
             var tail = status.Kind == ProStatusKind.Expired
                 ? "Ключ не открывает эту версию — продлите его."
                 : "Пробные две недели закончились; всё найденное по-прежнему видно, а «не сейчас» работает как всегда.";
-            body.Children.Add(new NoticeView { Message = new NoticeMessage(NoticeKind.Info, $"«{feature.Title()}» — в Offload Pro. {tail}"), Margin = new Thickness(0, 0, 0, 12) });
+            body.Children.Add(new NoticeView { Message = new NoticeMessage(NoticeKind.Info, $"«{feature.Title()}» — в OffLoadAI Pro. {tail}"), Margin = new Thickness(0, 0, 0, 12) });
         }
 
         var list = new StackPanel();
@@ -118,7 +118,7 @@ public sealed class ProSheet : SheetWindow
         body.Children.Add(list);
         body.Children.Add(new TextBlock
         {
-            Text = "Бесплатно всегда: сейф, перенос со сверкой, возврат перенесённого, очистка мусора и Docker, старые установщики, ключи и токены в сейф, восстановление из iCloud. Вернуть своё Offload не мешает никогда — ни без ключа, ни после пробы.",
+            Text = "Бесплатно всегда: сейф, перенос со сверкой, возврат перенесённого, очистка мусора и Docker, старые установщики, ключи и токены в сейф, восстановление из iCloud. Вернуть своё OffLoadAI не мешает никогда — ни без ключа, ни после пробы.",
             Style = Res("Callout"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 12, 0, 0),
         });
         body.Children.Add(LicenseBlock(status));
@@ -206,7 +206,7 @@ public sealed class ProSheet : SheetWindow
     };
 }
 
-/// <summary>Строка над панелью диска: что открыто на этом компьютере. Щелчок — окно «Offload Pro».</summary>
+/// <summary>Строка над панелью диска: что открыто на этом компьютере. Щелчок — окно «OffLoadAI Pro».</summary>
 public sealed class ProSidebarRow : Button
 {
     readonly AppModel app;
@@ -224,7 +224,7 @@ public sealed class ProSidebarRow : Button
         Style = (Style)Application.Current.FindResource("LinkButton");
         HorizontalAlignment = HorizontalAlignment.Stretch;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
-        ToolTip = "Offload Pro: что в нём и ключ";
+        ToolTip = "OffLoadAI Pro: что в нём и ключ";
         glyph.Style = (Style)Application.Current.FindResource("Icon");
         glyph.Foreground = Theme.Faint;
         label.Foreground = Theme.Ink;

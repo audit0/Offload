@@ -10,7 +10,7 @@
     <OffloadVersion>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../VERSION').Trim())</OffloadVersion>
     <Version>$(OffloadVersion)</Version>
     <Company>audit0</Company>
-    <Product>Offload</Product>
+    <Product>OffLoadAI</Product>
     <Copyright>MIT</Copyright>
     <Deterministic>true</Deterministic>
     <NoWarn>$(NoWarn);CA1416;SYSLIB1054;WPF0001</NoWarn>

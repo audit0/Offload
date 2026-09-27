@@ -5,7 +5,7 @@ using Offload.Core;
 namespace Offload;
 
 /// <summary>Разбор компьютера: поиск → вопросы → ответы. Человек не выбирает по файлам и не ходит по папкам:
-/// Offload сам раскладывает найденное по вопросам («Удалить мусор — 12 ГБ?», «Очистить Docker?»),
+/// OffLoadAI сам раскладывает найденное по вопросам («Удалить мусор — 12 ГБ?», «Очистить Docker?»),
 /// а на каждый отвечают «да» или «не сейчас». Сделанное по «да» видно сразу у вопроса.
 ///
 /// Удаление — только в Корзину (образы Docker удаляет сам Docker), и ушедшее туда можно вернуть у своего вопроса
@@ -117,7 +117,7 @@ public sealed class CleanupModel : Observable
         catch (Exception error) { storeProblem = error.Message; }
     }
 
-    /// <summary>Перечитывает, чему научился Offload: при открытии раздела, после разбора и после «Забыть».</summary>
+    /// <summary>Перечитывает, чему научился OffLoadAI: при открытии раздела, после разбора и после «Забыть».</summary>
     public void LoadHabits(string home)
     {
         if (store == null) return;
@@ -206,10 +206,10 @@ public sealed class CleanupModel : Observable
         Pump(app);
     }
 
-    /// <summary>Вопрос из Offload Pro, а Pro на этом компьютере нет: «да» открывает окно Pro, «не сейчас» работает как всегда.</summary>
+    /// <summary>Вопрос из OffLoadAI Pro, а Pro на этом компьютере нет: «да» открывает окно Pro, «не сейчас» работает как всегда.</summary>
     public bool IsLocked(QuestionKind kind, AppModel app) => kind.ProFeature() is { } feature && !app.Pro.Allows(feature);
 
-    /// <summary>«Разрешить всё»: «да» на каждый вопрос, кроме установщиков и вопросов из Offload Pro без ключа.
+    /// <summary>«Разрешить всё»: «да» на каждый вопрос, кроме установщиков и вопросов из OffLoadAI Pro без ключа.
     /// Ответ — остался ли вопрос о сейфе ждать пароля.</summary>
     public bool RespondAll(AppModel app)
     {
@@ -709,7 +709,7 @@ public sealed class CleanupModel : Observable
         RaiseAnswers();
     }
 
-    /// <summary>Открытые программы, чьи кеши Offload умеет удалять: имя процесса → название.</summary>
+    /// <summary>Открытые программы, чьи кеши OffLoadAI умеет удалять: имя процесса → название.</summary>
     static Dictionary<string, string> RunningApplications()
     {
         var watched = CleanupPlanner.RegenerableLocations.SelectMany(l => l.Apps ?? []).ToList();

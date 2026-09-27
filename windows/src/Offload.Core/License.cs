@@ -8,11 +8,11 @@ using Org.BouncyCastle.Crypto.Signers;
 
 namespace Offload.Core;
 
-/// <summary>Offload Pro: что в нём и как проверяется ключ. Всё — как у версии для Mac, ключ один на обе.
+/// <summary>OffLoadAI Pro: что в нём и как проверяется ключ. Всё — как у версии для Mac, ключ один на обе.
 ///
 /// Правила, из которых всё остальное:
 /// - Ключ проверяется на этом компьютере, без сети: подпись Ed25519 над содержимым ключа.
-///   Offload не ходит на сервер ни при покупке, ни при запуске.
+///   OffLoadAI не ходит на сервер ни при покупке, ни при запуске.
 /// - Pro никогда не стоит между человеком и его данными. Сейф, перенос со сверкой, возврат
 ///   перенесённого, возврат тома Docker, восстановление из iCloud, ключи и токены в сейф,
 ///   очистка мусора — бесплатны всегда. Pro — это удобство и инструменты сверху.
@@ -44,7 +44,7 @@ public static class ProFeatures
     public static string Detail(this ProFeature feature) => feature switch
     {
         ProFeature.Duplicates => "Одинаковые файлы находятся по SHA-256, одна копия остаётся всегда, лишние уходят в Корзину.",
-        ProFeature.Habits => "Offload учится на ваших ответах и сам кладёт похожее в нужный вопрос.",
+        ProFeature.Habits => "OffLoadAI учится на ваших ответах и сам кладёт похожее в нужный вопрос.",
         ProFeature.ProjectBackup => "Обновляемая копия папок с проектами в сейф: копируется только изменённое.",
         _ => "Неиспользуемые тома упаковываются в сейф со сверкой каждого файла.",
     };
@@ -52,7 +52,7 @@ public static class ProFeatures
 
 public static class ProQuestions
 {
-    /// <summary>Для «да» на этот вопрос нужен Offload Pro. «Не сейчас» и всё найденное видно и без него.</summary>
+    /// <summary>Для «да» на этот вопрос нужен OffLoadAI Pro. «Не сейчас» и всё найденное видно и без него.</summary>
     public static ProFeature? ProFeature(this QuestionKind kind) => kind.Type != QuestionKindType.Module ? null : kind.Module switch
     {
         CleanupModule.Duplicates => Core.ProFeature.Duplicates,
@@ -63,7 +63,7 @@ public static class ProQuestions
 
 /// <summary>Проверенный ключ: кому выдан и до какой даты выходящие версии им открываются.</summary>
 /// <param name="Id">Номер ключа — по нему ключ находят в списке выданных (возврат денег, замена).</param>
-/// <param name="Name">Как ключ подписан в окне «Offload Pro»: имя или ник покупателя.</param>
+/// <param name="Name">Как ключ подписан в окне «OffLoadAI Pro»: имя или ник покупателя.</param>
 /// <param name="UpdatesUntil">Версии, вышедшие до этой даты, открываются ключом навсегда; вышедшие позже — нужно продлить.</param>
 public sealed record License(string Id, string Name, DateTime Issued, DateTime UpdatesUntil)
 {
@@ -75,9 +75,9 @@ public enum LicenseErrorKind { Malformed, BadSignature, UnsupportedVersion }
 
 public sealed class LicenseException(LicenseErrorKind kind) : Exception(kind switch
 {
-    LicenseErrorKind.Malformed => "Это не похоже на ключ Offload Pro. Скопируйте его целиком, вместе с «OFFLOAD-».",
+    LicenseErrorKind.Malformed => "Это не похоже на ключ OffLoadAI Pro. Скопируйте его целиком, вместе с «OFFLOAD-».",
     LicenseErrorKind.BadSignature => "Ключ не подходит: подпись не сходится. Возможно, в нём опечатка — скопируйте его заново.",
-    _ => "Ключ выпущен для более новой версии Offload. Обновите программу.",
+    _ => "Ключ выпущен для более новой версии OffLoadAI. Обновите программу.",
 })
 {
     public LicenseErrorKind Kind { get; } = kind;
@@ -91,7 +91,7 @@ public static class LicenseCodec
     public const string Prefix = "OFFLOAD-";
     const int FormatVersion = 1;
 
-    /// <summary>Открытый ключ Offload — тот же, что у версии для Mac: им проверяются все ключи Pro.
+    /// <summary>Открытый ключ OffLoadAI — тот же, что у версии для Mac: им проверяются все ключи Pro.
     /// Закрытый — только у автора, не в репозитории.</summary>
     public const string PublicKey = "s634ae2EoVpINNy36tMkbki6WfhiKR0l6BFw9flW78U";
 
@@ -188,7 +188,7 @@ public enum ProStatusKind
     Licensed,
     /// <summary>Ключ есть, но эта версия вышла после конца его обновлений: работает прежняя, эту — продлить.</summary>
     Expired,
-    /// <summary>Пользовался Offload до появления Pro: всё, что было, остаётся открытым.</summary>
+    /// <summary>Пользовался OffLoadAI до появления Pro: всё, что было, остаётся открытым.</summary>
     Early,
     Trial,
     Free,

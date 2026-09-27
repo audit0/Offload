@@ -74,7 +74,7 @@
                         </DockPanel>
                     </local:Card>
 
-                    <!-- Внешний диск и сейф на нём: куда Offload переносит и в каком состоянии замок. -->
+                    <!-- Внешний диск и сейф на нём: куда OffLoadAI переносит и в каком состоянии замок. -->
                     <local:Card Grid.Column="2">
                         <DockPanel LastChildFill="False">
                             <StackPanel DockPanel.Dock="Top" Orientation="Horizontal">
@@ -89,7 +89,7 @@
                             <StackPanel x:Name="HostMissing" DockPanel.Dock="Top" Margin="0,14,0,0">
                                 <TextBlock Text="Не подключён" Style="{StaticResource Display}" FontSize="19" Foreground="{StaticResource Muted}" />
                                 <TextBlock Style="{StaticResource Caption}" Margin="0,6,0,0"
-                                           Text="На него Offload переносит то, что не нужно держать на компьютере, и там же живёт сейф." />
+                                           Text="На него OffLoadAI переносит то, что не нужно держать на компьютере, и там же живёт сейф." />
                             </StackPanel>
                             <StackPanel x:Name="HostSafe" DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,14,0,0">
                                 <TextBlock x:Name="HostSafeGlyph" FontFamily="{StaticResource IconFont}" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0" />

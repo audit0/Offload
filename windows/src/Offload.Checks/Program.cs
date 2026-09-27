@@ -2,7 +2,7 @@ using System.Text;
 using Offload.Core;
 using static Offload.Checks.Harness;
 
-// Проверки ядра Offload для Windows.
+// Проверки ядра OffLoadAI для Windows.
 // Запуск: dotnet run --project src/Offload.Checks
 //   OFFLOAD_CHECKS_ONLY=rules,copy — только эти разделы (список — в All.cs)
 //   OFFLOAD_SKIP_INTEGRATION=1 — без проверок на настоящих образах дисков (нужны права администратора)

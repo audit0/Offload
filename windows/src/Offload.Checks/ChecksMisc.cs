@@ -234,7 +234,7 @@ static partial class All
 
             // Настоящая Корзина: туда уходит только наш пробный файл, и он же оттуда возвращается и удаляется насовсем.
             var probe = Path.Combine(folder, $"offload-проверка-{Guid.NewGuid():N}.txt");
-            Write("пробный файл проверок Offload", probe);
+            Write("пробный файл проверок OffLoadAI", probe);
             var probeIdentity = FileIdentity.Of(probe);
             (string path, FileIdentity? identity) trashed;
             try { trashed = RecycleBin.Trash(probe); }
@@ -248,7 +248,7 @@ static partial class All
                   "известно, где он лежит в Корзине");
             Check(FileIdentity.Of(trashed.path) == probeIdentity && trashed.identity == probeIdentity, "в Корзине — тот самый файл");
             RecycleBin.Restore(trashed.path, probe);
-            Check(Read(probe) == "пробный файл проверок Offload" && !Exists(trashed.path), "возвращён на прежнее место");
+            Check(Read(probe) == "пробный файл проверок OffLoadAI" && !Exists(trashed.path), "возвращён на прежнее место");
             Check(!Exists(Path.Combine(Paths.Parent(trashed.path), "$I" + Paths.Name(trashed.path)[2..])), "запись Корзины о нём убрана");
             var again = RecycleBin.Trash(probe);
             RecycleBin.Erase(again.path);

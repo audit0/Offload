@@ -42,7 +42,7 @@ public static class Dialogs
     /// <summary>О программе: версия и ссылки на GitHub.</summary>
     public static void About(Window owner)
     {
-        var sheet = new SheetWindow { Heading = "Offload", Subtitle = $"Версия {Version} для Windows", Glyph = Glyphs.Drive, Owner = owner };
+        var sheet = new SheetWindow { Heading = "OffLoadAI", Subtitle = $"Версия {Version} для Windows", Glyph = Glyphs.Drive, Owner = owner };
         var body = new StackPanel();
         body.Children.Add(new TextBlock
         {
@@ -50,7 +50,7 @@ public static class Dialogs
             Style = (Style)Application.Current.FindResource("Body"),
         });
         var links = new WrapPanel { Margin = new Thickness(0, 14, 0, 0) };
-        foreach (var (label, url) in new[] { ("Offload на GitHub", App.RepositoryUrl), ("Канал Offload в Telegram", "https://t.me/OffLoadAI"),
+        foreach (var (label, url) in new[] { ("OffLoadAI на GitHub", App.RepositoryUrl), ("Канал OffLoadAI в Telegram", "https://t.me/OffLoadAI"),
                                              ("Сообщить о проблеме", App.RepositoryUrl + "/issues") })
         {
             var link = new Button { Style = (Style)Application.Current.FindResource("LinkButton"), Margin = new Thickness(0, 0, 18, 0),

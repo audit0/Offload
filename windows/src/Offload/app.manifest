@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <assemblyIdentity version="1.0.0.0" name="Offload.app" />
+  <assemblyIdentity version="1.0.0.0" name="OffLoadAI.app" />
   <!-- Offload запускается с обычными правами. Права администратора нужны только сейфу — их получает
        отдельный процесс по запросу UAC (см. ElevatedVault.cs). -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
