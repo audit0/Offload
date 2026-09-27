@@ -1,0 +1,46 @@
+<UserControl x:Class="Offload.CleanupFoundRow"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Offload">
+    <!-- Строка «Что именно»: что это, где лежит и почему попало в вопрос. Без флажков — решение одно на весь вопрос. -->
+    <Grid Background="Transparent" Margin="0,6">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="110" />
+        </Grid.ColumnDefinitions>
+        <Grid.ContextMenu>
+            <ContextMenu>
+                <MenuItem Header="Показать в Проводнике" Click="Reveal_Click" />
+                <MenuItem x:Name="IgnoreItem" Header="Не предлагать больше" Click="Ignore_Click" />
+            </ContextMenu>
+        </Grid.ContextMenu>
+
+        <local:IconTile x:Name="Tile" Size="28" Tone="Neutral" VerticalAlignment="Top" />
+        <StackPanel Grid.Column="1" Margin="12,0,12,0">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock x:Name="NameText" Style="{StaticResource Body}" FontWeight="Medium" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                           MaxWidth="420" VerticalAlignment="Center" />
+                <local:StatusPill x:Name="Badge" Tone="Brand" Margin="6,0,0,0" VerticalAlignment="Center" Visibility="Collapsed" />
+            </StackPanel>
+            <TextBlock x:Name="PathText" Style="{StaticResource Caption}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+            <TextBlock x:Name="ReasonText" Style="{StaticResource Caption}" Margin="0,2,0,0" />
+            <ItemsControl x:Name="Cautions" Focusable="False">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                            <TextBlock Text="&#xE7BA;" Style="{StaticResource Icon}" FontSize="10" Foreground="{StaticResource Ink}" Margin="0,2,5,0"
+                                       VerticalAlignment="Top" />
+                            <TextBlock Text="{Binding}" Style="{StaticResource Caption}" Foreground="{StaticResource Ink}" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+        <StackPanel Grid.Column="2" HorizontalAlignment="Right">
+            <TextBlock x:Name="SizeText" Style="{StaticResource Body}" FontWeight="SemiBold" HorizontalAlignment="Right"
+                       Typography.NumeralAlignment="Tabular" TextWrapping="NoWrap" />
+            <TextBlock x:Name="DateText" Style="{StaticResource Caption}" HorizontalAlignment="Right" TextWrapping="NoWrap" Margin="0,2,0,0" />
+        </StackPanel>
+    </Grid>
+</UserControl>
