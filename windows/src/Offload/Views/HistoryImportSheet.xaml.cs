@@ -68,13 +68,7 @@ public partial class HistoryImportSheet : SheetWindow
 
     void Name_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e)
     {
-        if (NameHint != null) NameHint.Visibility = NameBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         if (AddButton != null) UpdateState();
-    }
-
-    void Note_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e)
-    {
-        if (NoteHint != null) NoteHint.Visibility = NoteBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     async void Add_Click(object sender, RoutedEventArgs e)

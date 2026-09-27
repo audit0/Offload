@@ -37,21 +37,13 @@
                 </Grid>
                 <Separator Style="{StaticResource RowDivider}" />
                 <local:FormRow Title="Под именем">
-                    <!-- Подсказка в пустом поле — своя: у общего стиля TextBox её нет. -->
-                    <Grid Width="280">
-                        <TextBox x:Name="NameBox" TextChanged="Name_Changed" />
-                        <TextBlock x:Name="NameHint" Text="имя папки или файла" Foreground="{StaticResource Faint}" IsHitTestVisible="False"
-                                   Margin="10,0,10,0" VerticalAlignment="Center" />
-                    </Grid>
+                    <TextBox x:Name="NameBox" Width="280" Tag="имя папки или файла" TextChanged="Name_Changed" />
                 </local:FormRow>
             </StackPanel>
         </Border>
         <CheckBox x:Name="RemovedCheck" Content="Оригинал уже удалён с компьютера" IsChecked="True" Margin="0,14,0,0" />
-        <Grid Margin="0,12,0,0">
-            <TextBox x:Name="NoteBox" TextWrapping="Wrap" AcceptsReturn="True" MaxLines="3" MinLines="1" TextChanged="Note_Changed" />
-            <TextBlock x:Name="NoteHint" Text="Заметка, например «упаковано в zip» (необязательно)" Foreground="{StaticResource Faint}"
-                       IsHitTestVisible="False" Margin="10,6,10,0" VerticalAlignment="Top" />
-        </Grid>
+        <TextBox x:Name="NoteBox" Margin="0,12,0,0" TextWrapping="Wrap" AcceptsReturn="True" MaxLines="3" MinLines="1"
+                 Tag="Заметка, например «упаковано в zip» (необязательно)" />
         <local:NoticeView x:Name="ErrorNotice" Kind="Error" Margin="0,12,0,0" Visibility="Collapsed" />
     </StackPanel>
 

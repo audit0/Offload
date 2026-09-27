@@ -22,8 +22,6 @@ public partial class SpaceMachinesSheet : SheetWindow
         this.app = app;
         this.item = item;
         InitializeComponent();
-        // Заголовок, кнопки и поля листа занимают около 260 точек: остальное — под содержимое.
-        Body.MaxHeight = Math.Max(320, SystemParameters.WorkArea.Height - 260);
         Subtitle = "Считаю, сколько занимает каждая машина…";
         ShowSteps();
         Loaded += (_, _) => Load();

@@ -343,6 +343,7 @@ public class SheetWindow : Window
     {
         Width = 520;
         SizeToContent = SizeToContent.Height;
+        MaxHeight = Math.Max(320, SystemParameters.WorkArea.Height - 48);
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ShowInTaskbar = false;

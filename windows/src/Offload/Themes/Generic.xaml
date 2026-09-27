@@ -227,8 +227,9 @@
                             <Border DockPanel.Dock="Bottom" BorderThickness="0,1,0,0" BorderBrush="{StaticResource Line}" Padding="24,14">
                                 <ContentPresenter Content="{TemplateBinding Actions}" HorizontalAlignment="Right" />
                             </Border>
-                            <StackPanel Margin="24,24,24,24">
-                                <Grid Margin="0,0,0,16">
+                            <!-- Высокий лист не выходит за экран: заголовок и кнопки на месте, содержимое прокручивается. -->
+                            <DockPanel Margin="24,24,24,24">
+                                <Grid DockPanel.Dock="Top" Margin="0,0,0,16">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
@@ -241,8 +242,10 @@
                                                    Visibility="{TemplateBinding Subtitle, Converter={StaticResource Visible}}" />
                                     </StackPanel>
                                 </Grid>
-                                <ContentPresenter />
-                            </StackPanel>
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                                    <ContentPresenter />
+                                </ScrollViewer>
+                            </DockPanel>
                         </DockPanel>
                     </Border>
                 </ControlTemplate>

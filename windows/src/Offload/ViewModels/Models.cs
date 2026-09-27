@@ -188,7 +188,10 @@ public sealed class MoveModel : Observable
 
     public async void Prepare(string source, VolumeInfo volume, SafetyRules rules)
     {
-        Cancel();
+        // Идёт копирование — новой проверки не будет: смена диска не должна обрывать начатый перенос.
+        if (Stage is MoveStage.Running) return;
+        // Отменяется только прежняя проверка, а не перенос.
+        if (preparing is { } previous && tokens.TryGetValue(previous, out var old)) old.Cancel();
         var id = Guid.NewGuid();
         var token = new CancelToken();
         tokens[id] = token;

@@ -416,10 +416,18 @@
                 <ControlTemplate TargetType="TextBox">
                     <Border x:Name="Frame" CornerRadius="7" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}">
-                        <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" Focusable="False"
-                                      HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden" />
+                        <Grid>
+                            <!-- Подсказка в пустом поле — из Tag, как у поля пароля. -->
+                            <TextBlock x:Name="Hint" Text="{TemplateBinding Tag}" Foreground="#8E8E93" Margin="10,5,8,5" IsHitTestVisible="False"
+                                       VerticalAlignment="Top" TextTrimming="CharacterEllipsis" Visibility="Collapsed" />
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" Focusable="False"
+                                          HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden" />
+                        </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="Text" Value="">
+                            <Setter TargetName="Hint" Property="Visibility" Value="Visible" />
+                        </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="Frame" Property="BorderBrush" Value="#111111" />
                         </Trigger>
