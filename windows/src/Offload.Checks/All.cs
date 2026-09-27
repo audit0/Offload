@@ -24,6 +24,7 @@ static partial class All
         ("harden", ChecksHarden),
         ("safe", ChecksSafe),
         ("license", ChecksLicense),
+        ("assistant", ChecksAssistant),
     ];
 
     public static void Run()

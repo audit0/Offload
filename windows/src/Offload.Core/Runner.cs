@@ -64,7 +64,7 @@ public static class Runner
     /// поэтому системные программы оттуда никогда не берутся.</summary>
     public static readonly HashSet<string> ThirdPartyTools = new(StringComparer.OrdinalIgnoreCase)
     {
-        "docker", "zstd", "restic", "VBoxManage",
+        "docker", "zstd", "restic", "VBoxManage", "claude",
     };
 
     public static IReadOnlyList<string> ThirdPartyDirectories
@@ -85,6 +85,10 @@ public static class Runner
                 Path.Combine(programFiles, "restic"),
                 Path.Combine(programFiles, "zstd"),
                 Path.Combine(programFiles, "Oracle", "VirtualBox"),
+                // Claude Code: установщик Anthropic кладёт его в ~\.local\bin, npm — внутрь своего пакета
+                // (claude.cmd рядом — обёртка через cmd.exe, её не запускаем: аргументы через cmd небезопасны).
+                Path.Combine(profile, @".local\bin"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"npm\node_modules\@anthropic-ai\claude-code\bin"),
             ];
         }
     }
