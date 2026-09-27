@@ -201,6 +201,12 @@ final class CleanupModel {
         kind == .module(.safe) && app.safeVolume == nil && !Demo.isOn
     }
 
+    /// Вопрос из Offload Pro, а Pro на этом Mac нет: «да» открывает окно Pro, «не сейчас» работает как всегда.
+    func isLocked(_ kind: CleanupQuestion.Kind, app: AppModel) -> Bool {
+        guard let feature = kind.proFeature else { return false }
+        return !app.pro.allows(feature)
+    }
+
     /// Ответ на вопрос. «Да» ставит его в очередь, и он выполняется, как только дойдёт черёд;
     /// «не сейчас» ничего не запоминает — в следующий раз спрошу снова.
     func answer(_ kind: CleanupQuestion.Kind, yes: Bool, app: AppModel) {
@@ -212,6 +218,10 @@ final class CleanupModel {
             return
         }
         guard !needsSafe(kind, app: app) else { return }
+        if let feature = kind.proFeature, !app.pro.allows(feature) {
+            app.pro.offer(feature)
+            return
+        }
         answers[kind] = .queued
         queue.append(kind)
         pump(app: app)
@@ -221,7 +231,8 @@ final class CleanupModel {
     /// Вопрос о сейфе ждёт, пока сейф закрыт; ответ — остался ли он ждать пароля.
     @discardableResult
     func answerAll(app: AppModel) -> Bool {
-        for question in asking where question.answeredTogether && !needsSafe(question.kind, app: app) {
+        for question in asking where question.answeredTogether && !needsSafe(question.kind, app: app)
+            && !isLocked(question.kind, app: app) {
             answer(question.kind, yes: true, app: app)
         }
         return asking.contains { $0.kind == .module(.safe) }
@@ -573,7 +584,8 @@ final class CleanupModel {
         clear()
         let rules = app.rules
         let memory = (try? store?.lastDecisions()) ?? [:]
-        let habits = (try? store?.history()).map { HabitModel(history: $0, home: rules.home) }
+        // Привычки — в Pro. Решения запоминаются и без него: купил — привычки действуют сразу.
+        let habits = app.pro.allows(.habits) ? (try? store?.history()).map { HabitModel(history: $0, home: rules.home) } : nil
         let ignored = Set((try? store?.ignoredPaths()) ?? [])
         if Demo.isOn {
             show(Demo.cleanupSuggestions(memory: memory, habits: habits), docker: Demo.dockerUsage, idle: nil)

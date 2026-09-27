@@ -661,6 +661,7 @@ if env["OFFLOAD_SKIP_INTEGRATION"] != "1" {
 checksDuplicates()
 checksHabits()
 checksCloudRestore()
+checksLicense()
 
 try? fm.removeItem(at: scratch)
 print("")

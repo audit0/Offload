@@ -433,6 +433,7 @@ final class BackupModel {
     }
 
     func run(on volume: VolumeInfo, app: AppModel) {
+        guard app.pro.allows(.projectBackup) else { return app.pro.offer(.projectBackup) }
         let token = CancelToken()
         let operationID = app.beginOperation { token.cancel() }
         tokens[operationID] = token
@@ -677,6 +678,8 @@ final class DockerModel {
     func archiveSelected(to volume: VolumeInfo, app: AppModel) {
         let names = volumes.filter { selection.contains($0.name) }.map(\.name)
         guard !names.isEmpty else { return }
+        // Упаковать — в Pro; вернуть том из архива можно всегда.
+        guard app.pro.allows(.dockerVolumes) else { return app.pro.offer(.dockerVolumes) }
         guard !Demo.isOn else {
             messages = ["Демонстрация: тома не упакованы, Docker не тронут."]
             return

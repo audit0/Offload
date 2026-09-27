@@ -126,7 +126,14 @@ struct DockerView: View {
             }
             Button { model.reload(app: app) } label: { Label("Обновить", systemImage: "arrow.clockwise") }
                 .disabled(model.busy != nil)
-            Button { confirmArchive = true } label: { Label("Архивировать на диск…", systemImage: "archivebox") }
+            Button {
+                if app.pro.allows(.dockerVolumes) { confirmArchive = true } else { app.pro.offer(.dockerVolumes) }
+            } label: {
+                HStack(spacing: 6) {
+                    Label("Архивировать на диск…", systemImage: "archivebox")
+                    if !app.pro.allows(.dockerVolumes) { ProTag() }
+                }
+            }
                 .prominentButton()
                 .disabled(model.selection.isEmpty || model.busy != nil || app.target == nil)
                 .help(app.targetProblem ?? "Упаковать выбранные тома и убрать их из Docker")

@@ -63,6 +63,17 @@ public struct CleanupQuestion: Sendable, Identifiable, Hashable {
     }
 }
 
+extension CleanupQuestion.Kind {
+    /// Для «да» на этот вопрос нужен Offload Pro. «Не сейчас» и всё найденное видно и без него.
+    public var proFeature: ProFeature? {
+        switch self {
+        case .module(.duplicates): return .duplicates
+        case .module(.projects): return .projectBackup
+        default: return nil
+        }
+    }
+}
+
 public enum CleanupQuestions {
     /// О Docker спрашиваем, если он отдаст хотя бы столько.
     public static let dockerMinimumBytes: Int64 = 100_000_000

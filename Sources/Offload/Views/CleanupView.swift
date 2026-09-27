@@ -319,6 +319,17 @@ struct CleanupView: View {
         let model = app.cleanup
         return CardSection(title: "Чему научился",
                            footer: "Учусь только на этом Mac и только на ваших ответах. Что вы вернули из Корзины, больше не предлагаю; похожее на то, что вы обычно убираете в сейф, добавляю в вопрос о сейфе. Сам ничего не делаю — только спрашиваю.") {
+            if !app.pro.allows(.habits) {
+                HStack(spacing: 12) {
+                    IconTile(systemImage: "sparkles", tone: .neutral)
+                    Text("Привычки действуют в Offload Pro. Ваши ответы запоминаются и сейчас — с Pro похожее сразу начнёт попадать в нужный вопрос.")
+                        .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 12)
+                    Button("Подробнее…") { app.pro.offer(.habits) }
+                }
+                .rowPadding()
+                RowDivider(inset: 54)
+            }
             if model.habits.isEmpty {
                 HStack(alignment: .top, spacing: 12) {
                     IconTile(systemImage: "sparkles", tone: .neutral)
@@ -505,7 +516,8 @@ struct CleanupView: View {
     private var summary: some View {
         let model = app.cleanup
         let open = model.asking
-        let together = open.filter(\.answeredTogether)
+        // Вопросы из Pro без ключа «Разрешить всё» не отвечает — и в его сумму они не входят.
+        let together = open.filter { $0.answeredTogether && !model.isLocked($0.kind, app: app) }
         let togetherBytes = together.reduce(Int64(0)) { $0 + $1.bytes }
         let freed = max(0, model.freed ?? 0)
         return Card(spacing: 12) {
@@ -540,7 +552,7 @@ struct CleanupView: View {
                         // Без Return: одно нажатие отвечало «да» на все вопросы сразу, включая безвозвратную
                         // очистку Docker, — хотя человек мог нажать Return, ещё не прочитав их.
                         .help(open.count > together.count
-                              ? "Ответить «да» на все вопросы, кроме установщиков: их удаляю только по отдельному ответу"
+                              ? "Ответить «да» на все вопросы, кроме установщиков (их удаляю только по отдельному ответу) и вопросов из Offload Pro"
                               : "Ответить «да» на все вопросы")
                     }
                     if !model.isSettled {
@@ -693,9 +705,16 @@ struct QuestionCard: View {
                 Spacer(minLength: 12)
                 Button(question.noTitle, action: no)
                     .controlSize(.large)
-                Button(question.yesTitle, action: yes)
-                    .prominentButton()
-                    .controlSize(.large)
+                Button(action: yes) {
+                    if app.cleanup.isLocked(question.kind, app: app) {
+                        HStack(spacing: 6) { Text(question.yesTitle); ProTag() }
+                    } else {
+                        Text(question.yesTitle)
+                    }
+                }
+                .prominentButton()
+                .controlSize(.large)
+                .help(app.cleanup.isLocked(question.kind, app: app) ? "Нужен Offload Pro — откроется окно с ценой и ключом" : "")
             }
         case .queued:
             HStack(spacing: 10) {

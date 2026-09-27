@@ -22,6 +22,7 @@ struct OffloadApp: App {
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("О программе Offload") { AboutPanel.show() }
+                Button("Offload Pro…") { model.pro.offer() }
             }
             // Как «Dismount All» в VeraCrypt: закрыть сейф из любого места одним сочетанием.
             CommandMenu("Сейф") {
@@ -162,6 +163,19 @@ enum Snapshots {
                 save(window, to: directory.appendingPathComponent("\(section.rawValue).png"))
             }
             log("снимок \(section.rawValue)")
+        }
+        // OFFLOAD_SNAPSHOT_PRO=1 — ещё и окно «Offload Pro», открытое «да» на лишние копии.
+        if ProcessInfo.processInfo.environment["OFFLOAD_SNAPSHOT_PRO"] == "1" {
+            model.pro.offer(.duplicates)
+            try? await Task.sleep(for: .seconds(2))
+            if let sheet = window.attachedSheet ?? NSApp.windows.first(where: { $0.sheetParent == window || ($0 != window && $0.isVisible && $0.title.isEmpty) }) {
+                save(sheet, to: directory.appendingPathComponent("pro.png"))
+            } else {
+                log("окно «Offload Pro» не нашлось")
+            }
+            // С открытым листом программа не завершается: сначала закрыть.
+            model.pro.isPresented = false
+            try? await Task.sleep(for: .seconds(1))
         }
         NSApp.terminate(nil)
     }

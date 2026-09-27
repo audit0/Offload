@@ -107,7 +107,10 @@ struct BackupView: View {
                     }
                 } else {
                     Button { model.run(on: volume, app: app) } label: {
-                        Label("Обновить бэкап", systemImage: "arrow.triangle.2.circlepath")
+                        HStack(spacing: 6) {
+                            Label("Обновить бэкап", systemImage: "arrow.triangle.2.circlepath")
+                            if !app.pro.allows(.projectBackup) { ProTag() }
+                        }
                     }
                     .prominentButton()
                     .disabled(model.sources.isEmpty)
