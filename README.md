@@ -118,6 +118,25 @@ less install.sh && zsh install.sh
 
 Подробности, модель угроз и известные ограничения — в [SECURITY.md](SECURITY.md).
 
+## Offload Pro
+
+Всё, что нужно, чтобы освободить место и не потерять данные, бесплатно навсегда: сейф, перенос со сверкой, возврат перенесённого, разбор (мусор, Docker, установщики, крупное в сейф), ключи и токены в сейф, восстановление из iCloud. Вернуть своё Offload не мешает никогда — ни без ключа, ни после пробы.
+
+Offload Pro добавляет инструменты для тех, у кого Mac — рабочий инструмент:
+
+- **Лишние копии** — одинаковые файлы по SHA-256; одна копия остаётся всегда, лишние уходят в Корзину.
+- **Привычки** — Offload учится на ваших ответах и сам кладёт похожее в нужный вопрос.
+- **Бэкап проектов** — обновляемая копия папок с проектами в сейф.
+- **Тома Docker в сейф** — упаковка неиспользуемых томов со сверкой каждого файла.
+
+**1 490 ₽ или $19, один раз.** Ключ работает всегда; новые версии — год, дальше продление за полцены, а не продлили — остаётся последняя версия того года. Первые 14 дней Pro открыт целиком, без ключа и регистрации. Если вы пользовались Offload до появления Pro, всё открыто навсегда.
+
+Ключ проверяется на самом Mac подписью, без сети: Offload по-прежнему не ходит в интернет. Ввести ключ — меню «Offload» → «Offload Pro…».
+
+### Как купить
+
+В Telegram-боте [@OffLoadmg_bot](https://t.me/OffLoadmg_bot?start=pro) (кнопка «Купить…» в окне «Offload Pro» ведёт туда же): оплата Telegram Stars, криптовалютой (CryptoBot, xRocket, USDT TRC20/TON, TON) или по СБП. Ключ приходит сообщением сразу после оплаты; вставьте его в окне «Offload Pro». Возврат — 14 дней, напишите в том же боте. Новости и релизы — в канале [@offload_dmg](https://t.me/offload_dmg).
+
 ## Полный доступ к диску
 
 Без него Offload не видит «Документы», «Рабочий стол», Почту и данные многих приложений. Откройте «Системные настройки → Конфиденциальность и безопасность → Полный доступ к диску», включите Offload и перезапустите его. Кнопка для перехода в настройки есть в самом приложении.
@@ -221,6 +240,8 @@ powershell -ExecutionPolicy Bypass -File windows\scripts\install-local.ps1
 ## English
 
 Offload frees up space on a Mac without risking data loss. It shows what takes up disk space, moves selected items to an external drive, keeps an incremental backup of projects, stores keys and tokens in an encrypted container and restores files from restic backups in iCloud Drive. The original is deleted only after the copy has been re-read from disk and matched byte for byte (SHA-256).
+
+Everything needed to free up space and keep data safe is free forever; Offload Pro (a one-time $19 with a year of updates, 14-day trial, free for users of earlier versions) adds duplicate removal, learned habits, project backup and Docker volume archiving. The license key is verified offline with an Ed25519 signature — the app still makes no network requests.
 
 It refuses to move things that would break apps — virtual machines and media libraries (even nested deep inside a folder), app data in `~/Library`, `~/.ssh` — and handles exFAT pitfalls (permissions, AppleDouble `._*` files, sparse files) and a Docker trap where the archive stream fills `Docker.raw` via container logs.
 

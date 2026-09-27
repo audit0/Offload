@@ -7,6 +7,7 @@ struct ContentView: View {
     var body: some View {
         @Bindable var app = app
         @Bindable var safe = app.safe
+        @Bindable var pro = app.pro
         NavigationSplitView {
             // Своя колонка вместо List: выделение у List macOS рисует системным синим,
             // а здесь оно чёрно-белое — светло-серая подложка и жирный текст.
@@ -23,7 +24,10 @@ struct ContentView: View {
             .modifier(SidebarBackground())
             .navigationSplitViewColumnWidth(min: 240, ideal: 260)
             .safeAreaInset(edge: .bottom) {
-                SafeStatusPanel().padding(10)
+                VStack(spacing: 4) {
+                    ProSidebarRow().padding(.horizontal, 10)
+                    SafeStatusPanel().padding([.horizontal, .bottom], 10)
+                }
             }
         } detail: {
             // GeometryReader: иначе NavigationSplitView на macOS берёт идеальную высоту содержимого
@@ -53,6 +57,9 @@ struct ContentView: View {
         .glassButtons()
         // Сменили диск — перечитываем, есть ли на нём сейф и открыт ли он.
         .task(id: app.destinationID) { app.safe.refresh(app: app) }
+        .sheet(isPresented: $pro.isPresented) { ProSheet() }
+        // Пробный период считается днями: окно могло простоять открытым со вчера.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in app.pro.refresh() }
         // Закрыть сейф не дали открытые в нём файлы — откуда бы ни закрывали: из панели, меню или раздела.
         .alert("Сейф не закрывается", isPresented: $safe.closeBlocked) {
             Button("Закрыть принудительно", role: .destructive) { app.safe.close(app: app, force: true) }

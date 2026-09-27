@@ -13,6 +13,10 @@ APP="$DIST/Offload.app"
 ASSETS="$ROOT/.build/app-assets"
 
 [[ "$VERSION" =~ '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$' ]] || { print -u2 "⚠️  Некорректная версия: $VERSION"; exit 1; }
+# День выхода версии: ключ Offload Pro открывает версии, вышедшие до конца его обновлений.
+# Берётся из последнего коммита, а не из часов сборки: пересборка той же версии через год не должна её «состарить».
+RELEASE_DATE="${OFFLOAD_RELEASE_DATE:-$(TZ=UTC git -C "$ROOT" log -1 --date=format-local:%Y-%m-%d --format=%cd 2>/dev/null || true)}"
+[[ "$RELEASE_DATE" =~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' ]] || RELEASE_DATE="$(date -u +%Y-%m-%d)"
 
 rm -rf "$APP" "$ASSETS"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$ASSETS/AppIcon.iconset"
@@ -65,6 +69,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$VERSION</string>
+  <key>OffloadReleaseDate</key><string>$RELEASE_DATE</string>
   <key>CFBundleDevelopmentRegion</key><string>ru</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>

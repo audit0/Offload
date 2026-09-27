@@ -57,6 +57,8 @@ final class AppModel {
     var destinationID: String?
     private(set) var hasFullDiskAccess = FullDiskAccess.isGranted
 
+    /// Первым: он смотрит, пользовались ли Offload раньше, — до того как остальные модели заведут свои файлы.
+    let pro = ProModel()
     let rules = SafetyRules()
     let safe = SafeModel()
     let overview = OverviewModel()

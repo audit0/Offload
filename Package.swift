@@ -14,6 +14,9 @@ let package = Package(
         // XCTest и swift-testing есть только в Xcode, поэтому проверки — отдельная программа:
         // swift run OffloadChecks
         .executableTarget(name: "OffloadChecks", dependencies: ["OffloadCore"]),
+        // Выпуск ключей Offload Pro — только у автора, с закрытым ключом вне репозитория:
+        // swift run OffloadLicense issue "Имя"
+        .executableTarget(name: "OffloadLicense", dependencies: ["OffloadCore"]),
     ],
     swiftLanguageModes: [.v5]
 )
