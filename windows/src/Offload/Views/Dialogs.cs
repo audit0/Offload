@@ -50,7 +50,7 @@ public static class Dialogs
             Style = (Style)Application.Current.FindResource("Body"),
         });
         var links = new WrapPanel { Margin = new Thickness(0, 14, 0, 0) };
-        foreach (var (label, url) in new[] { ("Offload на GitHub", App.RepositoryUrl), ("Канал Offload в Telegram", "https://t.me/offload_dmg"),
+        foreach (var (label, url) in new[] { ("Offload на GitHub", App.RepositoryUrl), ("Канал Offload в Telegram", "https://t.me/OffLoadAI"),
                                              ("Сообщить о проблеме", App.RepositoryUrl + "/issues") })
         {
             var link = new Button { Style = (Style)Application.Current.FindResource("LinkButton"), Margin = new Thickness(0, 0, 18, 0),
