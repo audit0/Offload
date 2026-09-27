@@ -172,7 +172,8 @@ public struct SafeMover: Sendable {
             default: break
             }
         }
-        holders.remove("Offload")
+        // Сама программа: до переименования её процесс звался Offload, теперь — OffLoadAI.
+        holders.subtract(["Offload", "OffLoadAI"])
         return holders.sorted()
     }
 
@@ -380,7 +381,7 @@ public struct SafeMover: Sendable {
 
     // MARK: - Ручные переносы
 
-    /// Регистрирует перенос, сделанный без Offload: папка или файл уже лежит на внешнем диске.
+    /// Регистрирует перенос, сделанный без OffLoadAI: папка или файл уже лежит на внешнем диске.
     /// Запись попадает в журнал, и вернуть данные можно как обычно.
     public func importRecord(archived: URL, original: URL, originalRemoved: Bool, note: String? = nil) throws -> MoveRecord {
         var record = MoveRecord(originalPath: original.standardizedFileURL.path, archivedPath: archived.standardizedFileURL.path,
@@ -429,11 +430,11 @@ public struct SafeMover: Sendable {
     /// Имя метки внутри `.offload-partial-…`: по ней видно, что копирование идёт прямо сейчас.
     static let partialLockName = ".offload-lock"
 
-    /// Метка «здесь работает Offload», которую кладут внутрь своей partial-папки.
+    /// Метка «здесь работает OffLoadAI», которую кладут внутрь своей partial-папки.
     ///
     /// Раньше «свежесть» остатка определялась по дате самой папки, и это обманывало: пока
     /// копирование идёт в подпапках, дата корня не меняется, а copyTree в конце и вовсе ставит
-    /// корню дату оригинала. Соседний экземпляр Offload мог принять идущее копирование за мусор
+    /// корню дату оригинала. Соседний экземпляр OffLoadAI мог принять идущее копирование за мусор
     /// и стереть его вместе с уже скопированными данными. Класс, а не структура: на него смотрят
     /// сразу два замыкания copyTree.
     final class PartialMarker {
@@ -517,13 +518,13 @@ public struct SafeMover: Sendable {
 
     /// За остатком точно никто не стоит.
     ///
-    /// Метку наш Offload обновляет по ходу работы, поэтому «её не трогали сутки» означает, что
+    /// Метку наш OffLoadAI обновляет по ходу работы, поэтому «её не трогали сутки» означает, что
     /// копирования нет, кем бы ни был записанный там процесс: так убираются и остатки после
     /// перезагрузки, где номер процесса достался кому-то другому. Свежая метка чужой машины
     /// бережётся до тех же суток: там прямо сейчас может идти копирование.
     static func partialIsAbandoned(_ url: URL, attributes: [FileAttributeKey: Any], age: TimeInterval) -> Bool {
         guard let lock = readPartialLock(in: url) else {
-            // Остаток прежней версии Offload, которая меток не ставила: судим по дате, как раньше.
+            // Остаток прежней версии OffLoadAI, которая меток не ставила: судим по дате, как раньше.
             guard let modified = attributes[.modificationDate] as? Date else { return false }
             return Date().timeIntervalSince(modified) > age
         }
@@ -709,7 +710,7 @@ public struct SafeMover: Sendable {
     }
 
     /// Права, когда взять настоящие неоткуда: exFAT их не хранит, а `.modes.json`
-    /// пишет только сам Offload — у переносов, добавленных вручную, его нет.
+    /// пишет только сам OffLoadAI — у переносов, добавленных вручную, его нет.
     ///
     /// Права только для владельца. 0644 и 0755 вернули бы приватные ключи, .env и базы паролей
     /// читаемыми всем на машине, а угадать чужие права нельзя — можно только не расширять свои.

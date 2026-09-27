@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 import OffloadCore
 
-// Выпуск ключей Offload Pro. Нужен только автору: закрытый ключ лежит у него, не в репозитории.
+// Выпуск ключей OffLoadAI Pro. Нужен только автору: закрытый ключ лежит у него, не в репозитории.
 //
 //   swift run OffloadLicense keygen                    — завести пару ключей (один раз)
 //   swift run OffloadLicense issue "Имя покупателя"     — выпустить ключ на год обновлений

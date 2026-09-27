@@ -3,7 +3,7 @@ import Observation
 import OffloadCore
 
 /// Разбор Mac: поиск → вопросы → ответы. Человек не выбирает по файлам и не ходит по папкам:
-/// Offload сам раскладывает найденное по вопросам («Удалить мусор — 12 ГБ?», «Очистить Docker?»),
+/// OffLoadAI сам раскладывает найденное по вопросам («Удалить мусор — 12 ГБ?», «Очистить Docker?»),
 /// а на каждый отвечают «да» или «не сейчас». Сделанное по «да»
 /// видно сразу у вопроса (`CleanupQuestions`).
 ///
@@ -17,7 +17,7 @@ final class CleanupModel {
     enum Stage: Equatable {
         case idle
         case scanning(ScanProgress)
-        /// Найденное разложено по вопросам: человек отвечает, Offload делает.
+        /// Найденное разложено по вопросам: человек отвечает, OffLoadAI делает.
         case review
     }
 
@@ -96,7 +96,7 @@ final class CleanupModel {
     private(set) var lastRun: DecisionStore.Run?
     /// База решений не открылась: разбор работает, но ничего не запоминает.
     private(set) var storeProblem: String?
-    /// Чему Offload научился: самые подкреплённые привычки и по скольким объектам решения
+    /// Чему OffLoadAI научился: самые подкреплённые привычки и по скольким объектам решения
     /// в памяти — столько забудет «Забыть мои решения».
     private(set) var habits: [HabitModel.Prediction] = []
     private(set) var remembered = 0
@@ -130,7 +130,7 @@ final class CleanupModel {
         }
     }
 
-    /// Перечитывает, чему научился Offload: при открытии раздела, после разбора и после «Забыть».
+    /// Перечитывает, чему научился OffLoadAI: при открытии раздела, после разбора и после «Забыть».
     func loadHabits(home: URL) {
         guard let store, let history = try? store.history() else { return }
         habits = HabitModel(history: history, home: home).habits()
@@ -201,7 +201,7 @@ final class CleanupModel {
         kind == .module(.safe) && app.safeVolume == nil && !Demo.isOn
     }
 
-    /// Вопрос из Offload Pro, а Pro на этом Mac нет: «да» открывает окно Pro, «не сейчас» работает как всегда.
+    /// Вопрос из OffLoadAI Pro, а Pro на этом Mac нет: «да» открывает окно Pro, «не сейчас» работает как всегда.
     func isLocked(_ kind: CleanupQuestion.Kind, app: AppModel) -> Bool {
         guard let feature = kind.proFeature else { return false }
         return !app.pro.allows(feature)

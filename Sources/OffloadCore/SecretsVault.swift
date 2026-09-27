@@ -45,7 +45,7 @@ public struct SecretsReport: Sendable {
 
 /// Шифрованный контейнер (AES-256, APFS внутри) для ключей, токенов и .env.
 ///
-/// Пароль задаёт человек; Offload его не хранит и передаёт hdiutil только через stdin,
+/// Пароль задаёт человек; OffLoadAI его не хранит и передаёт hdiutil только через stdin,
 /// потому что аргументы командной строки видны любому процессу через `ps`.
 public struct SecretsVault: Sendable {
     public static let volumeName = "OffloadSecrets"
@@ -56,7 +56,7 @@ public struct SecretsVault: Sendable {
 
     public init(imageURL: URL) { self.imageURL = imageURL }
 
-    /// Имя, под которым Offload создаёт сейф, и имя тома внутри него.
+    /// Имя, под которым OffLoadAI создаёт сейф, и имя тома внутри него.
     public static let safeImageName = "Offload Safe.sparsebundle"
     public static let safeVolumeName = "Offload Safe"
     /// Так назывался контейнер для ключей в первых версиях — его тоже узнаём.
@@ -120,7 +120,7 @@ public struct SecretsVault: Sendable {
 
     /// Образ, который подсистема образов уже подключила: так отвечает `hdiutil info`.
     public struct Attachment: Sendable, Equatable {
-        /// Куда смонтирован том; nil — подключён без монтирования (так Offload растягивает сейф).
+        /// Куда смонтирован том; nil — подключён без монтирования (так OffLoadAI растягивает сейф).
         public var mountPoint: URL?
         /// `image-encrypted` — ответ про уже открытый образ. Подложенным файлом его не подделать.
         public var encrypted: Bool
@@ -167,7 +167,7 @@ public struct SecretsVault: Sendable {
         public var isEncrypted: Bool
         /// Ответ `hdiutil isencrypted`. У подключённого образа его нет: заголовок занят.
         public var info: EncryptionInfo?
-        /// Где открыт — Offload, Finder или hdiutil; nil — закрыт.
+        /// Где открыт — OffLoadAI, Finder или hdiutil; nil — закрыт.
         public var mountPoint: URL?
         /// Подключён — с монтированием или без. Менять пароль, растягивать и сжимать такой нельзя.
         public var isAttached: Bool
@@ -335,7 +335,7 @@ public struct SecretsVault: Sendable {
 
     /// Увеличивает предел сейфа, не трогая содержимое. Нужны пароль и закрытый сейф.
     ///
-    /// Только APFS — так Offload создаёт сейфы сам. Формат проверяется до того, как образ
+    /// Только APFS — так OffLoadAI создаёт сейфы сам. Формат проверяется до того, как образ
     /// хоть как-то изменится: на HFS+ после роста не проходит проверка файловой системы
     /// (проверено), и такой сейф лучше не трогать вовсе.
     ///
@@ -357,7 +357,7 @@ public struct SecretsVault: Sendable {
 
         let content = try withRawDevices(pass) { _, partition in Self.diskInfo(partition)?["Content"] as? String }
         guard content == "Apple_APFS" else {
-            throw VaultError.growFailed("внутри не APFS (\(content ?? "неизвестно")) — такой сейф Offload не растягивает. Создайте новый сейф нужного размера и перенесите содержимое.")
+            throw VaultError.growFailed("внутри не APFS (\(content ?? "неизвестно")) — такой сейф OffLoadAI не растягивает. Создайте новый сейф нужного размера и перенесите содержимое.")
         }
 
         if maxBytes > current {
@@ -554,7 +554,7 @@ public struct SecretsVault: Sendable {
         guard let data = try? Data(contentsOf: file), data.count < 4 << 20,
               let backup = try? decoder.decode(HeaderBackup.self, from: data),
               backup.token.prefix(8) == Data("encrcdsa".utf8) else {
-            throw VaultError.headerRejected("файл не похож на копию заголовка Offload")
+            throw VaultError.headerRejected("файл не похож на копию заголовка OffLoadAI")
         }
         if let expected = backup.uuid, let current = Self.encryptionInfo(of: imageURL)?.uuid, expected != current {
             throw VaultError.headerRejected("копия снята с другого сейфа")
@@ -590,7 +590,7 @@ public struct SecretsVault: Sendable {
 
     public func attach(password: String) throws -> URL {
         let status = self.status()
-        // Уже открыт — Offload, Finder или hdiutil: второй раз не подключаем, берём ту же точку.
+        // Уже открыт — OffLoadAI, Finder или hdiutil: второй раз не подключаем, берём ту же точку.
         // Шифрование открытого тома подтверждает сама подсистема образов (`hdiutil info`).
         if let mount = status.mountPoint {
             guard status.isEncrypted else { throw VaultError.notEncrypted }
@@ -646,7 +646,7 @@ public struct SecretsVault: Sendable {
     /// попытка тогда отвечает «занят», хотя человек ничего не открывал. Поэтому занятый том
     /// пробуем закрыть ещё несколько раз с паузой и только потом говорим, что в нём открыты файлы.
     public static func detach(_ mountPoint: URL, force: Bool = false, attempts: Int = 5) throws {
-        // Том уже закрыли в обход Offload (Finder, «Извлечь»): закрывать нечего.
+        // Том уже закрыли в обход OffLoadAI (Finder, «Извлечь»): закрывать нечего.
         guard FileManager.default.fileExists(atPath: mountPoint.path) else { return }
         for attempt in 1...max(1, attempts) {
             let result = try Runner.run("hdiutil", ["detach"] + (force ? ["-force"] : []) + [mountPoint.path], timeout: 120)

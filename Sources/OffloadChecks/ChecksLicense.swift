@@ -2,8 +2,8 @@ import CryptoKit
 import Foundation
 import OffloadCore
 
-/// Offload Pro: ключ проверяется подписью без сети, чужой и испорченный не проходят,
-/// проба и ранние пользователи считаются так, как обещано в окне «Offload Pro».
+/// OffLoadAI Pro: ключ проверяется подписью без сети, чужой и испорченный не проходят,
+/// проба и ранние пользователи считаются так, как обещано в окне «OffLoadAI Pro».
 func checksLicense() {
     let signer = Curve25519.Signing.PrivateKey()
     let publicKey = signer.publicKey.rawRepresentation.base64EncodedString()

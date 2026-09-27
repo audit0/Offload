@@ -207,7 +207,7 @@ public struct SafetyRules: Sendable {
             return .blocked("Внутри лежит «\(bundle)» — пакет, зарегистрированный в приложении (например, виртуальная машина UTM). После переноса приложение его потеряет.")
         }
         if content.unreadable > 0 {
-            return .blocked("Нет доступа к \(content.unreadable) объектам внутри. Выдайте Offload полный доступ к диску в Системных настройках.")
+            return .blocked("Нет доступа к \(content.unreadable) объектам внутри. Выдайте OffLoadAI полный доступ к диску в Системных настройках.")
         }
         if content.truncated {
             return .blocked("Файлов слишком много, проверка не закончена — переносите по частям.")
@@ -277,7 +277,7 @@ extension SafetyRules {
             check.blockers.append("На \(volume.fsDisplayName) macOS хранит служебные данные файла X в файле «._X» и перезаписывает его сама, а у вас такие файлы есть (\(content.appleDoubleExamples.prefix(3).joined(separator: ", "))). Целыми они туда не лягут — переносите в сейф или на диск APFS.")
         }
         if volume.createsAppleDouble {
-            check.notes.append("macOS создаст рядом служебные файлы ._* — Offload удалит их после сверки.")
+            check.notes.append("macOS создаст рядом служебные файлы ._* — OffLoadAI удалит их после сверки.")
         }
         return check
     }

@@ -1,7 +1,7 @@
 import Foundation
 
 /// Вопрос после разбора: одно «да» или «нет» на целую группу найденного. Человек не выбирает
-/// по файлам и не ходит по папкам — Offload сам собирает, что можно убрать, и спрашивает разрешения.
+/// по файлам и не ходит по папкам — OffLoadAI сам собирает, что можно убрать, и спрашивает разрешения.
 public struct CleanupQuestion: Sendable, Identifiable, Hashable {
     public enum Kind: Sendable, Hashable {
         /// Найденное разбором: мусор, лишние копии, установщики, крупное и старое, проекты.
@@ -64,7 +64,7 @@ public struct CleanupQuestion: Sendable, Identifiable, Hashable {
 }
 
 extension CleanupQuestion.Kind {
-    /// Для «да» на этот вопрос нужен Offload Pro. «Не сейчас» и всё найденное видно и без него.
+    /// Для «да» на этот вопрос нужен OffLoadAI Pro. «Не сейчас» и всё найденное видно и без него.
     public var proFeature: ProFeature? {
         switch self {
         case .module(.duplicates): return .duplicates

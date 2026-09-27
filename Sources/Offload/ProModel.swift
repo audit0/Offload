@@ -3,21 +3,21 @@ import Foundation
 import Observation
 import OffloadCore
 
-/// Offload Pro на этом Mac: ключ, пробные две недели, ранние пользователи.
+/// OffLoadAI Pro на этом Mac: ключ, пробные две недели, ранние пользователи.
 ///
 /// Ключ проверяется подписью, без сети. Всё хранится в настройках программы; сбросить пробу,
-/// удалив их, можно — Pro держится на честности тех, кому Offload полезен, а не на защите.
+/// удалив их, можно — Pro держится на честности тех, кому OffLoadAI полезен, а не на защите.
 @MainActor
 @Observable
 final class ProModel {
     /// Где купить: бот в Telegram — оплата Stars, криптовалютой или по СБП, ключ приходит сообщением.
-    static let purchaseURL = URL(string: "https://t.me/OffLoadmg_bot?start=pro")!
+    static let purchaseURL = URL(string: "https://t.me/OffLoadAIbot?start=pro")!
 
     private(set) var status: ProStatus = .free
     private(set) var license: License?
     /// Ключ не подошёл — почему, одной фразой.
     var keyProblem: String?
-    /// Окно «Offload Pro» и то, ради чего его открыли (nil — просто из меню).
+    /// Окно «OffLoadAI Pro» и то, ради чего его открыли (nil — просто из меню).
     var isPresented = false
     private(set) var reason: ProFeature?
 
@@ -42,7 +42,7 @@ final class ProModel {
         }
         let defaults = UserDefaults.standard
         if defaults.object(forKey: Self.earlyKey) == nil {
-            // Первый запуск версии с Pro. Кто пользовался Offload раньше, получает всё, что было,
+            // Первый запуск версии с Pro. Кто пользовался OffLoadAI раньше, получает всё, что было,
             // навсегда: забирать то, чем человек уже пользовался бесплатно, нечестно.
             let early = Self.usedBefore()
             defaults.set(early, forKey: Self.earlyKey)
@@ -56,7 +56,7 @@ final class ProModel {
 
     func allows(_ feature: ProFeature) -> Bool { status.isPro }
 
-    /// Открыть окно «Offload Pro» — из-за конкретной возможности или просто так.
+    /// Открыть окно «OffLoadAI Pro» — из-за конкретной возможности или просто так.
     func offer(_ feature: ProFeature? = nil) {
         reason = feature
         keyProblem = nil
@@ -106,7 +106,7 @@ final class ProModel {
     /// Одной строкой — для боковой колонки.
     var summary: String {
         switch status {
-        case .licensed: return "Offload Pro"
+        case .licensed: return "OffLoadAI Pro"
         case .early: return "Pro — ранний пользователь"
         case .trial(let days): return "Pro: пробный, \(days) \(pluralRu(days, "день", "дня", "дней"))"
         case .expired: return "Pro: продлите ключ"

@@ -130,7 +130,7 @@ struct FullDiskAccessBanner: View {
                 IconTile(systemImage: "lock.shield", tone: .caution, size: 36)
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Нет полного доступа к диску").font(.headline)
-                    Text("Без него Offload не видит «Документы», «Рабочий стол», Почту и данные многих приложений, и часть занятого места останется неизвестной. Выдайте доступ в настройках и перезапустите Offload.")
+                    Text("Без него OffLoadAI не видит «Документы», «Рабочий стол», Почту и данные многих приложений, и часть занятого места останется неизвестной. Выдайте доступ в настройках и перезапустите OffLoadAI.")
                         .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     HStack {
                         Button("Открыть настройки") { FullDiskAccess.openSettings() }

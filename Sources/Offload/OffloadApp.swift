@@ -10,7 +10,7 @@ struct OffloadApp: App {
     static let repositoryURL = URL(string: "https://github.com/audit0/Offload")!
 
     var body: some Scene {
-        WindowGroup("Offload") {
+        WindowGroup("OffLoadAI") {
             ContentView()
                 .environment(model)
                 .preferredColorScheme(.light)
@@ -21,8 +21,8 @@ struct OffloadApp: App {
         .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .appInfo) {
-                Button("О программе Offload") { AboutPanel.show() }
-                Button("Offload Pro…") { model.pro.offer() }
+                Button("О программе OffLoadAI") { AboutPanel.show() }
+                Button("OffLoadAI Pro…") { model.pro.offer() }
             }
             // Как «Dismount All» в VeraCrypt: закрыть сейф из любого места одним сочетанием.
             CommandMenu("Сейф") {
@@ -33,8 +33,8 @@ struct OffloadApp: App {
                     .keyboardShortcut("0", modifiers: [.command])
             }
             CommandGroup(replacing: .help) {
-                Link("Offload на GitHub", destination: Self.repositoryURL)
-                Link("Канал Offload в Telegram", destination: URL(string: "https://t.me/offload_dmg")!)
+                Link("OffLoadAI на GitHub", destination: Self.repositoryURL)
+                Link("Канал OffLoadAI в Telegram", destination: URL(string: "https://t.me/OffLoadAI")!)
                 Link("Сообщить о проблеме", destination: Self.repositoryURL.appendingPathComponent("issues"))
             }
         }
@@ -49,7 +49,7 @@ enum AboutPanel {
         credits.append(NSAttributedString(string: "github.com/audit0/Offload", attributes: [.link: OffloadApp.repositoryURL]))
         credits.addAttribute(.font, value: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize), range: NSRange(location: 0, length: credits.length))
         NSApp.orderFrontStandardAboutPanel(options: [
-            .applicationName: "Offload",
+            .applicationName: "OffLoadAI",
             .applicationVersion: version,
             .version: "",
             .credits: credits,
@@ -69,7 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.appearance = NSAppearance(named: .aqua)
         NSApp.activate()
         // Снимки — только в демонстрационном режиме. Иначе любая программа под этой учётной записью
-        // запустила бы Offload (`open --env OFFLOAD_SNAPSHOT_DIR=…`) и получила бы его руками —
+        // запустила бы OffLoadAI (`open --env OFFLOAD_SNAPSHOT_DIR=…`) и получила бы его руками —
         // с полным доступом к диску — картинки с именами и размерами папок из защищённых мест,
         // записанные в любую папку.
         if Demo.isOn, let directory = ProcessInfo.processInfo.environment["OFFLOAD_SNAPSHOT_DIR"], !directory.isEmpty {
@@ -125,7 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// Режим для разработки: `OFFLOAD_SNAPSHOT_DIR=папка Offload.app/Contents/MacOS/Offload`
+/// Режим для разработки: `OFFLOAD_SNAPSHOT_DIR=папка OffLoadAI.app/Contents/MacOS/OffLoadAI`
 /// проходит по всем разделам, сохраняет их снимки в PNG и завершает приложение.
 /// Снимки делаются средствами самого окна, разрешение «Запись экрана» не нужно.
 @MainActor
@@ -165,14 +165,14 @@ enum Snapshots {
             }
             log("снимок \(section.rawValue)")
         }
-        // OFFLOAD_SNAPSHOT_PRO=1 — ещё и окно «Offload Pro», открытое «да» на лишние копии.
+        // OFFLOAD_SNAPSHOT_PRO=1 — ещё и окно «OffLoadAI Pro», открытое «да» на лишние копии.
         if ProcessInfo.processInfo.environment["OFFLOAD_SNAPSHOT_PRO"] == "1" {
             model.pro.offer(.duplicates)
             try? await Task.sleep(for: .seconds(2))
             if let sheet = window.attachedSheet ?? NSApp.windows.first(where: { $0.sheetParent == window || ($0 != window && $0.isVisible && $0.title.isEmpty) }) {
                 save(sheet, to: directory.appendingPathComponent("pro.png"))
             } else {
-                log("окно «Offload Pro» не нашлось")
+                log("окно «OffLoadAI Pro» не нашлось")
             }
             // С открытым листом программа не завершается: сначала закрыть.
             model.pro.isPresented = false

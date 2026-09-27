@@ -78,8 +78,8 @@ struct HistoryView: View {
                     Label("Пока ничего не перенесено", systemImage: "tray")
                 } description: {
                     Text(app.destination == nil
-                         ? "Перенесённые на внешний диск папки и файлы появятся здесь. Подключите диск и выберите его внизу боковой панели — тогда можно будет добавить в журнал и то, что вы перенесли раньше без Offload."
-                         : "Перенесённые на внешний диск папки и файлы появятся здесь. Вернуть их можно, пока диск подключён. То, что вы перенесли раньше без Offload, можно добавить вручную.")
+                         ? "Перенесённые на внешний диск папки и файлы появятся здесь. Подключите диск и выберите его внизу боковой панели — тогда можно будет добавить в журнал и то, что вы перенесли раньше без OffLoadAI."
+                         : "Перенесённые на внешний диск папки и файлы появятся здесь. Вернуть их можно, пока диск подключён. То, что вы перенесли раньше без OffLoadAI, можно добавить вручную.")
                 } actions: {
                     Button("Добавить вручную…") { showImport = true }
                         .disabled(app.destination == nil)
@@ -118,7 +118,7 @@ struct HistoryView: View {
                 .disabled(app.destination == nil)
                 .help(app.destination == nil
                       ? "Нужен подключённый внешний диск: выберите его внизу боковой панели"
-                      : "Зарегистрировать папку или файл, уже перенесённые на внешний диск без Offload")
+                      : "Зарегистрировать папку или файл, уже перенесённые на внешний диск без OffLoadAI")
         }
         .sheet(isPresented: $showImport) { ImportSheet() }
         .task(id: app.historyVolumes.map(\.id)) { model.reload(volumes: app.historyVolumes) }
@@ -263,7 +263,7 @@ struct HistoryRow: View {
     }
 }
 
-/// Регистрация переноса, сделанного без Offload.
+/// Регистрация переноса, сделанного без OffLoadAI.
 struct ImportSheet: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
@@ -277,7 +277,7 @@ struct ImportSheet: View {
 
     var body: some View {
         SheetLayout(systemImage: "plus.rectangle.on.folder", title: "Добавить перенесённое вручную",
-                    subtitle: "Для папок и файлов, которые вы уже перенесли на внешний диск без Offload. Запись появится в списке, и вернуть их на Mac можно будет как обычно — со сверкой.",
+                    subtitle: "Для папок и файлов, которые вы уже перенесли на внешний диск без OffLoadAI. Запись появится в списке, и вернуть их на Mac можно будет как обычно — со сверкой.",
                     width: 580) {
             VStack(spacing: 0) {
                 pickRow("На диске", value: archive.map { relativeToVolume($0) }, action: pickArchive)

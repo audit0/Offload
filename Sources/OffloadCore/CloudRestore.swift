@@ -1,12 +1,12 @@
 import Foundation
 
 /// Восстановление из бэкапа restic — например, из хранилища в iCloud Drive, куда бэкап
-/// кладёт «Панель агентов». Offload хранилище только читает: все команды идут с `--no-lock`,
+/// кладёт «Панель агентов». OffLoadAI хранилище только читает: все команды идут с `--no-lock`,
 /// в хранилище не пишется ничего, даже файл блокировки. Восстановленное ложится в новую
 /// папку, поэтому ничего существующего не перезаписывается.
 public enum CloudRestore {
     /// Пароль хранилища. Набранный передаётся restic только через stdin; файл с паролем
-    /// restic читает сам, Offload его содержимое не видит.
+    /// restic читает сам, OffLoadAI его содержимое не видит.
     public enum Password: Sendable, Equatable {
         case typed(String)
         case file(URL)
@@ -133,7 +133,7 @@ public enum CloudRestore {
 
     public static var isResticInstalled: Bool { Runner.locate("restic") != nil }
 
-    /// Общие аргументы: хранилище, пароль и то, что Offload его только читает.
+    /// Общие аргументы: хранилище, пароль и то, что OffLoadAI его только читает.
     static func invocation(_ command: [String], repository: Repository, password: Password) -> (arguments: [String], stdin: Data?) {
         var arguments = command + ["--repo", repository.url.path, "--no-lock", "--json"]
         switch password {

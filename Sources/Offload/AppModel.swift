@@ -59,7 +59,7 @@ final class AppModel {
     var destinationID: String?
     private(set) var hasFullDiskAccess = FullDiskAccess.isGranted
 
-    /// Первым: он смотрит, пользовались ли Offload раньше, — до того как остальные модели заведут свои файлы.
+    /// Первым: он смотрит, пользовались ли OffLoadAI раньше, — до того как остальные модели заведут свои файлы.
     let pro = ProModel()
     let rules = SafetyRules()
     let safe = SafeModel()
@@ -143,7 +143,7 @@ final class AppModel {
         refreshVolumes()
         let center = NSWorkspace.shared.notificationCenter
         // Сейф — тоже том: его открытие и закрытие приходят сюда же, в том числе если
-        // его открыли или закрыли в обход Offload (hdiutil, Дисковая утилита).
+        // его открыли или закрыли в обход OffLoadAI (hdiutil, Дисковая утилита).
         for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification, NSWorkspace.didRenameVolumeNotification] {
             observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {

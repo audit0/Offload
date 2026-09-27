@@ -7,7 +7,7 @@ import Foundation
 /// Claude Code запускается наглухо: без инструментов (--tools "") — не читает файлы, не запускает команды и не ходит
 /// в интернет сам; без настроек и перехватчиков пользователя (--setting-sources project, а папка — пустая временная),
 /// без MCP и команд; без сохранения сессии. Вход — учётная запись Claude, как у самого Claude Code.
-/// Всё, что он знает, — сведения, которые Offload передаёт во входном потоке.
+/// Всё, что он знает, — сведения, которые OffLoadAI передаёт во входном потоке.
 public struct ClaudeCodeAssistant: AssistantProvider {
     public let model: String
     public var title: String { "Claude Code на этом Mac" }

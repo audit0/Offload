@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Собирает Offload.app: swift build, пакет .app, иконка, ad-hoc подпись с hardened runtime.
+# Собирает OffLoadAI.app: swift build, пакет .app, иконка, ad-hoc подпись с hardened runtime.
 # Использование: scripts/build-app.sh [версия]   (по умолчанию — из файла VERSION)
 # OFFLOAD_UNIVERSAL=1 — universal binary arm64 + x86_64 (нужен Xcode, например на GitHub Actions).
 set -euo pipefail
@@ -9,11 +9,11 @@ ROOT="${HERE:h}"
 VERSION="${1:-$(<"$ROOT/VERSION")}"
 BUNDLE_ID="io.github.audit0.offload"
 DIST="$ROOT/dist"
-APP="$DIST/Offload.app"
+APP="$DIST/OffLoadAI.app"
 ASSETS="$ROOT/.build/app-assets"
 
 [[ "$VERSION" =~ '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$' ]] || { print -u2 "⚠️  Некорректная версия: $VERSION"; exit 1; }
-# День выхода версии: ключ Offload Pro открывает версии, вышедшие до конца его обновлений.
+# День выхода версии: ключ OffLoadAI Pro открывает версии, вышедшие до конца его обновлений.
 # Берётся из последнего коммита, а не из часов сборки: пересборка той же версии через год не должна её «состарить».
 RELEASE_DATE="${OFFLOAD_RELEASE_DATE:-$(TZ=UTC git -C "$ROOT" log -1 --date=format-local:%Y-%m-%d --format=%cd 2>/dev/null || true)}"
 [[ "$RELEASE_DATE" =~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' ]] || RELEASE_DATE="$(date -u +%Y-%m-%d)"
@@ -44,7 +44,8 @@ if [[ -z "${SDKROOT:-}" && "${DEFAULT_SDK%%.*}" -ge 27 ]] \
 fi
 swift build --package-path "$ROOT" -c release --product Offload "${ARCH_FLAGS[@]}"
 BIN_DIR="$(swift build --package-path "$ROOT" -c release "${ARCH_FLAGS[@]}" --show-bin-path)"
-cp "$BIN_DIR/Offload" "$APP/Contents/MacOS/Offload"
+# Цель SwiftPM по-прежнему зовётся Offload; в пакете исполняемый файл называется, как программа.
+cp "$BIN_DIR/Offload" "$APP/Contents/MacOS/OffLoadAI"
 
 echo "→ рисую иконку"
 swiftc -O -o "$ASSETS/make-icon" "$HERE/icon.swift"
@@ -62,10 +63,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>Offload</string>
-  <key>CFBundleDisplayName</key><string>Offload</string>
+  <key>CFBundleName</key><string>OffLoadAI</string>
+  <key>CFBundleDisplayName</key><string>OffLoadAI</string>
   <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
-  <key>CFBundleExecutable</key><string>Offload</string>
+  <key>CFBundleExecutable</key><string>OffLoadAI</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
@@ -76,11 +77,11 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSHumanReadableCopyright</key><string>© 2026 audit0 · MIT</string>
-  <key>NSDocumentsFolderUsageDescription</key><string>Offload показывает, что занимает место в папке «Документы», и переносит выбранное на внешний диск.</string>
-  <key>NSDesktopFolderUsageDescription</key><string>Offload показывает, что занимает место на рабочем столе, и переносит выбранное на внешний диск.</string>
-  <key>NSDownloadsFolderUsageDescription</key><string>Offload показывает, что занимает место в «Загрузках», и переносит выбранное на внешний диск.</string>
-  <key>NSRemovableVolumesUsageDescription</key><string>Offload переносит данные и делает бэкап на внешний диск.</string>
-  <key>NSNetworkVolumesUsageDescription</key><string>Offload может переносить данные на сетевой диск.</string>
+  <key>NSDocumentsFolderUsageDescription</key><string>OffLoadAI показывает, что занимает место в папке «Документы», и переносит выбранное на внешний диск.</string>
+  <key>NSDesktopFolderUsageDescription</key><string>OffLoadAI показывает, что занимает место на рабочем столе, и переносит выбранное на внешний диск.</string>
+  <key>NSDownloadsFolderUsageDescription</key><string>OffLoadAI показывает, что занимает место в «Загрузках», и переносит выбранное на внешний диск.</string>
+  <key>NSRemovableVolumesUsageDescription</key><string>OffLoadAI переносит данные и делает бэкап на внешний диск.</string>
+  <key>NSNetworkVolumesUsageDescription</key><string>OffLoadAI может переносить данные на сетевой диск.</string>
   <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict>
 </plist>

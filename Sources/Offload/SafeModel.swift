@@ -5,7 +5,7 @@ import OffloadCore
 /// Сейф — зашифрованный образ (AES-256, APFS внутри) на внешнем диске.
 ///
 /// Пока он открыт, перенос, бэкап и ключи идут в него; закрыт — на диске лежит только
-/// шифротекст, и потерянный или украденный диск ничего не выдаёт. Пароль Offload не хранит:
+/// шифротекст, и потерянный или украденный диск ничего не выдаёт. Пароль OffLoadAI не хранит:
 /// он приходит из поля ввода, уходит в hdiutil через stdin и больше нигде не живёт.
 @MainActor
 @Observable
@@ -208,7 +208,7 @@ final class SafeModel {
         let limit = min(max(limit, 1 << 30), host.totalBytes)
         perform("Создаю сейф…", app: app, {
             try vault.create(password: password, maxBytes: limit, volumeName: SecretsVault.safeVolumeName)
-            return Notice.Message(.success, "Сейф создан: AES-256, пароль знаете только вы. Если его забыть, данные не восстановит никто — даже Offload.")
+            return Notice.Message(.success, "Сейф создан: AES-256, пароль знаете только вы. Если его забыть, данные не восстановит никто — даже OffLoadAI.")
         }, after: { [weak self] in
             self?.preferredImages[host.id] = vault.imageURL.path
         })

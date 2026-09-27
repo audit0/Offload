@@ -314,7 +314,7 @@ struct CleanupView: View {
         }
     }
 
-    /// Чему Offload научился на решениях человека — и кнопка, чтобы всё это забыть.
+    /// Чему OffLoadAI научился на решениях человека — и кнопка, чтобы всё это забыть.
     private var learned: some View {
         let model = app.cleanup
         return CardSection(title: "Чему научился",
@@ -322,7 +322,7 @@ struct CleanupView: View {
             if !app.pro.allows(.habits) {
                 HStack(spacing: 12) {
                     IconTile(systemImage: "sparkles", tone: .neutral)
-                    Text("Привычки действуют в Offload Pro. Ваши ответы запоминаются и сейчас — с Pro похожее сразу начнёт попадать в нужный вопрос.")
+                    Text("Привычки действуют в OffLoadAI Pro. Ваши ответы запоминаются и сейчас — с Pro похожее сразу начнёт попадать в нужный вопрос.")
                         .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 12)
                     Button("Подробнее…") { app.pro.offer(.habits) }
@@ -370,7 +370,7 @@ struct CleanupView: View {
             Button("Забыть", role: .destructive) { model.forgetDecisions(home: app.rules.home) }
             Button("Отмена", role: .cancel) {}
         } message: {
-            Text("Offload забудет ваши ответы по каждой папке и файлу и привычки, выученные на них. Итоги прошлых разборов и то, что вы просили не предлагать, останутся.")
+            Text("OffLoadAI забудет ваши ответы по каждой папке и файлу и привычки, выученные на них. Итоги прошлых разборов и то, что вы просили не предлагать, останутся.")
         }
     }
 
@@ -552,7 +552,7 @@ struct CleanupView: View {
                         // Без Return: одно нажатие отвечало «да» на все вопросы сразу, включая безвозвратную
                         // очистку Docker, — хотя человек мог нажать Return, ещё не прочитав их.
                         .help(open.count > together.count
-                              ? "Ответить «да» на все вопросы, кроме установщиков (их удаляю только по отдельному ответу) и вопросов из Offload Pro"
+                              ? "Ответить «да» на все вопросы, кроме установщиков (их удаляю только по отдельному ответу) и вопросов из OffLoadAI Pro"
                               : "Ответить «да» на все вопросы")
                     }
                     if !model.isSettled {
@@ -714,7 +714,7 @@ struct QuestionCard: View {
                 }
                 .prominentButton()
                 .controlSize(.large)
-                .help(app.cleanup.isLocked(question.kind, app: app) ? "Нужен Offload Pro — откроется окно с ценой и ключом" : "")
+                .help(app.cleanup.isLocked(question.kind, app: app) ? "Нужен OffLoadAI Pro — откроется окно с ценой и ключом" : "")
             }
         case .queued:
             HStack(spacing: 10) {

@@ -100,7 +100,7 @@ public enum DockerError: LocalizedError, Equatable {
         case .pruneIncomplete(let done, let reclaimed, let message):
             let freed = reclaimed.map { ", освобождено \(Format.bytes($0))" } ?? ""
             return "Docker очистил только часть выбранного (\(done) из выбранных пунктов\(freed)), а дальше остановился: \(message)"
-        case .remoteDaemon(let host): return "Docker сейчас смотрит не на этот Mac, а на «\(host)» (контекст Docker или DOCKER_HOST). Очищать и архивировать чужой Docker Offload не будет: переключитесь на локальный контекст (docker context use desktop-linux или default) и повторите."
+        case .remoteDaemon(let host): return "Docker сейчас смотрит не на этот Mac, а на «\(host)» (контекст Docker или DOCKER_HOST). Очищать и архивировать чужой Docker OffLoadAI не будет: переключитесь на локальный контекст (docker context use desktop-linux или default) и повторите."
         }
     }
 }
