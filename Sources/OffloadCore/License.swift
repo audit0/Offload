@@ -1,11 +1,11 @@
 import CryptoKit
 import Foundation
 
-/// Offload Pro: что в нём и как проверяется ключ.
+/// OffLoadAI Pro: что в нём и как проверяется ключ.
 ///
 /// Правила, из которых всё остальное:
 /// - Ключ проверяется на этом Mac, без сети: подпись Ed25519 над содержимым ключа.
-///   Offload не ходит на сервер ни при покупке, ни при запуске.
+///   OffLoadAI не ходит на сервер ни при покупке, ни при запуске.
 /// - Pro никогда не стоит между человеком и его данными. Сейф, перенос со сверкой, возврат
 ///   перенесённого, возврат тома Docker, восстановление из iCloud, ключи и токены в сейф,
 ///   очистка мусора — бесплатны всегда. Pro — это удобство и инструменты сверху.
@@ -33,7 +33,7 @@ public enum ProFeature: String, CaseIterable, Sendable, Hashable {
     public var detail: String {
         switch self {
         case .duplicates: return "Одинаковые файлы находятся по SHA-256, одна копия остаётся всегда, лишние уходят в Корзину."
-        case .habits: return "Offload учится на ваших ответах и сам кладёт похожее в нужный вопрос."
+        case .habits: return "OffLoadAI учится на ваших ответах и сам кладёт похожее в нужный вопрос."
         case .projectBackup: return "Обновляемая копия папок с проектами в сейф: копируется только изменённое."
         case .dockerVolumes: return "Неиспользуемые тома упаковываются в сейф со сверкой каждого файла."
         }
@@ -53,7 +53,7 @@ public enum ProFeature: String, CaseIterable, Sendable, Hashable {
 public struct License: Sendable, Hashable, Codable {
     /// Номер ключа — по нему ключ находят в списке выданных (возврат денег, замена).
     public var id: String
-    /// Как ключ подписан в окне «Offload Pro»: имя или ник покупателя.
+    /// Как ключ подписан в окне «OffLoadAI Pro»: имя или ник покупателя.
     public var name: String
     public var issued: Date
     /// Версии, вышедшие до этой даты, открываются ключом навсегда; вышедшие позже — нужно продлить.
@@ -80,9 +80,9 @@ public enum LicenseError: Error, LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .malformed: return "Это не похоже на ключ Offload Pro. Скопируйте его целиком, вместе с «OFFLOAD-»."
+        case .malformed: return "Это не похоже на ключ OffLoadAI Pro. Скопируйте его целиком, вместе с «OFFLOAD-»."
         case .badSignature: return "Ключ не подходит: подпись не сходится. Возможно, в нём опечатка — скопируйте его заново."
-        case .unsupportedVersion: return "Ключ выпущен для более новой версии Offload. Обновите программу."
+        case .unsupportedVersion: return "Ключ выпущен для более новой версии OffLoadAI. Обновите программу."
         }
     }
 }
@@ -94,7 +94,7 @@ public enum LicenseCodec {
     public static let prefix = "OFFLOAD-"
     static let formatVersion = 1
 
-    /// Открытый ключ Offload: им проверяются все ключи Pro. Закрытый — только у автора, не в репозитории.
+    /// Открытый ключ OffLoadAI: им проверяются все ключи Pro. Закрытый — только у автора, не в репозитории.
     public static let publicKey = "5oVE56bMjfoHIRATsWD3zx4KO9t5suncTNJG7qv7wqk"
 
     private struct Payload: Codable {
@@ -152,7 +152,7 @@ public enum ProStatus: Sendable, Hashable {
     case licensed(License)
     /// Ключ есть, но эта версия вышла после конца его обновлений: работает прежняя, эту — продлить.
     case expired(License)
-    /// Пользовался Offload до появления Pro: всё, что было, остаётся открытым.
+    /// Пользовался OffLoadAI до появления Pro: всё, что было, остаётся открытым.
     case early
     case trial(daysLeft: Int)
     case free

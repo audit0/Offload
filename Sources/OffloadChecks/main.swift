@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import OffloadCore
 
-// Проверки ядра Offload. XCTest и swift-testing есть только в Xcode, поэтому здесь свой минимальный раннер.
+// Проверки ядра OffLoadAI. XCTest и swift-testing есть только в Xcode, поэтому здесь свой минимальный раннер.
 // Запуск: swift run OffloadChecks
 //   OFFLOAD_SKIP_INTEGRATION=1 — без проверок на настоящих дисковых образах (hdiutil)
 //   OFFLOAD_SKIP_DOCKER=1      — без проверок с Docker
@@ -373,7 +373,7 @@ section("Docker: имена и размеры") {
     try write("", to: disk.appendingPathComponent("Archive-2026/docker-volumes/notes.txt"))
     let found = DockerService.archives(on: VolumeInfo(mountPoint: disk, name: "d", fsType: "apfs", totalBytes: 1, availableBytes: 1,
                                                        blockSize: 4096, isReadOnly: false, isInternal: false)).map(\.lastPathComponent)
-    check(Set(found) == ["a.tar.zst", "b.tar"], "архивы томов находятся и в Offload, и в ручных папках docker-volumes (\(found))")
+    check(Set(found) == ["a.tar.zst", "b.tar"], "архивы томов находятся и в папке Offload, и в ручных папках docker-volumes (\(found))")
 }
 
 section("Память") {
@@ -498,7 +498,7 @@ if env["OFFLOAD_SKIP_INTEGRATION"] != "1" {
             _ = try mover.validate(bad)
         })
 
-        // Перенос, сделанный без Offload: папка уже лежит на диске в произвольном месте.
+        // Перенос, сделанный без OffLoadAI: папка уже лежит на диске в произвольном месте.
         let manual = mount.appendingPathComponent("Archive-2026/old-stuff", isDirectory: true)
         try write("manual", to: manual.appendingPathComponent("file.txt"))
         try write("#!/bin/sh\necho hi\n", to: manual.appendingPathComponent("tool.sh"))

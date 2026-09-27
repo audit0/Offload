@@ -4,7 +4,7 @@ import OffloadCore
 /// Демонстрационный режим для снимков экрана: `OFFLOAD_DEMO=1`.
 ///
 /// Показывает вымышленные диск, сейф, папки и журнал, чтобы снимки для README не выдавали
-/// ничьих настоящих папок и проектов. В этом режиме Offload ничего не читает с дисков,
+/// ничьих настоящих папок и проектов. В этом режиме OffLoadAI ничего не читает с дисков,
 /// ничего не сохраняет в настройки и ничего не пишет в журнал.
 enum Demo {
     static let isOn = ProcessInfo.processInfo.environment["OFFLOAD_DEMO"] == "1"
@@ -145,7 +145,7 @@ enum Demo {
                                           bytes: Int64(gb * Double(gigabyte)), suggested: suggested, kind: kind,
                                           modified: decided.addingTimeInterval(-daysAgo * 86_400), decidedAt: decided)
         }
-        // Отснятое в «Фильмах» убирает в сейф; старые папки в «Документах» оставляет, хотя Offload
+        // Отснятое в «Фильмах» убирает в сейф; старые папки в «Документах» оставляет, хотя OffLoadAI
         // предлагал сейф; проекты добавляет в бэкап, как и советуют правила.
         return ["Съёмки 2019", "Съёмки 2020", "Свадьба Ани", "Съёмки 2021", "Съёмки 2022"].enumerated().map { index, name in
             decision("Movies/\(name)", .safe, suggested: .safe, kind: .folder, 18 + Double(index) * 11,

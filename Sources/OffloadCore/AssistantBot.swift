@@ -1,11 +1,11 @@
 import Foundation
 
 /// Помощник через сервер OffLoadAI (тот же, что у бота @OffLoadAIbot): ни Claude Code, ни ключа API не нужно —
-/// доступ открывает ключ Offload Pro. Сервер сам добавляет инструкции и схему и зовёт модель; программа отправляет
+/// доступ открывает ключ OffLoadAI Pro. Сервер сам добавляет инструкции и схему и зовёт модель; программа отправляет
 /// ровно то же сообщение со сведениями о файлах, что и другим вариантам.
 ///
 /// Договор с сервером (версия 1):
-///   POST {адрес}/v1/assistant, заголовок Authorization: Bearer <ключ Offload Pro>,
+///   POST {адрес}/v1/assistant, заголовок Authorization: Bearer <ключ OffLoadAI Pro>,
 ///   тело {"v":1,"client":"offloadai-mac/<версия>","input":"<сообщение со сведениями>"}.
 ///   Ответ 200: {"answer":{"summary":…,"items":[…]},"remaining":<сколько вопросов осталось>}.
 ///   Ошибки: 401 — ключ не подошёл, 402 — нужен Pro или кончились вопросы, 429 — слишком часто; тело {"error":"<фраза для человека>"}.
@@ -26,7 +26,7 @@ public struct BotAssistant: AssistantProvider {
             return "Помощник через сервер OffLoadAI ещё не запущен — он появится в одном из обновлений. Пока выберите другой вариант."
         }
         if license()?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
-            return "Помощник через сервер OffLoadAI входит в Offload Pro: введите ключ в окне «Offload Pro»."
+            return "Помощник через сервер OffLoadAI входит в OffLoadAI Pro: введите ключ в окне «OffLoadAI Pro»."
         }
         return nil
     }
@@ -68,8 +68,8 @@ public struct BotAssistant: AssistantProvider {
         let said = body?["error"] as? String
         switch status {
         case 200: break
-        case 401: throw AssistantError(.notSignedIn, said ?? "Сервер не принял ключ Offload Pro.")
-        case 402: throw AssistantError(.notSignedIn, said ?? "Нужен Offload Pro, или вопросы на этот месяц закончились.")
+        case 401: throw AssistantError(.notSignedIn, said ?? "Сервер не принял ключ OffLoadAI Pro.")
+        case 402: throw AssistantError(.notSignedIn, said ?? "Нужен OffLoadAI Pro, или вопросы на этот месяц закончились.")
         case 429: throw AssistantError(.failed, said ?? "Слишком много вопросов подряд — подождите минуту.")
         default: throw AssistantError(.failed, said ?? "Сервер OffLoadAI ответил ошибкой \(status).")
         }

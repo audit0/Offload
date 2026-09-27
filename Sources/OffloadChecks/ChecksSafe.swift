@@ -37,7 +37,7 @@ func checksSafe() {
     }
 
     section("Сейф: что открыто — по ответу hdiutil info") {
-        // Один образ записан трижды: подключали без монтирования (так Offload растягивает сейф),
+        // Один образ записан трижды: подключали без монтирования (так OffLoadAI растягивает сейф),
         // открыли, снова подключали. Ответ — запись с точкой монтирования, где бы она ни стояла.
         // И обычный установщик рядом.
         let unmounted = """
@@ -195,7 +195,7 @@ func checksSafe() {
         try SecretsVault.detach(mount)
         try vault.restoreHeader(from: backup, password: first)
         mount = try vault.attach(password: first)
-        check(fm.fileExists(atPath: mount.path), "старая копия заголовка возвращает старый пароль — об этом и предупреждает Offload")
+        check(fm.fileExists(atPath: mount.path), "старая копия заголовка возвращает старый пароль — об этом и предупреждает OffLoadAI")
         try SecretsVault.detach(mount)
 
         // Копия заголовка от другого сейфа не принимается.
@@ -214,7 +214,7 @@ func checksSafe() {
             Int64(try mount.resourceValues(forKeys: [.volumeTotalCapacityKey]).volumeTotalCapacity ?? 0)
         }
 
-        // APFS — так Offload создаёт сейфы сам.
+        // APFS — так OffLoadAI создаёт сейфы сам.
         let vault = SecretsVault(imageURL: folder.appendingPathComponent("Растущий.sparsebundle", isDirectory: true))
         try vault.create(password: password, maxBytes: 200 << 20, volumeName: "OffloadCheckGrow")
         var mount = try vault.attach(password: password)
@@ -239,7 +239,7 @@ func checksSafe() {
         try vault.grow(to: 1 << 30, password: password)
         check(vault.isEncrypted, "повтор с тем же пределом проходит, сейф по-прежнему зашифрован")
 
-        // HFS+ — такие образы бывают, если их создавали вручную. Растягивать их Offload
+        // HFS+ — такие образы бывают, если их создавали вручную. Растягивать их OffLoadAI
         // отказывается до того, как что-то изменит: образ остаётся как был и открывается.
         let hfsImage = folder.appendingPathComponent("Старый HFS.sparsebundle", isDirectory: true)
         try Runner.check("hdiutil", ["create", "-size", "200m", "-type", "SPARSEBUNDLE", "-fs", "HFS+J", "-encryption", "AES-256",

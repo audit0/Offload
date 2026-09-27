@@ -82,7 +82,7 @@ struct DiskCard: View {
     }
 }
 
-/// Внешний диск и сейф на нём: куда Offload переносит и в каком состоянии замок.
+/// Внешний диск и сейф на нём: куда OffLoadAI переносит и в каком состоянии замок.
 struct ExternalDiskCard: View {
     @Environment(AppModel.self) private var app
 
@@ -111,7 +111,7 @@ struct ExternalDiskCard: View {
                     Text("Не подключён")
                         .font(Theme.display(19))
                         .foregroundStyle(Theme.muted)
-                    Text("На него Offload переносит то, что не нужно держать на Mac, и там же живёт сейф.")
+                    Text("На него OffLoadAI переносит то, что не нужно держать на Mac, и там же живёт сейф.")
                         .font(.caption).foregroundStyle(Theme.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -230,7 +230,7 @@ struct ScenarioCard: View {
             Step(id: 1, state: .done, title: "Внешний диск «\($0.name)»",
                  detail: "\($0.fsDisplayName) · свободно \(Format.bytes($0.availableBytes))" + (app.safe.state?.hostEncrypted == true ? " · зашифрован целиком" : ""))
         } ?? Step(id: 1, state: .todo, title: "Подключите внешний диск",
-                  detail: "На него Offload переносит то, что не нужно держать на Mac, и там же живёт сейф."))
+                  detail: "На него OffLoadAI переносит то, что не нужно держать на Mac, и там же живёт сейф."))
 
         let safe = app.safe
         if host != nil {

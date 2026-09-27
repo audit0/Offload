@@ -43,7 +43,7 @@ public struct Advice: Sendable, Equatable, Identifiable {
     public var importance: Importance
     public var action: AdviceAction
     public var reason: String
-    /// Совет поправлен правилами Offload — почему, одной фразой (nil — не поправлен).
+    /// Совет поправлен правилами OffLoadAI — почему, одной фразой (nil — не поправлен).
     public var overruled: String?
 
     public init(id: String, importance: Importance, action: AdviceAction, reason: String, overruled: String? = nil) {
@@ -184,7 +184,7 @@ public enum AssistantFacts {
 /// Что помощнику говорят и чего от него ждут. Одинаково для любой модели.
 public enum AssistantPrompt {
     public static let instructions = """
-        Ты — помощник программы Offload, которая освобождает место на диске без риска потерять данные.
+        Ты — помощник программы OffLoadAI, которая освобождает место на диске без риска потерять данные.
         Твоя единственная задача — помочь человеку разобраться с его файлами и папками: что важно, что менее важно, а что мусор.
         Ты видишь только сведения, которые передаёт программа: путь от домашней папки (~), размер, дату изменения,
         пометку правил программы, несколько имён внутри папки и начало небольших текстовых файлов.
@@ -258,7 +258,7 @@ public enum AssistantPrompt {
         return text + "Объекты (JSON):\n" + json
     }
 
-    /// Разбор ответа по схеме. Чужие id отбрасываются, а советы, которые спорят с правилами Offload,
+    /// Разбор ответа по схеме. Чужие id отбрасываются, а советы, которые спорят с правилами OffLoadAI,
     /// поправляются: запрещённое не трогается, Корзина — только для того, что правила считают безопасным.
     public static func parse(_ answer: Any?, facts: [FileFact], provider: String, cost: Double?) throws -> AssistantAnswer {
         guard let root = answer as? [String: Any], let items = root["items"] as? [Any] else {
@@ -295,7 +295,7 @@ public enum AssistantPrompt {
         var advice = advice
         if fact.verdict.isBlocked, advice.action != .keep {
             advice.action = .keep
-            advice.overruled = "Правила Offload запрещают это трогать: " + fact.verdict.notes.joined(separator: " ")
+            advice.overruled = "Правила OffLoadAI запрещают это трогать: " + fact.verdict.notes.joined(separator: " ")
         } else if advice.action == .trash, case .caution = fact.verdict {
             advice.action = .safe
             advice.overruled = "С оговорками — поэтому не в Корзину, а в сейф: оттуда вернуть проще."

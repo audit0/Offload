@@ -1,27 +1,27 @@
 #!/bin/zsh
-# Упаковывает dist/Offload.app в Offload.zip и Offload.dmg с контрольными суммами — для релиза на GitHub.
+# Упаковывает dist/OffLoadAI.app в OffLoadAI.zip и OffLoadAI.dmg с контрольными суммами — для релиза на GitHub.
 set -euo pipefail
 
 HERE="${0:A:h}"
 ROOT="${HERE:h}"
 DIST="$ROOT/dist"
-APP="$DIST/Offload.app"
+APP="$DIST/OffLoadAI.app"
 
 [[ -d "$APP" ]] || { print -u2 "⚠️  Сначала соберите приложение: scripts/build-app.sh"; exit 1; }
 codesign --verify --strict "$APP"
-rm -f "$DIST/Offload.zip" "$DIST/Offload.dmg" "$DIST/Offload.zip.sha256" "$DIST/Offload.dmg.sha256"
+rm -f "$DIST/OffLoadAI.zip" "$DIST/OffLoadAI.dmg" "$DIST/OffLoadAI.zip.sha256" "$DIST/OffLoadAI.dmg.sha256"
 
 echo "→ zip"
-ditto -c -k --keepParent "$APP" "$DIST/Offload.zip"
+ditto -c -k --keepParent "$APP" "$DIST/OffLoadAI.zip"
 
 echo "→ dmg"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
-ditto "$APP" "$STAGE/Offload.app"
+ditto "$APP" "$STAGE/OffLoadAI.app"
 ln -s /Applications "$STAGE/Applications"
-hdiutil create -volname "Offload" -srcfolder "$STAGE" -fs HFS+ -format UDZO -quiet "$DIST/Offload.dmg"
+hdiutil create -volname "OffLoadAI" -srcfolder "$STAGE" -fs HFS+ -format UDZO -quiet "$DIST/OffLoadAI.dmg"
 
 echo "→ контрольные суммы"
-( cd "$DIST" && for f in Offload.zip Offload.dmg; do shasum -a 256 "$f" > "$f.sha256"; done )
+( cd "$DIST" && for f in OffLoadAI.zip OffLoadAI.dmg; do shasum -a 256 "$f" > "$f.sha256"; done )
 ls -lh "$DIST" | tail -n +2
 echo "✅ Готово к релизу: $DIST"

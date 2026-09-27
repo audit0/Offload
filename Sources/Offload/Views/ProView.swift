@@ -1,21 +1,21 @@
 import OffloadCore
 import SwiftUI
 
-/// Окно «Offload Pro»: что в нём, что бесплатно всегда, цена, ключ.
+/// Окно «OffLoadAI Pro»: что в нём, что бесплатно всегда, цена, ключ.
 struct ProSheet: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @State private var key = ""
 
-    /// Цена — одной строкой здесь и в README («Offload Pro»).
+    /// Цена — одной строкой здесь и в README («OffLoadAI Pro»).
     static let price = "1 490 ₽ или $19 — один раз"
     static let terms = "Ключ работает всегда. Новые версии — год, дальше продление за полцены; не продлили — остаётся последняя версия того года."
 
     var body: some View {
         let pro = app.pro
-        SheetLayout(systemImage: "sparkles", title: "Offload Pro", subtitle: subtitle, width: 540) {
+        SheetLayout(systemImage: "sparkles", title: "OffLoadAI Pro", subtitle: subtitle, width: 540) {
             if let reason = pro.reason, !pro.status.isPro {
-                Notice(.info, "«\(reason.title)» — в Offload Pro. \(reasonTail)")
+                Notice(.info, "«\(reason.title)» — в OffLoadAI Pro. \(reasonTail)")
             }
             VStack(spacing: 0) {
                 ForEach(ProFeature.allCases, id: \.self) { feature in
@@ -35,7 +35,7 @@ struct ProSheet: View {
                     if feature != ProFeature.allCases.last { RowDivider(inset: 40) }
                 }
             }
-            Text("Бесплатно всегда: сейф, перенос со сверкой, возврат перенесённого, очистка мусора и Docker, старые установщики, ключи и токены в сейф, восстановление из iCloud. Вернуть своё Offload не мешает никогда — ни без ключа, ни после пробы.")
+            Text("Бесплатно всегда: сейф, перенос со сверкой, возврат перенесённого, очистка мусора и Docker, старые установщики, ключи и токены в сейф, восстановление из iCloud. Вернуть своё OffLoadAI не мешает никогда — ни без ключа, ни после пробы.")
                 .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             licenseBlock
         } actions: {
@@ -59,7 +59,7 @@ struct ProSheet: View {
     private var subtitle: String {
         switch app.pro.status {
         case .licensed(let license): return "Ключ на имя «\(license.name)»"
-        case .early: return "Вы пользовались Offload до Pro — всё открыто навсегда"
+        case .early: return "Вы пользовались OffLoadAI до Pro — всё открыто навсегда"
         case .trial(let days): return "Пробный период: осталось \(days) \(pluralRu(days, "день", "дня", "дней"))"
         case .expired: return "Обновления по ключу закончились"
         case .free: return Self.price
@@ -113,7 +113,7 @@ struct ProSheet: View {
     }
 }
 
-/// Строка над панелью диска: что открыто на этом Mac. Щелчок — окно «Offload Pro».
+/// Строка над панелью диска: что открыто на этом Mac. Щелчок — окно «OffLoadAI Pro».
 struct ProSidebarRow: View {
     @Environment(AppModel.self) private var app
     @State private var hovering = false
@@ -140,7 +140,7 @@ struct ProSidebarRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help("Offload Pro: что в нём и ключ")
+        .help("OffLoadAI Pro: что в нём и ключ")
     }
 }
 
@@ -150,6 +150,6 @@ struct ProTag: View {
         Text("Pro").font(.system(size: 10, weight: .bold))
             .padding(.horizontal, 5).padding(.vertical, 1)
             .overlay(Capsule().strokeBorder(lineWidth: 1).opacity(0.6))
-            .accessibilityLabel("Нужен Offload Pro")
+            .accessibilityLabel("Нужен OffLoadAI Pro")
     }
 }

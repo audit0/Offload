@@ -30,7 +30,7 @@ final class AssistantModel {
             case .claudeCode: return "Claude Code, установленный на этом Mac, под вашей учётной записью Claude. Ключ не нужен."
             case .apiKey: return "Ваш ключ Anthropic API: платите по счёту API за каждый вопрос. Ключ хранится в связке ключей macOS."
             case .local: return "Модель в Ollama на этом Mac: сведения о файлах не покидают его. Медленнее и проще, чем Claude."
-            case .server: return "Сервер OffLoadAI передаёт вопрос Claude и ничего не хранит. Входит в Offload Pro — ни Claude Code, ни ключа не нужно."
+            case .server: return "Сервер OffLoadAI передаёт вопрос Claude и ничего не хранит. Входит в OffLoadAI Pro — ни Claude Code, ни ключа не нужно."
             }
         }
     }
@@ -189,7 +189,7 @@ final class AssistantModel {
 
     func cancel() { task?.cancel() }
 
-    /// В Корзину — вернуть можно, пока Корзина не очищена. Правила Offload проверяются ещё раз:
+    /// В Корзину — вернуть можно, пока Корзина не очищена. Правила OffLoadAI проверяются ещё раз:
     /// помощник мог ошибиться, а объект — измениться с тех пор. Ответ — что помешало (nil — получилось).
     func trash(_ id: String, app: AppModel) async -> String? {
         guard let item = item(id) else { return "Объект не найден." }
@@ -199,7 +199,7 @@ final class AssistantModel {
         }
         let verdict = app.rules.pathVerdict(for: item.url)
         guard verdict == .safe else {
-            return "Правила Offload не дают отправить это в Корзину: " + verdict.notes.joined(separator: " ")
+            return "Правила OffLoadAI не дают отправить это в Корзину: " + verdict.notes.joined(separator: " ")
         }
         let url = item.url
         // Как и в «Разобрать»: то, что сейчас открыто в программе, на ходу не удаляем.

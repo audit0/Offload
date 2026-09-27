@@ -13,7 +13,7 @@ struct CloudRestoreView: View {
         let model = app.cloud
         PageScroll {
             CardSection(title: "Хранилище", number: 1,
-                        footer: "Бэкапы restic из iCloud Drive — например, копия внешнего диска. Offload только читает хранилище и ничего в нём не меняет, а пароль держит в памяти, пока хранилище открыто: сон и блокировка экрана его стирают.") {
+                        footer: "Бэкапы restic из iCloud Drive — например, копия внешнего диска. OffLoadAI только читает хранилище и ничего в нём не меняет, а пароль держит в памяти, пока хранилище открыто: сон и блокировка экрана его стирают.") {
                 repositorySection
             }
             if model.isUnlocked {
@@ -218,7 +218,7 @@ struct CloudRestoreView: View {
                         Text("Считаю размер…").font(.caption).foregroundStyle(Theme.muted)
                     }
                     if model.waitingForCloud {
-                        Notice(.warning, "Жду iCloud: часть бэкапа хранится только в облаке, и iCloud её ещё не скачал. Offload попросил скачать и ждёт. Если долго ничего не меняется, проверьте в Finder → iCloud Drive, что синхронизация идёт, — или остановите и попробуйте позже.")
+                        Notice(.warning, "Жду iCloud: часть бэкапа хранится только в облаке, и iCloud её ещё не скачал. OffLoadAI попросил скачать и ждёт. Если долго ничего не меняется, проверьте в Finder → iCloud Drive, что синхронизация идёт, — или остановите и попробуйте позже.")
                     }
                 }
             }

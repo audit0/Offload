@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import OffloadCore
 
-// AI-помощник: что уходит модели (секреты — никогда), как разбирается ответ и как правила Offload
+// AI-помощник: что уходит модели (секреты — никогда), как разбирается ответ и как правила OffLoadAI
 // поправляют советы. Живой вопрос к Claude Code — только с OFFLOAD_ASSISTANT_LIVE=1: он платный и идёт в сеть.
 // Вызывается из main.swift; check/section берутся оттуда же — это один модуль.
 
@@ -144,7 +144,7 @@ func checksAssistant() {
               "сервер без адреса — «ещё не запущен»")
         check(problem(BotAssistant(client: "t", license: { "key" }, endpoint: { "http://example.com" }))?.contains("ещё не запущен") == true,
               "сервер только по https")
-        check(problem(BotAssistant(client: "t", license: { nil }, endpoint: { "https://example.com" }))?.contains("Offload Pro") == true,
+        check(problem(BotAssistant(client: "t", license: { nil }, endpoint: { "https://example.com" }))?.contains("OffLoadAI Pro") == true,
               "без ключа Pro — объяснение, где его ввести")
         let bot = BotAssistant(client: "t", license: { "key" }, endpoint: { "https://example.com" })
         let ok = Data(#"{"answer":{"summary":"s","items":[{"id":"1","importance":"minor","action":"safe","reason":"r"}]},"remaining":9}"#.utf8)
