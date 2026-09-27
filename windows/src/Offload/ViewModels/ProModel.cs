@@ -12,7 +12,7 @@ namespace Offload;
 public sealed class ProModel : Observable
 {
     /// <summary>Где купить: бот в Telegram — оплата Stars, криптовалютой или по СБП, ключ приходит сообщением.</summary>
-    public const string PurchaseUrl = "https://t.me/OffLoadAI_bot?start=pro";
+    public const string PurchaseUrl = "https://t.me/OffLoadAIbot?start=pro";
     /// <summary>Цена — одной строкой здесь и в README («Offload Pro»).</summary>
     public const string Price = "1 490 ₽ или $19 — один раз";
     public const string Terms = "Ключ работает всегда. Новые версии — год, дальше продление за полцены; не продлили — остаётся последняя версия того года.";
