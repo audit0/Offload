@@ -490,6 +490,8 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <ContentPresenter Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                              ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"
                                               VerticalAlignment="Center" />
                             <TextBlock Grid.Column="1" Text="&#xE70D;" FontFamily="{StaticResource IconFont}" FontSize="10" Margin="8,0,0,0"
                                        VerticalAlignment="Center" Foreground="{StaticResource Muted}" />

@@ -123,9 +123,9 @@ public partial class CleanupQuestionCard : UserControl
         else if (safe.RoomLeft(app.Destination, app.SafeVolume) is { } room && question.Bytes > room)
         {
             (glyph, text, brush) = (Glyphs.Warning, $"Поместится около {Format.Bytes(room)}", Theme.Ink);
-            // Увеличивают сейф в его разделе: там и пароль, и выбор нового предела.
             link = "Увеличить…";
-            safeLink = () => app.Section = SidebarSection.Safe;
+            var needed = question.Bytes;
+            safeLink = () => new GrowSafeSheet(app, needed).ShowDialog();
         }
         else if (app.SafeVolume is { } volume)
         {
