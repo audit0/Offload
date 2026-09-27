@@ -95,7 +95,7 @@ public enum LicenseCodec {
     static let formatVersion = 1
 
     /// Открытый ключ Offload: им проверяются все ключи Pro. Закрытый — только у автора, не в репозитории.
-    public static let publicKey = "s634ae2EoVpINNy36tMkbki6WfhiKR0l6BFw9flW78U"
+    public static let publicKey = "5oVE56bMjfoHIRATsWD3zx4KO9t5suncTNJG7qv7wqk"
 
     private struct Payload: Codable {
         var v: Int

@@ -93,7 +93,7 @@ public static class LicenseCodec
 
     /// <summary>Открытый ключ OffLoadAI — тот же, что у версии для Mac: им проверяются все ключи Pro.
     /// Закрытый — только у автора, не в репозитории.</summary>
-    public const string PublicKey = "s634ae2EoVpINNy36tMkbki6WfhiKR0l6BFw9flW78U";
+    public const string PublicKey = "5oVE56bMjfoHIRATsWD3zx4KO9t5suncTNJG7qv7wqk";
 
     sealed class Payload
     {
