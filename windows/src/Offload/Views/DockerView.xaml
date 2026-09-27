@@ -2,9 +2,225 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:Offload">
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
-        <StackPanel Margin="32" MaxWidth="980">
-            <TextBlock Text="Docker" Style="{StaticResource Title}" />
-        </StackPanel>
-    </ScrollViewer>
+    <UserControl.Resources>
+        <Style x:Key="ButtonGlyph" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="ColumnHead" TargetType="TextBlock" BasedOn="{StaticResource Caption}">
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="Cell" TargetType="TextBlock" BasedOn="{StaticResource Body}">
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <!-- Одна часть занятого места: подпись с меткой цвета, размер и сколько из него можно убрать. -->
+        <DataTemplate x:Key="Figure">
+            <StackPanel Margin="0,0,24,0">
+                <StackPanel Orientation="Horizontal">
+                    <Border Width="8" Height="8" CornerRadius="2" Background="{Binding Brush}" Margin="0,1,6,0" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Title}" Style="{StaticResource Caption}" />
+                </StackPanel>
+                <TextBlock Text="{Binding Value}" Style="{StaticResource Body}" FontWeight="SemiBold" Margin="0,2,0,0" />
+                <TextBlock Text="{Binding Note}" Style="{StaticResource Caption}" Foreground="{Binding NoteBrush}" Margin="0,1,0,0"
+                           Visibility="{Binding Note, Converter={StaticResource Visible}}" />
+            </StackPanel>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <DockPanel>
+        <!-- Шапка: что за раздел, сколько занимает диск Docker, что идёт сейчас, и главные действия. -->
+        <Border DockPanel.Dock="Top" Padding="32,24,32,16" MaxWidth="1044">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <local:IconTile Glyph="&#xE7B8;" Size="36" />
+                <StackPanel Grid.Column="1" Margin="12,0,12,0" VerticalAlignment="Center">
+                    <TextBlock Text="Docker" Style="{StaticResource Title}" FontSize="19" />
+                    <TextBlock x:Name="Subtitle" Style="{StaticResource Caption}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
+                </StackPanel>
+                <StackPanel x:Name="BusyPanel" Grid.Column="2" Orientation="Horizontal" Margin="0,0,12,0">
+                    <ProgressBar Style="{StaticResource Spinner}" />
+                    <TextBlock x:Name="BusyText" Style="{StaticResource Body}" FontSize="12.5" MaxWidth="240" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center" Margin="8,0,8,0" />
+                    <Button x:Name="CancelButton" Content="Отменить" Style="{StaticResource SmallButton}" Click="Cancel_Click" />
+                </StackPanel>
+                <Button x:Name="ReloadButton" Grid.Column="3" Margin="0,0,8,0" Click="Reload_Click">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE72C;" Style="{StaticResource ButtonGlyph}" />
+                        <TextBlock Text="Обновить" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="ArchiveButton" Grid.Column="4" Style="{StaticResource ProminentButton}" ToolTipService.ShowOnDisabled="True" Click="Archive_Click">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE896;" Style="{StaticResource ButtonGlyph}" />
+                        <TextBlock Text="Архивировать на диск…" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Border>
+
+        <Grid>
+            <!-- Docker спрашивается -->
+            <StackPanel x:Name="CheckingState" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
+                <ProgressBar Style="{StaticResource Spinner}" />
+                <TextBlock Text="Спрашиваю Docker…" Style="{StaticResource Body}" Foreground="{StaticResource Muted}" Margin="10,0,0,0" VerticalAlignment="Center" />
+            </StackPanel>
+
+            <!-- Docker не установлен или не запущен -->
+            <StackPanel x:Name="UnavailableState" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="420">
+                <local:IconTile Glyph="&#xE7B8;" Tone="Neutral" Size="52" HorizontalAlignment="Center" />
+                <TextBlock x:Name="UnavailableTitle" Style="{StaticResource Title}" FontSize="17" TextAlignment="Center" Margin="0,14,0,0" />
+                <TextBlock x:Name="UnavailableText" Style="{StaticResource Body}" Foreground="{StaticResource Muted}" TextAlignment="Center" Margin="0,6,0,0" />
+                <Button x:Name="UnavailableReload" Content="Обновить" HorizontalAlignment="Center" Margin="0,14,0,0" Click="Reload_Click" />
+            </StackPanel>
+
+            <!-- Docker отвечает: место, тома, итоги, архивы. В конструкторе заворачивается в Pages.Scroll. -->
+            <ContentControl x:Name="ReadyHost" Focusable="False">
+                <StackPanel x:Name="ReadyState">
+                    <local:Card>
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ItemsControl x:Name="Figures" Focusable="False" ItemTemplate="{StaticResource Figure}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                </ItemsControl>
+                                <StackPanel x:Name="MeasuringRow" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <ProgressBar Style="{StaticResource Spinner}" />
+                                    <TextBlock Text="Docker считает, что занимает место внутри него…" Style="{StaticResource Callout}" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <TextBlock x:Name="NoUsageText" Text="Docker не сказал, сколько места занято внутри." Style="{StaticResource Callout}" VerticalAlignment="Center" />
+                                <ProgressBar x:Name="RemeasureSpinner" Grid.Column="1" Style="{StaticResource Spinner}" Margin="0,0,12,0" VerticalAlignment="Center" />
+                                <Button x:Name="PruneButton" Grid.Column="2" VerticalAlignment="Center" ToolTipService.ShowOnDisabled="True"
+                                        ToolTip="Удалить кеш сборки, неиспользуемые образы и остановленные контейнеры. Тома не трогаются." Click="Prune_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xEA99;" Style="{StaticResource ButtonGlyph}" />
+                                        <TextBlock Text="Освободить место…" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                            <StackPanel x:Name="BarBlock" Margin="0,16,0,0">
+                                <local:StackedBar x:Name="UsageBar" BarHeight="8" />
+                                <TextBlock x:Name="BarCaption" Style="{StaticResource Caption}" Margin="0,6,0,0" />
+                            </StackPanel>
+                        </StackPanel>
+                    </local:Card>
+
+                    <local:CardSection Header="Тома" Margin="0,28,0,0"
+                                       Footer="Отметьте тома, которые сейчас не нужны: «Архивировать на диск…» упакует их со сверкой и уберёт из Docker. Тома, подключённые к контейнерам, не трогаются.">
+                        <StackPanel>
+                            <Grid Margin="14,10,14,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="80" />
+                                    <ColumnDefinition Width="120" />
+                                    <ColumnDefinition Width="150" />
+                                    <ColumnDefinition Width="130" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Том" Style="{StaticResource ColumnHead}" Margin="24,0,0,0" />
+                                <TextBlock Grid.Column="1" Text="Размер" Style="{StaticResource ColumnHead}" />
+                                <TextBlock Grid.Column="2" Text="Создан" Style="{StaticResource ColumnHead}" />
+                                <TextBlock Grid.Column="3" Text="Последнее изменение" Style="{StaticResource ColumnHead}" />
+                                <TextBlock Grid.Column="4" Text="Используется" Style="{StaticResource ColumnHead}" />
+                            </Grid>
+                            <Separator Style="{StaticResource RowDivider}" />
+                            <TextBlock x:Name="NoVolumesText" Text="В Docker нет томов." Style="{StaticResource Body}" Foreground="{StaticResource Muted}" Margin="14,10" />
+                            <ItemsControl x:Name="VolumeList" Focusable="False">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel>
+                                            <Grid Margin="14,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="80" />
+                                                    <ColumnDefinition Width="120" />
+                                                    <ColumnDefinition Width="150" />
+                                                    <ColumnDefinition Width="130" />
+                                                </Grid.ColumnDefinitions>
+                                                <CheckBox IsChecked="{Binding Selected, Mode=OneWay}" Tag="{Binding Name}" Click="Volume_Click" VerticalAlignment="Center"
+                                                          Margin="0,0,12,0">
+                                                    <TextBlock Text="{Binding Name}" Style="{StaticResource Cell}" />
+                                                </CheckBox>
+                                                <TextBlock Grid.Column="1" Text="{Binding Size}" Style="{StaticResource Cell}" Foreground="{Binding SizeBrush}"
+                                                           Visibility="{Binding Sizing, Converter={StaticResource Visible}, ConverterParameter=not}" />
+                                                <ProgressBar Grid.Column="1" Style="{StaticResource Spinner}" Width="12" Height="12" HorizontalAlignment="Left"
+                                                             Visibility="{Binding Sizing, Converter={StaticResource Visible}}" />
+                                                <TextBlock Grid.Column="2" Text="{Binding Created}" Style="{StaticResource Cell}" />
+                                                <TextBlock Grid.Column="3" Text="{Binding Activity}" Style="{StaticResource Cell}"
+                                                           Visibility="{Binding Activity, Converter={StaticResource Visible}}" />
+                                                <ProgressBar Grid.Column="3" Style="{StaticResource Spinner}" Width="12" Height="12" HorizontalAlignment="Left"
+                                                             Visibility="{Binding Checking, Converter={StaticResource Visible}}" />
+                                                <Button Grid.Column="3" Content="Проверить" Style="{StaticResource SmallButton}" Tag="{Binding Name}" Click="Check_Click"
+                                                        Visibility="{Binding CanCheck, Converter={StaticResource Visible}}"
+                                                        ToolTip="Узнать, когда в томе последний раз что-то менялось" />
+                                                <TextBlock Grid.Column="4" Text="—" Style="{StaticResource Cell}" Foreground="{StaticResource Faint}"
+                                                           Visibility="{Binding UsedBy, Converter={StaticResource Visible}, ConverterParameter=not}" />
+                                                <StackPanel Grid.Column="4" Orientation="Horizontal" ToolTip="{Binding UsedBy}"
+                                                            Visibility="{Binding UsedBy, Converter={StaticResource Visible}}">
+                                                    <TextBlock Text="&#xE7B8;" Style="{StaticResource Icon}" FontSize="12" Foreground="{StaticResource Ink}" Margin="0,0,6,0" />
+                                                    <TextBlock Text="{Binding UsedBy}" Style="{StaticResource Cell}" MaxWidth="104" />
+                                                </StackPanel>
+                                            </Grid>
+                                            <Separator Style="{StaticResource RowDivider}" Visibility="{Binding NotLast, Converter={StaticResource Visible}}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </local:CardSection>
+
+                    <ItemsControl x:Name="MessageList" Focusable="False" Margin="0,16,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <local:NoticeView Message="{Binding}" Margin="0,0,0,8" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <local:CardSection x:Name="ArchivesSection" Header="Архивы томов" Margin="0,20,0,0">
+                        <ItemsControl x:Name="ArchiveList" Focusable="False">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel>
+                                        <Grid Margin="14,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <local:IconTile Glyph="{Binding Glyph}" Tone="{Binding Tone}" Size="26" />
+                                            <StackPanel Grid.Column="1" Margin="10,0,8,0" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Display}" ToolTip="{Binding Path}" Style="{StaticResource Cell}" />
+                                                <TextBlock Text="{Binding Place}" Style="{StaticResource Caption}" Margin="0,1,0,0" />
+                                            </StackPanel>
+                                            <Button Grid.Column="2" Content="Вернуть в Docker…" Tag="{Binding}" IsEnabled="{Binding Enabled}" Click="RestoreArchive_Click" />
+                                        </Grid>
+                                        <Separator Style="{StaticResource RowDivider}" Visibility="{Binding NotLast, Converter={StaticResource Visible}}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </local:CardSection>
+                </StackPanel>
+            </ContentControl>
+        </Grid>
+    </DockPanel>
 </UserControl>
