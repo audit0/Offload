@@ -19,7 +19,7 @@ public sealed record FileFact(string Id, string Path, bool IsFolder, long Bytes,
 
 public sealed record Advice(string Id, Importance Importance, AdviceAction Action, string Reason)
 {
-    /// <summary>Совет поправлен правилами Offload — почему, одной фразой (null — не поправлен).</summary>
+    /// <summary>Совет поправлен правилами OffLoadAI — почему, одной фразой (null — не поправлен).</summary>
     public string? Overruled { get; init; }
 }
 
@@ -184,7 +184,7 @@ public static class AssistantPrompt
         return text.ToString();
     }
 
-    /// <summary>Разбор ответа по схеме. Чужие id отбрасываются, а советы, которые спорят с правилами Offload,
+    /// <summary>Разбор ответа по схеме. Чужие id отбрасываются, а советы, которые спорят с правилами OffLoadAI,
     /// поправляются: запрещённое не трогается, Корзина — только для того, что правила считают безопасным.</summary>
     public static AssistantAnswer Parse(JsonNode? answer, IReadOnlyList<FileFact> facts, string provider, decimal? cost)
     {

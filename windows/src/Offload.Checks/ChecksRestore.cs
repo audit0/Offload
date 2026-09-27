@@ -160,7 +160,7 @@ static partial class All
                 [victim.Replace('\\', '/')] = ReadOnly | Hidden | SystemFlag, [victim] = ReadOnly | Hidden | SystemFlag,
             });
 
-            // Перенос, сделанный без Offload: папка уже лежит на диске в произвольном месте.
+            // Перенос, сделанный без OffLoadAI: папка уже лежит на диске в произвольном месте.
             var manual = Path.Combine(disk.Root, @"Archive-2026\old-stuff");
             Write("manual", Path.Combine(manual, "file.txt"));
             Write("@echo hi\r\n", Path.Combine(manual, "tool.cmd"));
@@ -283,7 +283,7 @@ static partial class All
                   $"сказано, сколько файлов сверено со списком переноса: {string.Join(" | ", clean.Notes)}");
             Check(Read(Path.Combine(intact, "two.txt")) == "два", "данные вернулись");
 
-            // Файл архива держит сам Offload (так же держит антивирус или индексатор): Windows не даёт его удалить.
+            // Файл архива держит сам OffLoadAI (так же держит антивирус или индексатор): Windows не даёт его удалить.
             var archived = Path.Combine(SharedNtfs.Root, @"Archive\stuff");
             Write("данные", Path.Combine(archived, "file.txt"));
             var record = Manual(mover, archived, Path.Combine(rules.Home, @"Downloads\stuff"), volume);
@@ -323,7 +323,7 @@ static partial class All
             var volume = SharedExFat.Info;
             var rules = new SafetyRules(Room("home-ui"));
             var mover = new SafeMover(rules);
-            // Возврат переноса, сделанного мимо Offload: списка сумм рядом с архивом нет. Без оговорки человек видел бы
+            // Возврат переноса, сделанного мимо OffLoadAI: списка сумм рядом с архивом нет. Без оговорки человек видел бы
             // «каждый файл сверен по SHA-256» — при том что сверить архив было не с чем.
             var manual = Path.Combine(SharedExFat.Root, @"Вручную\папка");
             Write("данные", Path.Combine(manual, "file.txt"));

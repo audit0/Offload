@@ -168,7 +168,7 @@ public sealed class AssistantModel : Observable
 
     public void Cancel() => cancel?.Cancel();
 
-    /// <summary>В Корзину — вернуть можно, пока Корзина не очищена. Правила Offload проверяются ещё раз:
+    /// <summary>В Корзину — вернуть можно, пока Корзина не очищена. Правила OffLoadAI проверяются ещё раз:
     /// помощник мог ошибиться, а объект — измениться с тех пор.</summary>
     public async Task<string?> Trash(string id, AppModel app)
     {

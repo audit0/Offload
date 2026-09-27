@@ -11,7 +11,7 @@ public readonly record struct QuestionKind(QuestionKindType Type, CleanupModule 
 }
 
 /// <summary>Вопрос после разбора: одно «да» или «нет» на целую группу найденного. Человек не выбирает
-/// по файлам и не ходит по папкам — Offload сам собирает, что можно убрать, и спрашивает разрешения.</summary>
+/// по файлам и не ходит по папкам — OffLoadAI сам собирает, что можно убрать, и спрашивает разрешения.</summary>
 public sealed record CleanupQuestion(
     QuestionKind Kind,
     /// <summary>С чем что-то произойдёт при «да». У Docker пусто.</summary>

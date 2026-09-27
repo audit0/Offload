@@ -5,7 +5,7 @@ using System.Windows.Media.Imaging;
 
 namespace Offload;
 
-/// <summary>Режим для разработки: OFFLOAD_DEMO=1 OFFLOAD_SNAPSHOT_DIR=папка Offload.exe проходит по всем разделам,
+/// <summary>Режим для разработки: OFFLOAD_DEMO=1 OFFLOAD_SNAPSHOT_DIR=папка OffLoadAI.exe проходит по всем разделам,
 /// сохраняет их снимки в PNG и завершает программу. Снимки делаются средствами самого окна.</summary>
 public static class Snapshots
 {

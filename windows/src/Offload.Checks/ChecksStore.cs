@@ -66,7 +66,7 @@ static partial class All
         {
             var path = Path.Combine(Scratch, @"decisions-v1\decisions.sqlite");
             Directory.CreateDirectory(Paths.Parent(path));
-            // База первой версии, как её оставил прошлый Offload (на Mac или здесь).
+            // База первой версии, как её оставил прошлый OffLoadAI (на Mac или здесь).
             Check(RawSql.Exec(path, """
                 CREATE TABLE decisions (id INTEGER PRIMARY KEY, path TEXT NOT NULL, action TEXT NOT NULL, bytes INTEGER NOT NULL, decided_at REAL NOT NULL);
                 CREATE INDEX decisions_path ON decisions(path, decided_at);

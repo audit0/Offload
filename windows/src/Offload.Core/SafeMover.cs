@@ -299,7 +299,7 @@ public sealed class SafeMover(SafetyRules? rules = null)
 
     // MARK: Ручные переносы
 
-    /// <summary>Регистрирует перенос, сделанный без Offload: папка или файл уже лежит на внешнем диске.
+    /// <summary>Регистрирует перенос, сделанный без OffLoadAI: папка или файл уже лежит на внешнем диске.
     /// Запись попадает в журнал, и вернуть данные можно как обычно.</summary>
     public MoveRecord ImportRecord(string archived, string original, bool originalRemoved, string? note = null)
     {
@@ -329,7 +329,7 @@ public sealed class SafeMover(SafetyRules? rules = null)
     {
         if (record.IsFromMac)
             throw new MoveException(MoveErrorKind.UnsafeRecord,
-                "перенос сделан на Mac — вернуть его можно в Offload для Mac. Архив лежит на диске, его можно скопировать и вручную.");
+                "перенос сделан на Mac — вернуть его можно в OffLoadAI для Mac. Архив лежит на диске, его можно скопировать и вручную.");
         var archived = record.ArchivedPath;
         var original = record.OriginalPath;
         if (!Paths.IsPlainLocal(archived) || !Paths.IsPlainLocal(original))
@@ -350,11 +350,11 @@ public sealed class SafeMover(SafetyRules? rules = null)
     /// <summary>Имя метки внутри «.offload-partial-…»: по ней видно, что копирование идёт прямо сейчас.</summary>
     internal const string PartialLockName = ".offload-lock";
 
-    /// <summary>Метка «здесь работает Offload», которую кладут внутрь своей partial-папки.
+    /// <summary>Метка «здесь работает OffLoadAI», которую кладут внутрь своей partial-папки.
     ///
     /// По одной дате папки «свежесть» остатка не определить: пока копирование идёт в подпапках, дата
     /// корня не меняется, а CopyTree в конце и вовсе ставит корню дату оригинала. Соседний экземпляр
-    /// Offload мог бы принять идущее копирование за мусор и стереть его вместе с уже скопированными данными.</summary>
+    /// OffLoadAI мог бы принять идущее копирование за мусор и стереть его вместе с уже скопированными данными.</summary>
     internal sealed class PartialMarker(string partial)
     {
         string? lastTop;
@@ -423,7 +423,7 @@ public sealed class SafeMover(SafetyRules? rules = null)
         catch (System.ComponentModel.Win32Exception) { return false; }
     }
 
-    /// <summary>За остатком точно никто не стоит. Метку наш Offload обновляет по ходу работы, поэтому
+    /// <summary>За остатком точно никто не стоит. Метку наш OffLoadAI обновляет по ходу работы, поэтому
     /// «её не трогали сутки» означает, что копирования нет. Свежая метка чужого компьютера бережётся
     /// до тех же суток: там прямо сейчас может идти копирование.</summary>
     internal static bool PartialIsAbandoned(string path, FileStat stat, TimeSpan age)

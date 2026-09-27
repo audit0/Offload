@@ -3,7 +3,7 @@
     <OutputType>WinExe</OutputType>
     <UseWPF>true</UseWPF>
     <RootNamespace>Offload</RootNamespace>
-    <AssemblyName>Offload</AssemblyName>
+    <AssemblyName>OffLoadAI</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\Offload.ico</ApplicationIcon>
   </PropertyGroup>

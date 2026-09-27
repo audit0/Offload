@@ -18,7 +18,7 @@
             <TextBlock x:Name="DetailText" Style="{StaticResource Caption}" Margin="0,2,0,0" />
             <TextBlock x:Name="NoteText" Style="{StaticResource Caption}" Foreground="{StaticResource Ink}" Margin="0,2,0,0" Visibility="Collapsed" />
             <TextBlock x:Name="MacText" Style="{StaticResource Caption}" Foreground="{StaticResource Ink}" Margin="0,2,0,0" Visibility="Collapsed"
-                       Text="Перенесено на Mac — вернуть можно только в Offload для Mac. Архив лежит на диске, его можно скопировать и вручную." />
+                       Text="Перенесено на Mac — вернуть можно только в OffLoadAI для Mac. Архив лежит на диске, его можно скопировать и вручную." />
         </StackPanel>
         <!-- Лупа видна под мышью: в каждой строке сразу она только шумела бы. -->
         <Button x:Name="RevealButton" Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE721;" ToolTip="Показать на диске"

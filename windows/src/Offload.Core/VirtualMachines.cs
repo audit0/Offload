@@ -3,7 +3,7 @@ using Microsoft.Win32;
 namespace Offload.Core;
 
 /// <summary>Крупные данные программ, место из-под которых освобождается не переносом, а средствами самих
-/// программ: Offload показывает, как это сделать.</summary>
+/// программ: OffLoadAI показывает, как это сделать.</summary>
 public enum AppDataKind { Docker, VirtualMachines }
 
 public static class AppDataKinds

@@ -221,7 +221,7 @@ func checksHardenRestore() {
         // Метка с того же чужого Mac, но ей трое суток: копирования там давно нет. Номер процесса
         // в ней занят живым процессом (нашим собственным) — верить ему нельзя, решает возраст.
         let foreignStale = try partial("foreign-stale", pid: getpid(), host: "другой-mac", at: Date(timeIntervalSinceNow: -3 * 86_400))
-        // Наш же Mac, метка свежая и процесс жив: соседний Offload копирует.
+        // Наш же Mac, метка свежая и процесс жив: соседний OffLoadAI копирует.
         let liveHere = try partial("live-here", pid: getpid(), host: host, at: Date())
 
         let outcome = try mover.restore(record, deleteArchive: false)

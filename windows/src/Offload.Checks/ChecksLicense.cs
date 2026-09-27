@@ -6,8 +6,8 @@ using static Offload.Checks.Harness;
 
 namespace Offload.Checks;
 
-/// <summary>Offload Pro: ключ проверяется подписью без сети, чужой и испорченный не проходят, ключ от версии
-/// для Mac подходит и здесь, проба и ранние пользователи считаются так, как обещано в окне «Offload Pro».</summary>
+/// <summary>OffLoadAI Pro: ключ проверяется подписью без сети, чужой и испорченный не проходят, ключ от версии
+/// для Mac подходит и здесь, проба и ранние пользователи считаются так, как обещано в окне «OffLoadAI Pro».</summary>
 static partial class All
 {
     /// <summary>Выпущен кодом версии для Mac (CryptoKit) тестовой парой с открытым ключом ниже — не настоящим.</summary>

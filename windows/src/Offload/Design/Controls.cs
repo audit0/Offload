@@ -348,7 +348,7 @@ public class SheetWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ShowInTaskbar = false;
         Owner = Application.Current?.MainWindow is { IsLoaded: true } main && !ReferenceEquals(main, this) ? main : null;
-        Title = "Offload";
+        Title = "OffLoadAI";
     }
 }
 

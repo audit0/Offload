@@ -72,7 +72,7 @@ public static class FileLocks
         }
         if (report.Locked > 0)
         {
-            // Занятые только самим Offload (например, его же проверкой) — не занятые.
+            // Занятые только самим OffLoadAI (например, его же проверкой) — не занятые.
             var names = Holders(locked);
             if (names == null) report.Holders.Add("другая программа");
             else if (names.Count > 0) report.Holders.AddRange(names);
@@ -82,8 +82,8 @@ public static class FileLocks
         return report;
     }
 
-    /// <summary>Какие программы держат эти файлы — по Restart Manager. Сам Offload не в счёт.
-    /// null — Restart Manager не ответил; пустой список — файлы не держит никто, кроме Offload.</summary>
+    /// <summary>Какие программы держат эти файлы — по Restart Manager. Сам OffLoadAI не в счёт.
+    /// null — Restart Manager не ответил; пустой список — файлы не держит никто, кроме OffLoadAI.</summary>
     public static unsafe List<string>? Holders(IReadOnlyList<string> files)
     {
         var result = new SortedSet<string>(StringComparer.CurrentCultureIgnoreCase);

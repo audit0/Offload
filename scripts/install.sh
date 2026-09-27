@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Установка Offload одной командой:
+# Установка OffLoadAI одной командой:
 #   curl -fsSL https://raw.githubusercontent.com/audit0/Offload/main/scripts/install.sh | zsh
 #
 # Скачивает релиз с GitHub по HTTPS, сверяет SHA-256, подпись и идентификатор приложения,
@@ -14,7 +14,7 @@ main() {
 
   fail() { print -u2 -- "⚠️  $1"; exit 1; }
 
-  [[ "$(uname -s)" == Darwin ]] || fail "Offload работает только на macOS."
+  [[ "$(uname -s)" == Darwin ]] || fail "OffLoadAI работает только на macOS."
   local major="${$(sw_vers -productVersion)%%.*}"
   (( major >= 14 )) || fail "Нужна macOS 14 или новее."
   [[ "$repo" =~ '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' ]] || fail "Некорректный OFFLOAD_REPO: $repo"
@@ -33,14 +33,19 @@ main() {
 
   fetch() { curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location --retry 3 --output "$2" "$1"; }
 
-  print "→ скачиваю Offload ($version) из $repo"
-  fetch "$base/Offload.zip" "$tmp/Offload.zip"
-  fetch "$base/Offload.zip.sha256" "$tmp/Offload.zip.sha256"
+  print "→ скачиваю OffLoadAI ($version) из $repo"
+  # Релизы до переименования выложены как Offload.zip с Offload.app внутри — их тоже можно поставить.
+  local name=OffLoadAI
+  if ! fetch "$base/$name.zip" "$tmp/$name.zip" 2>/dev/null; then
+    name=Offload
+    fetch "$base/$name.zip" "$tmp/$name.zip"
+  fi
+  fetch "$base/$name.zip.sha256" "$tmp/$name.zip.sha256"
 
   print "→ сверяю SHA-256"
   local expected actual
-  expected="$(awk 'NR==1 {print $1}' "$tmp/Offload.zip.sha256")"
-  actual="$(shasum -a 256 "$tmp/Offload.zip" | awk '{print $1}')"
+  expected="$(awk 'NR==1 {print $1}' "$tmp/$name.zip.sha256")"
+  actual="$(shasum -a 256 "$tmp/$name.zip" | awk '{print $1}')"
   [[ "$expected" =~ '^[0-9a-f]{64}$' && "$expected" == "$actual" ]] || fail "Контрольная сумма не совпала — установка отменена."
 
   # Сумма лежит в том же релизе и от подмены релиза не защищает. Подтверждение сборки (attestation)
@@ -48,7 +53,7 @@ main() {
   # Проверить его может gh — если он установлен и вход выполнен.
   if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
     print "→ проверяю подтверждение сборки (gh attestation verify)"
-    if gh attestation verify "$tmp/Offload.zip" --repo "$repo" \
+    if gh attestation verify "$tmp/$name.zip" --repo "$repo" \
          --signer-workflow "$repo/.github/workflows/release.yml" >/dev/null 2>&1; then
       print "  сборка подтверждена: собрана GitHub Actions из $repo"
     elif [[ "${OFFLOAD_ALLOW_UNATTESTED:-0}" == 1 ]]; then
@@ -57,12 +62,12 @@ main() {
       fail "Архив не подтверждён как сборка $repo. Релизы до v0.3.1 подтверждений не имеют: для них задайте OFFLOAD_ALLOW_UNATTESTED=1."
     fi
   else
-    print "  (подтверждение сборки не проверено: нет gh или не выполнен вход; проверить вручную — gh attestation verify Offload.zip --repo $repo)"
+    print "  (подтверждение сборки не проверено: нет gh или не выполнен вход; проверить вручную — gh attestation verify $name.zip --repo $repo)"
   fi
 
-  ditto -x -k "$tmp/Offload.zip" "$tmp/unpacked"
-  local app="$tmp/unpacked/Offload.app"
-  [[ -d "$app" ]] || fail "В архиве нет Offload.app."
+  ditto -x -k "$tmp/$name.zip" "$tmp/unpacked"
+  local app="$tmp/unpacked/$name.app"
+  [[ -d "$app" ]] || fail "В архиве нет $name.app."
   # Подпись ad-hoc: подтверждает только, что файлы приложения не изменены после подписи, но не кто его собрал.
   codesign --verify --strict "$app" 2>/dev/null || fail "Подпись приложения повреждена."
   [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" == "$bundle_id" ]] \
@@ -72,19 +77,30 @@ main() {
   [[ -w "$dest" ]] || dest="$HOME/Applications"
   mkdir -p "$dest"
 
-  if pgrep -xq Offload; then
-    print "→ закрываю запущенный Offload"
+  # До переименования программа звалась Offload: закрываем и её (идентификатор приложения тот же).
+  if pgrep -xq 'OffLoadAI|Offload'; then
+    print "→ закрываю запущенный OffLoadAI"
     osascript -e "tell application id \"$bundle_id\" to quit" >/dev/null 2>&1 || true
-    for _ in {1..20}; do pgrep -xq Offload || break; sleep 0.25; done
+    for _ in {1..20}; do pgrep -xq 'OffLoadAI|Offload' || break; sleep 0.25; done
   fi
 
   print "→ устанавливаю в $dest"
-  rm -rf "$dest/Offload.app"
-  ditto "$app" "$dest/Offload.app"
-  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$dest/Offload.app" >/dev/null 2>&1 || true
+  rm -rf "$dest/OffLoadAI.app"
+  ditto "$app" "$dest/OffLoadAI.app"
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$dest/OffLoadAI.app" >/dev/null 2>&1 || true
 
-  print "✅ Установлено: $dest/Offload.app"
-  [[ "${OFFLOAD_NO_OPEN:-0}" == 1 ]] || open "$dest/Offload.app"
+  # Прежняя копия под старым именем: удаляем, только если это наше приложение. Настройки, ключ Pro,
+  # журнал и база решений остаются на месте — новая версия читает их сама.
+  local old
+  for old in /Applications/Offload.app "$HOME/Applications/Offload.app"; do
+    [[ -d "$old" ]] || continue
+    [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$old/Contents/Info.plist" 2>/dev/null)" == "$bundle_id" ]] || continue
+    print "→ убираю прежнюю версию под старым именем: $old"
+    rm -rf "$old" || print -u2 -- "⚠️  Не удалось удалить $old — удалите его вручную."
+  done
+
+  print "✅ Установлено: $dest/OffLoadAI.app"
+  [[ "${OFFLOAD_NO_OPEN:-0}" == 1 ]] || open "$dest/OffLoadAI.app"
 }
 
 main "$@"

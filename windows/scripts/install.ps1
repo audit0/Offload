@@ -1,8 +1,8 @@
-# Установка Offload для Windows одной командой в PowerShell:
+# Установка OffLoadAI для Windows одной командой в PowerShell:
 #   irm https://raw.githubusercontent.com/audit0/Offload/main/windows/scripts/install.ps1 | iex
 #
 # Скачивает релиз с GitHub по HTTPS, сверяет SHA-256, а если установлен gh — ещё и подтверждение сборки
-# (что архив собран workflow этого репозитория). Ставит в %LOCALAPPDATA%\Programs\Offload, добавляет ярлык
+# (что архив собран workflow этого репозитория). Ставит в %LOCALAPPDATA%\Programs\OffLoadAI, добавляет ярлык
 # в меню «Пуск» и запускает. Права администратора не нужны.
 # Весь код внутри функции: если загрузка сценария оборвётся на середине, ничего не выполнится.
 function Install-Offload {
@@ -23,8 +23,8 @@ function Install-Offload {
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ("offload-" + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory $tmp | Out-Null
     try {
-        $name = "Offload-Windows-$arch.zip"
-        Write-Host "→ скачиваю Offload ($version, $arch) из $repo"
+        $name = "OffLoadAI-Windows-$arch.zip"
+        Write-Host "→ скачиваю OffLoadAI ($version, $arch) из $repo"
         Invoke-WebRequest -UseBasicParsing "$base/$name" -OutFile "$tmp\$name"
         Invoke-WebRequest -UseBasicParsing "$base/$name.sha256" -OutFile "$tmp\$name.sha256"
 
@@ -46,31 +46,40 @@ function Install-Offload {
         else { Write-Host "  (подтверждение сборки не проверено: нет gh или не выполнен вход; проверить вручную — gh attestation verify $name --repo $repo)" }
 
         Expand-Archive "$tmp\$name" -DestinationPath "$tmp\unpacked"
-        $exe = "$tmp\unpacked\Offload.exe"
-        if (-not (Test-Path $exe)) { Fail 'В архиве нет Offload.exe.' }
+        $exe = "$tmp\unpacked\OffLoadAI.exe"
+        if (-not (Test-Path $exe)) { Fail 'В архиве нет OffLoadAI.exe.' }
         $info = (Get-Item $exe).VersionInfo
-        if ($info.ProductName -ne 'Offload') { Fail 'Неожиданная программа в архиве — установка отменена.' }
+        if ($info.ProductName -ne 'OffLoadAI') { Fail 'Неожиданная программа в архиве — установка отменена.' }
 
-        $dest = Join-Path $env:LOCALAPPDATA 'Programs\Offload'
-        Get-Process Offload -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$dest*" } | ForEach-Object {
-            Write-Host '→ закрываю запущенный Offload'
+        $dest = Join-Path $env:LOCALAPPDATA 'Programs\OffLoadAI'
+        # До переименования программа звалась Offload и стояла в Programs\Offload: её тоже закрываем и убираем.
+        # Настройки, журнал и база решений остаются на месте (%LOCALAPPDATA%\Offload) — их новая версия читает сама.
+        $old = Join-Path $env:LOCALAPPDATA 'Programs\Offload'
+        Get-Process OffLoadAI, Offload -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$dest*" -or $_.Path -like "$old\*" } | ForEach-Object {
+            Write-Host '→ закрываю запущенный OffLoadAI'
             $_.CloseMainWindow() | Out-Null
-            if (-not $_.WaitForExit(10000)) { Fail 'Offload не закрылся — закройте его и повторите.' }
+            if (-not $_.WaitForExit(10000)) { Fail 'OffLoadAI не закрылся — закройте его и повторите.' }
         }
         Write-Host "→ устанавливаю в $dest"
         New-Item -ItemType Directory -Force $dest | Out-Null
-        Copy-Item $exe (Join-Path $dest 'Offload.exe') -Force
+        Copy-Item $exe (Join-Path $dest 'OffLoadAI.exe') -Force
 
-        $shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'Offload.lnk'
+        $programs = [Environment]::GetFolderPath('Programs')
+        Remove-Item (Join-Path $programs 'Offload.lnk') -ErrorAction SilentlyContinue
+        if (Test-Path (Join-Path $old 'Offload.exe')) {
+            Remove-Item (Join-Path $old 'Offload.exe') -Force -ErrorAction SilentlyContinue
+            Remove-Item $old -ErrorAction SilentlyContinue
+        }
+        $shortcut = Join-Path $programs 'OffLoadAI.lnk'
         $shell = New-Object -ComObject WScript.Shell
         $link = $shell.CreateShortcut($shortcut)
-        $link.TargetPath = Join-Path $dest 'Offload.exe'
+        $link.TargetPath = Join-Path $dest 'OffLoadAI.exe'
         $link.WorkingDirectory = $dest
         $link.Description = 'Разгрузка диска без риска потерять данные'
         $link.Save()
 
-        Write-Host "✅ Установлено: $dest\Offload.exe (ярлык — в меню «Пуск»)"
-        if ($env:OFFLOAD_NO_OPEN -ne '1') { Start-Process (Join-Path $dest 'Offload.exe') }
+        Write-Host "✅ Установлено: $dest\OffLoadAI.exe (ярлык — в меню «Пуск»)"
+        if ($env:OFFLOAD_NO_OPEN -ne '1') { Start-Process (Join-Path $dest 'OffLoadAI.exe') }
     }
     finally { Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue }
 }

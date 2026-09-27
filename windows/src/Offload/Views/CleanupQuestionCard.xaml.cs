@@ -52,7 +52,7 @@ public partial class CleanupQuestionCard : UserControl
         }
         bool locked = Model.IsLocked(question.Kind, app);
         ProTag.Update(YesButton, locked);
-        YesButton.ToolTip = locked ? "Нужен Offload Pro — откроется окно с ценой и ключом" : null;
+        YesButton.ToolTip = locked ? "Нужен OffLoadAI Pro — откроется окно с ценой и ключом" : null;
         Tile.Glyph = question.Glyph();
         Tile.Tone = kind == CleanupModel.AnswerKind.Declined ? Tone.Neutral : question.Tone();
         Root.Opacity = kind == CleanupModel.AnswerKind.Declined ? 0.7 : 1;

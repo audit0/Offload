@@ -159,7 +159,7 @@ static partial class All
                 Check(IsBlocked(plan.Verdict, "открыты"), $"перенос открытого файла запрещён ещё в плане: {plan.Verdict}");
             }
             using (var own = new FileStream(Path.Combine(busy, "open.txt"), FileMode.Open, FileAccess.Read, FileShare.Read))
-                Check(FileLocks.Scan(busy) is { Holders.Count: 0, Locked: 0 }, "файл, открытый самим Offload, занятым не считается");
+                Check(FileLocks.Scan(busy) is { Holders.Count: 0, Locked: 0 }, "файл, открытый самим OffLoadAI, занятым не считается");
         });
 
         Section("Проверка диска назначения", () =>

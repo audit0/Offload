@@ -196,7 +196,7 @@ static partial class All
             SecretsVault.Detach(mount);
             vault.RestoreHeader(backup, first);
             mount = vault.Attach(first);
-            Check(Directory.Exists(mount), "старая копия заголовка возвращает старый пароль — об этом и предупреждает Offload");
+            Check(Directory.Exists(mount), "старая копия заголовка возвращает старый пароль — об этом и предупреждает OffLoadAI");
             SecretsVault.Detach(mount);
 
             // Копия заголовка от другого сейфа не принимается.

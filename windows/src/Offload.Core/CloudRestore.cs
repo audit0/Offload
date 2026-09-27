@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 
 namespace Offload.Core;
 
-/// <summary>Восстановление из бэкапа restic — например, из хранилища в iCloud Drive. Offload хранилище только
+/// <summary>Восстановление из бэкапа restic — например, из хранилища в iCloud Drive. OffLoadAI хранилище только
 /// читает: все команды идут с --no-lock, в хранилище не пишется ничего, даже файл блокировки. Восстановленное
 /// ложится в новую папку, поэтому ничего существующего не перезаписывается.</summary>
 public static class CloudRestore
@@ -91,7 +91,7 @@ public static class CloudRestore
 
     public static bool IsResticInstalled => Runner.Locate("restic") != null;
 
-    /// <summary>Общие аргументы: хранилище, пароль и то, что Offload его только читает.</summary>
+    /// <summary>Общие аргументы: хранилище, пароль и то, что OffLoadAI его только читает.</summary>
     internal static (List<string> arguments, byte[]? stdin) Invocation(IEnumerable<string> command, Repository repository, Password password)
     {
         var arguments = command.Concat(["--repo", repository.Path, "--no-lock", "--json"]).ToList();

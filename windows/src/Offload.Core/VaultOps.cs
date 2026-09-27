@@ -125,8 +125,8 @@ public sealed class VaultOps : IVaultBackend, IDisposable
     {
         var volume = Native.VolumeGuidPath(mountRoot) ?? throw new VaultException(VaultErrorKind.CloseFailed, $"«{mountRoot}» — не том");
         var image = VirtualDisks.BackingFile(volume)
-                    ?? throw new VaultException(VaultErrorKind.CloseFailed, $"«{mountRoot}» — не образ диска, отключать его Offload не будет");
-        if (Paths.Extension(image) != "vhdx") throw new VaultException(VaultErrorKind.CloseFailed, "это не сейф Offload");
+                    ?? throw new VaultException(VaultErrorKind.CloseFailed, $"«{mountRoot}» — не образ диска, отключать его OffLoadAI не будет");
+        if (Paths.Extension(image) != "vhdx") throw new VaultException(VaultErrorKind.CloseFailed, "это не сейф OffLoadAI");
         lock (gate)
         {
             DismountVolume(volume, force);

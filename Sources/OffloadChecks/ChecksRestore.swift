@@ -83,7 +83,7 @@ func checksRestore() {
             // Дату корня ставим последней: именно она раньше и обманывала проверку.
             try fm.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -5 * 86_400)], ofItemAtPath: url.path)
         }
-        // Соседний экземпляр Offload копирует прямо сейчас, а дата корня давно не менялась.
+        // Соседний экземпляр OffLoadAI копирует прямо сейчас, а дата корня давно не менялась.
         let live = try partial("live")
         try lock(live, pid: getpid(), at: Date(), host: host)
         // Остаток процесса, которого уже нет.

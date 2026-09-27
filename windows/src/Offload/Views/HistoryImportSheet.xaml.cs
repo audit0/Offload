@@ -5,7 +5,7 @@ using Offload.Core;
 
 namespace Offload;
 
-/// <summary>Регистрация переноса, сделанного без Offload: что лежит на внешнем диске и где оно было на компьютере.
+/// <summary>Регистрация переноса, сделанного без OffLoadAI: что лежит на внешнем диске и где оно было на компьютере.
 /// После этого вернуть его можно как обычно — со сверкой.</summary>
 public partial class HistoryImportSheet : SheetWindow
 {

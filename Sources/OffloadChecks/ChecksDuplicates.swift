@@ -204,7 +204,7 @@ func checksDuplicates() {
     section("Дубликаты: отпечатки в базе") {
         let url = scratch.appendingPathComponent("decisions-v1/decisions.sqlite")
         try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        // База первой версии, как её оставил прошлый Offload.
+        // База первой версии, как её оставил прошлый OffLoadAI.
         var raw: OpaquePointer?
         check(sqlite3_open(url.path, &raw) == SQLITE_OK, "старая база создаётся")
         let v1 = """
