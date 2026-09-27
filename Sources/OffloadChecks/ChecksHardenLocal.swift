@@ -100,4 +100,45 @@ func checksHardenLocal() {
         let hardNotes = SafetyRules.checkDestination(volume, sourceVolume: nil, content: hardReport).notes.joined(separator: " ")
         check(hardNotes.contains("жёсткие ссылки"), "о разрыве настоящих жёстких ссылок предупреждают до переноса")
     }
+
+    section("Аудит: пути возврата, секреты бэкапа, журнал на недоверенном диске") {
+        let rules = SafetyRules(home: scratch.appendingPathComponent("audit-home", isDirectory: true))
+        try fm.createDirectory(at: rules.home, withIntermediateDirectories: true)
+        // ~/.ssh ещё нет: realpath не приводит регистр, а на обычном диске Mac «.SSH» — та же папка.
+        for relative in [".SSH/authorized_keys", ".Ssh", "Projects/app/.git/hooks/pre-commit", "Projects/app/.GIT/config"] {
+            check(isBlocked(rules.pathVerdict(for: rules.home.appendingPathComponent(relative))),
+                  "«~/\(relative)» запрещён независимо от регистра")
+        }
+        check(rules.pathVerdict(for: rules.home.appendingPathComponent("Projects/app")) == .safe, "сам проект с git переносить можно")
+
+        for name in ["prod.env", ".env-local", ".env_local", "terraform.tfstate", "prod.tfvars", "credentials.json",
+                     "service-account.json", "client_secret_123.json", "id_rsa.bak", "id_ed25519.old", ".vault-token",
+                     ".htpasswd", ".zsh_history", "auth.json"] {
+            check(BackupEngine.isSecret(name), "«\(name)» — секрет, в открытый бэкап не идёт")
+        }
+        for name in ["id_ed25519.pub", ".env.example", "package.json", "README.md", "venv"] {
+            check(!BackupEngine.isSecret(name), "«\(name)» — не секрет")
+        }
+        let project = scratch.appendingPathComponent("audit-project", isDirectory: true)
+        try write("[remote \"origin\"]\n\turl = https://me:ghp_abcdefghijklmnopqrstuvwxyz0123456789@github.com/me/app.git\n",
+                  to: project.appendingPathComponent(".git/config"))
+        try write("{\"type\": \"service_account\", \"private_key\": \"-----BEGIN\"}", to: project.appendingPathComponent("gcp.json"))
+        try write("token: gho_abcdef\n", to: project.appendingPathComponent(".config/gh/hosts.yml"))
+        try write("-----BEGIN OPENSSH PRIVATE KEY-----\n", to: project.appendingPathComponent(".deploy_key"))
+        try write("{\"name\": \"app\"}", to: project.appendingPathComponent("package.json"))
+        for relative in [".git/config", "gcp.json", ".config/gh/hosts.yml", ".deploy_key"] {
+            check(BackupEngine.isSecretPath(relative, in: project), "«\(relative)» узнаётся как секрет по месту или содержимому")
+        }
+        check(!BackupEngine.isSecretPath("package.json", in: project), "обычный package.json — не секрет")
+
+        // Журнал на внешнем диске: ссылка на /dev/zero или FIFO на его месте не должны подвешивать программу.
+        let zero = scratch.appendingPathComponent("audit-manifest-zero.json")
+        try fm.createSymbolicLink(atPath: zero.path, withDestinationPath: "/dev/zero")
+        if case .broken = Journal.state(of: zero) { check(true, "журнал-ссылка на /dev/zero — «не читается», без зависания") }
+        else { check(false, "журнал-ссылка на /dev/zero — «не читается», без зависания") }
+        let fifo = scratch.appendingPathComponent("audit-manifest-fifo.json")
+        check(mkfifo(fifo.path, 0o600) == 0, "FIFO для проверки создан")
+        if case .broken = Journal.state(of: fifo) { check(true, "журнал-FIFO — «не читается», без зависания") }
+        else { check(false, "журнал-FIFO — «не читается», без зависания") }
+    }
 }

@@ -83,6 +83,7 @@ public enum DockerError: LocalizedError, Equatable {
     case diskGuard(String)
     case failed(String)
     case verificationFailed(String)
+    case remoteDaemon(String)
 
     public var errorDescription: String? {
         switch self {
@@ -94,6 +95,7 @@ public enum DockerError: LocalizedError, Equatable {
         case .diskGuard(let reason): return "Остановлено, чтобы не забить диск Mac: \(reason)"
         case .failed(let message): return message
         case .verificationFailed(let name): return "Архив тома «\(name)» не совпал с томом — том не тронут."
+        case .remoteDaemon(let host): return "Docker сейчас смотрит не на этот Mac, а на «\(host)» (контекст Docker или DOCKER_HOST). Очищать и архивировать чужой Docker Offload не будет: переключитесь на локальный контекст (docker context use desktop-linux или default) и повторите."
         }
     }
 }
@@ -105,8 +107,17 @@ public enum DockerError: LocalizedError, Equatable {
 /// с `--log-driver none` и `--network none`, у каждого контейнера есть имя (останавливается
 /// сам контейнер, а не только клиент docker), а рост Docker.raw и свободное место отслеживаются.
 public struct DockerService: Sendable {
-    public static let helperImage = "offload-gnutar:1"
-    static let helperDockerfile = "FROM alpine:3\nRUN apk add --no-cache tar\n"
+    /// От этого образа зависит сверка перед удалением тома, поэтому база закреплена по digest,
+    /// а свой образ узнаётся по метке: чужой образ с тем же тегом (docker build, compose) пересобирается.
+    public static let helperImage = "offload-gnutar:2"
+    static let helperLabel = "io.github.audit0.offload.helper"
+    static let helperLabelValue = "2"
+    static let helperDockerfile = """
+        FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+        RUN apk add --no-cache tar
+        LABEL \(helperLabel)=\(helperLabelValue)
+
+        """
     static let runPrefix = ["run", "--rm", "--log-driver", "none", "--network", "none"]
 
     public struct DiskGuard: Sendable {
@@ -187,6 +198,19 @@ public struct DockerService: Sendable {
         guard isInstalled else { throw DockerError.notInstalled }
         guard let result = try? Runner.run("docker", ["info", "--format", "{{.ServerVersion}}"], timeout: 20),
               result.succeeded else { throw DockerError.notRunning }
+        // Контекст Docker (docker context use …) или DOCKER_HOST могут вести на сервер. Тогда
+        // «Очистить Docker» удалил бы кеш и образы там, а архивация — перекачала бы и удалила его тома.
+        let host = endpoint()
+        guard let host, host.hasPrefix("unix://") else { throw DockerError.remoteDaemon(host ?? "неизвестно") }
+    }
+
+    /// Куда смотрит клиент docker: DOCKER_HOST или адрес текущего контекста.
+    func endpoint() -> String? {
+        if let host = Runner.environment["DOCKER_HOST"], !host.isEmpty { return host }
+        guard let result = try? Runner.run("docker", ["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"], timeout: 20),
+              result.succeeded else { return nil }
+        let host = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        return host.isEmpty ? nil : host
     }
 
     // MARK: - Тома
@@ -339,7 +363,9 @@ public struct DockerService: Sendable {
     }
 
     func ensureHelperImage() throws {
-        if (try? Runner.run("docker", ["image", "inspect", Self.helperImage], timeout: 30))?.succeeded == true { return }
+        let format = "{{index .Config.Labels \"\(Self.helperLabel)\"}}"
+        if let result = try? Runner.run("docker", ["image", "inspect", "--format", format, Self.helperImage], timeout: 30),
+           result.succeeded, result.output.trimmingCharacters(in: .whitespacesAndNewlines) == Self.helperLabelValue { return }
         try Runner.check("docker", ["build", "-q", "-t", Self.helperImage, "-"],
                          stdin: Data(Self.helperDockerfile.utf8), timeout: 900)
     }
@@ -364,7 +390,9 @@ public struct DockerService: Sendable {
         let partial = directory.appendingPathComponent(".\(name).partial-\(UUID().uuidString)")
         do {
             status("Упаковка тома")
-            _ = try stream(["-v", "\(name):/v:ro", Self.helperImage, "tar", "-cf", "-", "-C", "/v", "."],
+            // --hard-dereference: жёсткая ссылка иначе ляжет в архив ссылкой без содержимого,
+            // и сверка содержимого её не увидит.
+            _ = try stream(["-v", "\(name):/v:ro", Self.helperImage, "tar", "--hard-dereference", "-cf", "-", "-C", "/v", "."],
                            feed: nil, sink: compressed ? .compress(partial) : .file(partial),
                            guard: .archiving, isCancelled: isCancelled)
             status("Сверка: список файлов тома")
@@ -396,14 +424,25 @@ public struct DockerService: Sendable {
     public func restore(archive: URL, as name: String, isCancelled: () -> Bool = { false },
                         status: (String) -> Void = { _ in }) throws {
         guard Self.isValidVolumeName(name) else { throw DockerError.invalidName(name) }
+        try Self.requireRegularFile(archive)
         try ensureRunning()
-        if (try? Runner.run("docker", ["volume", "inspect", name], timeout: 30))?.succeeded == true {
-            throw DockerError.alreadyExists(name)
+        // «Тома нет» — только когда Docker так и ответил. Тайм-аут или любая другая ошибка раньше
+        // тоже считались отсутствием тома: архив распаковывался в живой том, а при неудачной
+        // сверке тот ещё и удалялся.
+        let inspect = try Runner.run("docker", ["volume", "inspect", name], timeout: 30)
+        if inspect.succeeded { throw DockerError.alreadyExists(name) }
+        guard inspect.stderr.lowercased().contains("no such volume") else {
+            throw DockerError.failed("Не удалось проверить, есть ли уже том «\(name)»: \(inspect.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
         }
         status("Подготовка образа с GNU tar")
         try ensureHelperImage()
         let compressed = archive.pathExtension.lowercased() == "zst"
-        try Runner.check("docker", ["volume", "create", name], timeout: 60)
+        // Метка с одноразовым значением: по ней видно, что том создан этим вызовом. Если том
+        // появился между проверкой и созданием, `volume create` ответит успехом и вернёт чужой том —
+        // метки на нём не будет, и ни распаковки, ни удаления не случится.
+        let mark = UUID().uuidString
+        try Runner.check("docker", ["volume", "create", "--label", "\(Self.restoreLabel)=\(mark)", name], timeout: 60)
+        guard restoreMark(of: name) == mark else { throw DockerError.alreadyExists(name) }
         do {
             status("Распаковка в том")
             _ = try stream(["-i", "-v", "\(name):/v", Self.helperImage, "tar", "-xpf", "-", "-C", "/v"],
@@ -414,24 +453,73 @@ public struct DockerService: Sendable {
             let archiveDigest = try digest(ofArchive: archive, compressed: compressed, isCancelled: isCancelled)
             guard !volumeDigest.isEmpty, volumeDigest == archiveDigest else { throw DockerError.verificationFailed(name) }
         } catch {
-            // Том создан нами в этом же вызове — при сбое его можно убрать.
-            _ = try? Runner.run("docker", ["volume", "rm", name], timeout: 120)
+            // Удаляем, только если на томе наша метка: том создан этим вызовом.
+            if restoreMark(of: name) == mark {
+                _ = try? Runner.run("docker", ["volume", "rm", name], timeout: 120)
+            }
             throw error
         }
     }
 
-    static func listing(_ producer: String) -> String {
-        producer + " | sed 's|/$||' | LC_ALL=C sort > /tmp/list && echo \"$(wc -l < /tmp/list) $(sha256sum /tmp/list | cut -d' ' -f1)\""
+    static let restoreLabel = "io.github.audit0.offload.restore"
+
+    func restoreMark(of name: String) -> String? {
+        let format = "{{index .Labels \"\(Self.restoreLabel)\"}}"
+        guard let result = try? Runner.run("docker", ["volume", "inspect", "--format", format, name], timeout: 30),
+              result.succeeded else { return nil }
+        return result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Архив с чужого диска: на его месте может лежать ссылка на файл с Mac или FIFO,
+    /// на котором чтение повисло бы навсегда.
+    static func requireRegularFile(_ url: URL) throws {
+        guard (try? FileManager.default.attributesOfItem(atPath: url.path))?[.type] as? FileAttributeType == .typeRegular else {
+            throw CopyError.unreadable(url.path)
+        }
+    }
+
+    /// Отпечаток: число и SHA-256 отсортированного списка путей, затем число и SHA-256 списка
+    /// «хеш содержимого — путь» для обычных файлов. Раньше сверялись только имена: архив,
+    /// обрезанный посередине последнего файла, давал тот же отпечаток, что и целый, и том удалялся.
+    /// pipefail — чтобы ошибка tar или find не терялась в конвейере.
+    static func summary(names: String, files: String) -> String {
+        "set -eo pipefail; " + names + " | sed 's|/$||' | LC_ALL=C sort > /tmp/list; "
+            + files + " | LC_ALL=C sort > /tmp/files; "
+            + "echo \"$(wc -l < /tmp/list) $(sha256sum < /tmp/list | cut -d' ' -f1) $(wc -l < /tmp/files) $(sha256sum < /tmp/files | cut -d' ' -f1)\""
+    }
+
+    /// «хеш — путь» для файла в $f; содержимое читается из `input` (пусто — из stdin).
+    /// Строка одна и та же для тома и архива, иначе отпечатки разошлись бы на ровном месте.
+    static func hashLine(input: String) -> String {
+        #"h=$(sha256sum"# + input + #" | cut -d' ' -f1) && printf '%s  %s\n' "$h" "$f""#
+    }
+
+    static func quoted(_ text: String) -> String { "'" + text.replacingOccurrences(of: "'", with: #"'\''"#) + "'" }
+
+    /// Отпечаток тома, смонтированного в /v.
+    static var volumeDigestScript: String {
+        summary(names: "cd /v && find . ! -type s",
+                files: "find . -type f -exec sh -c " + quoted("for f; do " + hashLine(input: #" < "$f""#) + "; done") + " _ {} +")
+    }
+
+    /// Отпечаток архива из stdin. Архив читается один раз: -v выдаёт все имена, --to-command получает
+    /// содержимое каждого обычного файла (имя — в TAR_FILENAME). Остальное tar создаёт во временной папке контейнера.
+    static func archiveDigestScript(tar: String = "tar") -> String {
+        let command = #"f="$TAR_FILENAME"; "# + hashLine(input: "") + " >> /tmp/hashes"
+        return summary(names: "mkdir -p /tmp/x && : > /tmp/hashes && " + tar
+                        + " -xvf - -C /tmp/x --quoting-style=literal --to-command=" + quoted(command),
+                       files: "cat /tmp/hashes")
     }
 
     func digest(ofVolume name: String, isCancelled: () -> Bool) throws -> String {
-        try stream(["-v", "\(name):/v:ro", Self.helperImage, "sh", "-c", "cd /v && " + Self.listing("find . ! -type s")],
+        try stream(["-v", "\(name):/v:ro", Self.helperImage, "sh", "-c", Self.volumeDigestScript],
                    feed: nil, sink: .capture, guard: nil, isCancelled: isCancelled)
     }
 
     func digest(ofArchive url: URL, compressed: Bool, isCancelled: () -> Bool) throws -> String {
-        try stream(["-i", Self.helperImage, "sh", "-c", Self.listing("tar -tf - --quoting-style=literal")],
-                   feed: compressed ? .decompress(url) : .file(url), sink: .capture, guard: nil, isCancelled: isCancelled)
+        try Self.requireRegularFile(url)
+        return try stream(["-i", Self.helperImage, "sh", "-c", Self.archiveDigestScript()],
+                          feed: compressed ? .decompress(url) : .file(url), sink: .capture, guard: nil, isCancelled: isCancelled)
     }
 
     // MARK: - Потоки
@@ -459,7 +547,16 @@ public struct DockerService: Sendable {
 
         switch feed {
         case .file(let url)?:
-            let handle = try FileHandle(forReadingFrom: url)
+            // Без перехода по ссылке и без зависания на FIFO: архив лежит на чужом диске.
+            let descriptor = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+            guard descriptor >= 0 else { throw CopyError.unreadable(url.path) }
+            let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+            var info = stat()
+            guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG else {
+                try? handle.close()
+                throw CopyError.unreadable(url.path)
+            }
+            _ = fcntl(descriptor, F_SETFL, fcntl(descriptor, F_GETFL) & ~O_NONBLOCK)
             readHandle = handle
             docker.standardInput = handle
         case .decompress(let url)?:

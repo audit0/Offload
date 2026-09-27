@@ -224,6 +224,9 @@ public struct DuplicateFinder: Sendable {
         var entries: [Entry] = []
         var seen = Set<String>()
         for root in roots {
+            // Корень проверяется так же, как вложенные папки: git-репозиторий прямо в домашней
+            // папке (~/myrepo) раньше обходился целиком, и файл проекта мог стать «лишней копией».
+            if isSkipped(directory: root) { continue }
             let rootDevice = (try? fm.attributesOfItem(atPath: root.path))?[.systemNumber] as? NSNumber
             state.current = root.lastPathComponent
             progress(state)
@@ -264,8 +267,13 @@ public struct DuplicateFinder: Sendable {
         // если нужная программа не установлена.
         let ext = url.pathExtension.lowercased()
         if ext == "app" || SafetyRules.registeredBundleExtensions.contains(ext) { return true }
+        // Окружения Python: pip и conda кладут в каждое свою копию библиотек, и удалённая «копия»
+        // ломает окружение (import torch перестаёт работать).
+        if ["site-packages", "dist-packages"].contains(name) { return true }
+        let fm = FileManager.default
+        for marker in ["pyvenv.cfg", "conda-meta"] where fm.fileExists(atPath: url.appendingPathComponent(marker).path) { return true }
         // Проект с git: одинаковые файлы в нём — часть проекта, и о нём заботится git.
-        return FileManager.default.fileExists(atPath: url.appendingPathComponent(".git").path)
+        return fm.fileExists(atPath: url.appendingPathComponent(".git").path)
     }
 
     /// Номер файла и клон: одно и то же содержимое под двумя именами (жёсткая ссылка) — это

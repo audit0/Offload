@@ -19,7 +19,10 @@ private func safeHostMount(_ name: String, fs: String, volumeName: String, sizeM
 
 func checksSafe() {
     section("Сейф: оценка пароля") {
-        for weak in ["short", "Qwerty123!", "password12345678", "aaaaaaaaaaaaaaaaaaaa", "12345678901234567890", "йцукенйцукен"] {
+        for weak in ["short", "Qwerty123!", "password12345678", "aaaaaaaaaaaaaaaaaaaa", "12345678901234567890", "йцукенйцукен",
+                     // Пароли, которые прежняя оценка принимала: обычная длина, «хакерская» запись, год, повтор куска.
+                     "Summer2024!!", "P@ssw0rd2024", "aCaCaCaCaCaC", "αγαγαγαγαγαγ", "Qwerty123!Qwerty", "Москва2024!!",
+                     "P@ssw0rd2024Summer!"] {
             check(!PasswordStrength.evaluate(weak).isAcceptable, "слабый пароль «\(weak)» не принимается (≈\(Int(PasswordStrength.evaluate(weak).bits)) бит)")
         }
         for strong in ["correct horse battery staple", "лось ест сено у реки в пять утра", "t7#Kp9!vQ2@xZ4&m"] {

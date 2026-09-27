@@ -62,26 +62,59 @@ public struct PasswordStrength: Sendable, Equatable {
                      "cyrillic-lower": 33, "cyrillic-upper": 33, "other": 100]
         for name in classes { pool += sizes[name] ?? 0 }
 
-        // Повторы и цепочки («aaaa», «1234», «abcd», «qwer») почти ничего не добавляют:
-        // перебор пробует их одними из первых. Каждый такой символ считается за четверть.
+        // Сколько стоит каждый символ: 1 — полный, меньше — почти ничего не добавляет.
+        var weight = [Double](repeating: 1, count: length)
+        // Повторы и цепочки («aaaa», «1234», «abcd», «qwer») перебор пробует одними из первых:
+        // каждый такой символ считается за четверть.
         var weakCharacters = 0
         for index in characters.indices.dropFirst() {
             let previous = characters[index - 1].unicodeScalars.first!.value
             let current = characters[index].unicodeScalars.first!.value
-            if current == previous || current == previous + 1 || current + 1 == previous { weakCharacters += 1 }
+            if current == previous || current == previous + 1 || current + 1 == previous {
+                weakCharacters += 1
+                weight[index] = 0.25
+            }
+        }
+        // Повтор куска («aCaCaCaC», «Qwerty123!Qwerty»): второй раз он почти ничего не стоит —
+        // перебор пробует удвоенные слова. Раньше такие пароли набирали под 70 бит.
+        var repeated = 0
+        var index = 1
+        while index < length {
+            var best = 0
+            for start in 0..<index {
+                var run = 0
+                while index + run < length, start + run < index, characters[start + run] == characters[index + run] { run += 1 }
+                best = max(best, run)
+            }
+            if best >= 2 {
+                for offset in 0..<best { weight[index + offset] = min(weight[index + offset], 0.1) }
+                repeated += best
+                index += best
+            } else {
+                index += 1
+            }
         }
         let lowered = password.lowercased()
         var advice: [String] = []
-        var bits = Double(length - weakCharacters) * log2(Double(max(pool, 2)))
-            + Double(weakCharacters) * 0.25 * log2(Double(max(pool, 2)))
+        let perCharacter = log2(Double(max(pool, 2)))
+        var bits = weight.reduce(0, +) * perCharacter
 
-        // Слова, с которых перебор начинается всегда. Нашлось — пароль стоит столько,
-        // сколько стоит всё остальное вокруг слова.
-        let common = ["password", "passw0rd", "qwerty", "йцукен", "пароль", "123456", "111111", "admin", "letmein",
-                      "iloveyou", "welcome", "monkey", "dragon", "master", "secret", "любовь", "привет", "asdfgh", "zxcvbn"]
-        for word in common where lowered.contains(word) {
-            bits -= Double(word.count) * log2(Double(max(pool, 2))) * 0.8
-            advice.append("В пароле есть «\(word)» — такие слова перебор пробует первыми.")
+        // Слова, с которых перебор начинается всегда, — и в «хакерской» записи: «P@ssw0rd» перебор
+        // пробует сразу за «password». Нашлось — пароль стоит столько, сколько всё остальное вокруг слова.
+        let leet: [Character: Character] = ["0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s", "!": "i"]
+        let plain = String(lowered.map { leet[$0] ?? $0 })
+        let common = ["password", "passw0rd", "qwerty", "qwertz", "йцукен", "пароль", "123456", "111111", "admin", "letmein",
+                      "iloveyou", "welcome", "monkey", "dragon", "master", "secret", "любовь", "привет", "asdfgh", "zxcvbn",
+                      "qazwsx", "1qaz", "фыва", "summer", "winter", "spring", "autumn", "football", "baseball", "sunshine",
+                      "princess", "shadow", "москва", "moskva", "russia", "россия", "лето", "зима", "весна", "осень"]
+        for word in common where lowered.contains(word) || plain.contains(word) {
+            bits -= Double(word.count) * perCharacter * 0.8
+            advice.append("В пароле есть «\(word)» — такие слова перебор пробует первыми, в том числе с заменами букв на цифры и знаки.")
+        }
+        // Год («2024», «1987») — сотня вариантов, а не четыре случайные цифры.
+        if let year = lowered.range(of: #"(19|20)\d\d"#, options: .regularExpression) {
+            bits -= max(0, 4 * perCharacter - 7)
+            advice.append("«\(lowered[year])» похоже на год — перебор подставляет годы первыми.")
         }
         bits = max(0, bits)
 
@@ -90,7 +123,7 @@ public struct PasswordStrength: Sendable, Equatable {
         } else if length < recommendedLength {
             advice.append("VeraCrypt советует от \(recommendedLength) символов. Проще всего — фраза из 4–6 случайных слов через пробел.")
         }
-        if weakCharacters * 3 >= length {
+        if (weakCharacters + repeated) * 3 >= length {
             advice.append("Много повторов и подряд идущих символов — их перебирают в первую очередь.")
         }
         if classes.count == 1, length < recommendedLength {

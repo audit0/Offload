@@ -189,6 +189,8 @@ public struct SafeMover: Sendable {
         let fm = FileManager.default
         let source = plan.source
         progress(MoveProgress(phase: .inspecting, bytesDone: 0, bytesTotal: 0, item: source.lastPathComponent))
+        // План мог часами простоять в окне подтверждения, и за это время файлы успели открыть.
+        try Self.assertNotOpen(source)
         // .DS_Store едет в копию вместе со всем остальным: это разложенные человеком вид окна
         // и положение иконок, а оригинал после переноса удаляется — не скопировав, мы их теряем.
         // От срыва переносов защищают сверки: assertMatches вычитает .DS_Store с обеих сторон,
@@ -204,6 +206,7 @@ public struct SafeMover: Sendable {
         Self.removeStalePartials(in: parent, keeping: partial)
         let hashes: [String: String]
         var wroteModes = false
+        var wroteChecksums = false
         do {
             var copied: Int64 = 0
             let marker = PartialMarker(partial: partial)
@@ -221,13 +224,20 @@ public struct SafeMover: Sendable {
             try VerifiedCopy.assertUnchanged(entries, at: source)
             try Self.writeModes(entries, next: plan.target)
             wroteModes = true
+            // Список сумм пишется до переименования: иначе сбой записи оставил бы на диске архив,
+            // о котором не знает журнал.
+            try SafeFile.createExclusive(Self.checksumURL(for: plan.target),
+                                         contents: Data(VerifiedCopy.checksumList(hashes, rootName: plan.target.lastPathComponent).utf8))
+            wroteChecksums = true
             // Метка снимается до переименования: в архив она попасть не должна.
             marker.remove(restoring: entries.first)
             try Self.renameExclusive(partial, to: plan.target)
+            SafeFile.syncDirectory(parent)
         } catch {
             try? fm.removeItem(at: partial)
             Self.removeSidecar(of: partial)
             if wroteModes { try? fm.removeItem(at: Self.modesURL(for: plan.target)) }
+            if wroteChecksums { try? fm.removeItem(at: Self.checksumURL(for: plan.target)) }
             throw error
         }
         if plan.volume.createsAppleDouble {
@@ -235,8 +245,6 @@ public struct SafeMover: Sendable {
             Self.removeSidecar(of: partial)
         }
         let checksums = Self.checksumURL(for: plan.target)
-        try VerifiedCopy.checksumList(hashes, rootName: plan.target.lastPathComponent)
-            .write(to: checksums, atomically: false, encoding: .utf8)
         if plan.volume.createsAppleDouble {
             Self.removeSidecar(of: checksums)
             Self.removeSidecar(of: Self.modesURL(for: plan.target))
@@ -248,6 +256,7 @@ public struct SafeMover: Sendable {
         if deleteOriginal {
             progress(MoveProgress(phase: .removing, bytesDone: total, bytesTotal: total, item: source.lastPathComponent))
             try VerifiedCopy.assertUnchanged(entries, at: source)
+            try Self.assertNotOpen(source)
             try fm.removeItem(at: source)
             record.originalRemoved = true
             try? Journal.save(record, volume: plan.volume)
@@ -289,13 +298,16 @@ public struct SafeMover: Sendable {
 
         let fm = FileManager.default
         progress(MoveProgress(phase: .inspecting, bytesDone: 0, bytesTotal: 0, item: archived.lastPathComponent))
+        // Архивом пользуются на месте (папка моделей LM Studio): пока он открыт, переносить нельзя.
+        try Self.assertNotOpen(archived, strict: true)
         // ._-двойники, которые macOS наплодила на exFAT, в сейф не везём: на APFS они не нужны.
-        let entries = try TreeWalker.walk(archived, strict: true, exclude: { relative, isDirectory in
-            let name = (relative as NSString).lastPathComponent
-            guard !isDirectory, name.hasPrefix("._") else { return false }
-            let sibling = ((relative as NSString).deletingLastPathComponent as NSString).appendingPathComponent(String(name.dropFirst(2)))
-            return Self.exists(archived.appendingPathComponent(sibling))
-        }, isCancelled: isCancelled).entries
+        // Настоящие файлы человека с такими именами едут как все.
+        let stored = Self.storedChecksums(for: archived)
+        let all = try TreeWalker.walk(archived, strict: true, isCancelled: isCancelled).entries
+        let entries = host.createsAppleDouble
+            ? all.filter { !Self.isGeneratedAppleDouble($0, in: archived, listed: stored.hashes) }
+            : all
+        try Self.assertMatches(entries, Inspector.inspect(archived, isCancelled: isCancelled), skippedFiles: all.count - entries.count)
         let total = entries.reduce(Int64(0)) { $0 + $1.size }
         guard total + (64 << 20) <= safe.availableBytes else {
             throw MoveError.destination(["В сейфе не хватает места: нужно \(Format.bytes(total)), свободно \(Format.bytes(safe.availableBytes)). Освободите место на диске «\(host.name)»."])
@@ -321,16 +333,28 @@ public struct SafeMover: Sendable {
             }
             marker.remove(restoring: entries.first)
             try Self.renameExclusive(partial, to: target)
+            SafeFile.syncDirectory(parent)
         } catch {
             try? fm.removeItem(at: partial)
             throw error
         }
+        // Открытый архив удаляется ниже, поэтому он должен быть ровно тем, что скопировано и сверено:
+        // если в него писали, пока шло копирование, — копию в сейфе убираем, архив остаётся как был.
+        do {
+            try VerifiedCopy.assertUnchanged(all, at: archived)
+            try Self.assertNotOpen(archived, strict: true)
+        } catch {
+            try? fm.removeItem(at: target)
+            throw error
+        }
         // Список сумм и права, записанные при переносе, едут вместе с архивом: возврат из сейфа
-        // сверится с тем же списком, что и раньше.
-        for sidecar in [Self.checksumURL(for: archived), Self.modesURL(for: archived)] where Self.exists(sidecar) {
+        // сверится с тем же списком, что и раньше. Только обычные файлы: ссылка на их месте
+        // не должна утащить в сейф что-то с Mac.
+        for sidecar in [Self.checksumURL(for: archived), Self.modesURL(for: archived)] {
+            guard let data = SafeFile.read(sidecar, limit: Self.maxSidecarBytes) else { continue }
             let destination = target.deletingLastPathComponent()
                 .appendingPathComponent(target.lastPathComponent + String(sidecar.lastPathComponent.dropFirst(archived.lastPathComponent.count)))
-            try? fm.copyItem(at: sidecar, to: destination)
+            try? SafeFile.createExclusive(destination, contents: data)
         }
 
         var moved = record
@@ -473,8 +497,7 @@ public struct SafeMover: Sendable {
     /// Метка внутри остатка; `nil` — метки нет или она не читается.
     static func readPartialLock(in partial: URL) -> PartialLock? {
         let url = partial.appendingPathComponent(partialLockName)
-        guard let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber,
-              size.intValue < 4096, let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        guard let data = SafeFile.read(url, limit: 4096), let text = String(data: data, encoding: .utf8) else { return nil }
         let fields = text.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ", maxSplits: 2)
         guard fields.count >= 2, let pid = pid_t(fields[0]), pid > 0, let seconds = TimeInterval(fields[1]) else { return nil }
         return PartialLock(pid: pid, date: Date(timeIntervalSince1970: seconds),
@@ -531,21 +554,26 @@ public struct SafeMover: Sendable {
         guard let volume = Volumes.info(for: archived), Self.exists(archived) else {
             throw MoveError.unsafeRecord("архив не найден — подключите диск «\(record.volumeName)»")
         }
+        // Место с оговорками (скрытые папки программ и т. п.) — туда кладут то, что программа потом
+        // читает и исполняет. Такой возврат принимаем, только если перенос сделан на этом Mac:
+        // локальный журнал в ~/Library подложить с внешнего диска нельзя.
+        if case .caution = rules.pathVerdict(for: original),
+           !Journal.localRecords().contains(where: { $0.id == record.id && $0.originalPath == record.originalPath }) {
+            throw MoveError.unsafeRecord("«\(original.path)» — место, откуда программы читают настройки и код, а запись об этом переносе есть только в журнале на диске, не на этом Mac. Если архив ваш, скопируйте его вручную.")
+        }
         let fm = FileManager.default
         // Служебные ._-двойники, которые macOS сама наплодила рядом с файлами на внешнем диске,
-        // обратно не везём. А .DS_Store везём: при переносе он уехал в архив вместе с папкой,
-        // в нём лежит разложенный человеком вид окна, и возврат должен вернуть папку как была.
-        // Сверкам он не мешает: assertUnchanged его игнорирует, а сверка чисел вычитает
-        // .DS_Store с обеих сторон.
-        var skippedFiles = 0
-        let entries = try TreeWalker.walk(archived, strict: true, exclude: { relative, isDirectory in
-            let name = (relative as NSString).lastPathComponent
-            guard !isDirectory, name.hasPrefix("._") else { return false }
-            let sibling = ((relative as NSString).deletingLastPathComponent as NSString).appendingPathComponent(String(name.dropFirst(2)))
-            guard Self.exists(archived.appendingPathComponent(sibling)) else { return false }
-            skippedFiles += 1
-            return true
-        }, isCancelled: isCancelled).entries
+        // обратно не везём. Настоящие файлы человека с именами на «._» — везём: они значатся
+        // в списке сумм или не похожи на AppleDouble. А .DS_Store везём: при переносе он уехал
+        // в архив вместе с папкой, в нём лежит разложенный человеком вид окна, и возврат должен
+        // вернуть папку как была. Сверкам он не мешает: assertUnchanged его игнорирует, а сверка
+        // чисел вычитает .DS_Store с обеих сторон.
+        let stored = Self.storedChecksums(for: archived)
+        let all = try TreeWalker.walk(archived, strict: true, isCancelled: isCancelled).entries
+        let entries = volume.createsAppleDouble
+            ? all.filter { !Self.isGeneratedAppleDouble($0, in: archived, listed: stored.hashes) }
+            : all
+        let skippedFiles = all.count - entries.count
         try Self.assertMatches(entries, Inspector.inspect(archived, isCancelled: isCancelled), skippedFiles: skippedFiles)
         let total = entries.reduce(Int64(0)) { $0 + $1.size }
 
@@ -558,7 +586,9 @@ public struct SafeMover: Sendable {
         do {
             var copied: Int64 = 0
             let marker = PartialMarker(partial: partial)
+            // setuid и setgid из недоверенного архива не восстанавливаем.
             let hashes = try VerifiedCopy.copyTree(entries, from: archived, to: partial, keepPermissions: volume.keepsPermissions,
+                                                   permissionMask: 0o1777,
                                                    isCancelled: isCancelled, progress: { name, bytes in
                 copied += Int64(bytes)
                 marker.touch(whileCopying: name)
@@ -568,9 +598,9 @@ public struct SafeMover: Sendable {
             // что в архиве изменилось. Отказывать из-за этого нельзя: архив на внешнем диске
             // живёт своей жизнью (с папкой моделей LM Studio так и задумано), и отказ вернуть
             // данные — это потеря доступа к ним.
-            let stored = Self.checkStoredChecksums(hashes, archive: archived)
-            notes += stored.notes
-            needsAttention = needsAttention || stored.hasDifferences
+            let report = Self.checkStoredChecksums(hashes, stored: stored, archive: archived)
+            notes += report.notes
+            needsAttention = needsAttention || report.hasDifferences
             var verified: Int64 = 0
             try VerifiedCopy.verify(entries, hashes: hashes, at: partial, isCancelled: isCancelled) { name, bytes in
                 verified += Int64(bytes)
@@ -601,6 +631,14 @@ public struct SafeMover: Sendable {
             // Данные уже на Mac и сверены. Неудача с удалением архива — повод сказать об этом,
             // а не объявить весь возврат провалившимся.
             do {
+                // Удаляется ровно то, что вернулось: если в архив писали, пока шёл возврат,
+                // или его держит программа — архив остаётся.
+                do {
+                    try VerifiedCopy.assertUnchanged(all, at: archived)
+                } catch {
+                    throw MoveError.blocked("пока шёл возврат, в архиве что-то изменилось, и вернулось не всё новое.")
+                }
+                try Self.assertNotOpen(archived, strict: true)
                 try fm.removeItem(at: archived)
                 try? fm.removeItem(at: Self.checksumURL(for: archived))
                 try? fm.removeItem(at: Self.modesURL(for: archived))
@@ -624,25 +662,24 @@ public struct SafeMover: Sendable {
     ///
     /// Сверка идёт по множествам путей в обе стороны: одного прохода по посчитанным хешам мало —
     /// подложенный в архив файл в списке не значится, и раньше он молча объявлялся «сверенным».
-    static func checkStoredChecksums(_ hashes: [String: String], archive: URL) -> StoredChecksumReport {
-        func isFinderJunk(_ path: String) -> Bool {
-            let name = (path as NSString).lastPathComponent
-            return name == ".DS_Store" || name.hasPrefix("._")
-        }
+    static func checkStoredChecksums(_ hashes: [String: String], stored list: StoredChecksums, archive: URL) -> StoredChecksumReport {
+        // «._»-файлы больше не отбрасываются: служебные двойники в возврат не попадают вовсе,
+        // а настоящие файлы с такими именами должны сверяться, как все.
+        func isFinderJunk(_ path: String) -> Bool { (path as NSString).lastPathComponent == ".DS_Store" }
         func name(_ path: String) -> String { path.isEmpty ? archive.lastPathComponent : path }
         func listing(_ paths: [String], _ limit: Int) -> String { paths.prefix(limit).map(name).joined(separator: ", ") }
 
         let present = Set(hashes.keys).filter { !isFinderJunk($0) }
-        let url = checksumURL(for: archive)
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else {
+        let stored: [String: String]
+        switch list {
+        case .missing:
             return StoredChecksumReport(notes: ["Рядом с архивом нет списка контрольных сумм, записанного при переносе, — сверить архив с его прежним состоянием не с чем. Все \(present.count) файлов сверены с тем, что лежит на диске сейчас, и вернулись такими."],
                                         hasDifferences: true)
-        }
-        guard ((attributes[.size] as? NSNumber)?.int64Value ?? .max) < 200 * 1024 * 1024,
-              let text = try? String(contentsOf: url, encoding: .utf8),
-              let stored = VerifiedCopy.parseChecksumList(text, rootName: archive.lastPathComponent) else {
+        case .unreadable:
             return StoredChecksumReport(notes: ["Список контрольных сумм рядом с архивом не читается — сверить архив с его прежним состоянием не с чем. Все \(present.count) файлов сверены с тем, что лежит на диске сейчас, и вернулись такими."],
                                         hasDifferences: true)
+        case .list(let hashes):
+            stored = hashes
         }
         let expected = Set(stored.keys).filter { !isFinderJunk($0) }
         let common = present.intersection(expected)
@@ -726,6 +763,65 @@ public struct SafeMover: Sendable {
         (try? FileManager.default.attributesOfItem(atPath: url.path)) != nil
     }
 
+    /// Предел для служебных файлов рядом с архивом: они лежат на недоверенном диске.
+    static let maxSidecarBytes = 200 * 1024 * 1024
+
+    /// Список сумм, записанный при переносе рядом с архивом.
+    enum StoredChecksums {
+        case missing
+        case unreadable
+        case list([String: String])
+
+        var hashes: [String: String]? {
+            if case .list(let hashes) = self { return hashes }
+            return nil
+        }
+    }
+
+    static func storedChecksums(for archive: URL) -> StoredChecksums {
+        let url = checksumURL(for: archive)
+        guard exists(url) else { return .missing }
+        guard let data = SafeFile.read(url, limit: maxSidecarBytes), let text = String(data: data, encoding: .utf8),
+              let hashes = VerifiedCopy.parseChecksumList(text, rootName: archive.lastPathComponent) else { return .unreadable }
+        return .list(hashes)
+    }
+
+    /// Служебный ._-двойник, который macOS сама кладёт рядом с файлом на exFAT и других дисках
+    /// без расширенных атрибутов. Признаков три, и нужны все: рядом лежит файл, к которому он
+    /// относится; его нет в списке сумм, записанном при переносе (файл человека, уехавший в архив,
+    /// там есть); и он начинается с сигнатуры AppleDouble. Раньше хватало одного соседа — и настоящий
+    /// файл «._photo.jpg» рядом с «photo.jpg» не возвращался, а потом удалялся вместе с архивом.
+    static func isGeneratedAppleDouble(_ entry: TreeEntry, in root: URL, listed: [String: String]?) -> Bool {
+        let name = (entry.relativePath as NSString).lastPathComponent
+        guard entry.isFile, name.hasPrefix("._"), name.count > 2, listed?[entry.relativePath] == nil else { return false }
+        let sibling = ((entry.relativePath as NSString).deletingLastPathComponent as NSString)
+            .appendingPathComponent(String(name.dropFirst(2)))
+        guard exists(root.appendingPathComponent(sibling)) else { return false }
+        return hasAppleDoubleMagic(root.appendingPathComponent(entry.relativePath))
+    }
+
+    static func hasAppleDoubleMagic(_ url: URL) -> Bool {
+        let descriptor = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+        guard descriptor >= 0 else { return false }
+        defer { close(descriptor) }
+        var magic = [UInt8](repeating: 0, count: 4)
+        guard Darwin.read(descriptor, &magic, 4) == 4 else { return false }
+        return magic == [0x00, 0x05, 0x16, 0x07]
+    }
+
+    /// Файлы держит другая программа — удалять и копировать их нельзя.
+    /// - Parameter strict: `true` — если проверить не удалось, тоже отказ. Иначе неудачная
+    ///   проверка пропускается: о ней уже предупредили в плане, и человек подтвердил.
+    static func assertNotOpen(_ url: URL, strict: Bool = false) throws {
+        guard let holders = openFiles(in: url) else {
+            if strict { throw MoveError.blocked("Не удалось проверить, открыты ли файлы «\(url.lastPathComponent)» в других программах. Повторите чуть позже.") }
+            return
+        }
+        guard holders.isEmpty else {
+            throw MoveError.blocked("Файлы сейчас открыты: \(holders.prefix(3).joined(separator: ", ")). Закройте приложение и повторите.")
+        }
+    }
+
     /// Настоящая папка (не ссылка), в которой нет ничего, кроме .DS_Store.
     static func isEmptyDirectory(_ url: URL) -> Bool {
         guard (try? FileManager.default.attributesOfItem(atPath: url.path))?[.type] as? FileAttributeType == .typeDirectory,
@@ -742,8 +838,13 @@ public struct SafeMover: Sendable {
         guard rmdir(url.path) == 0 else { throw MoveError.alreadyExists(url.path) }
     }
 
+    /// Свободное имя — и для самого архива, и для его спутников: оставшийся от удалённого архива
+    /// «.modes.json» иначе срывал бы каждый следующий перенос, а подложенный «.sha256» принимал бы запись.
     static func unique(_ url: URL) -> URL {
-        guard exists(url) else { return url }
+        func isFree(_ candidate: URL) -> Bool {
+            !exists(candidate) && !exists(checksumURL(for: candidate)) && !exists(modesURL(for: candidate))
+        }
+        guard !isFree(url) else { return url }
         let parent = url.deletingLastPathComponent()
         let ext = url.pathExtension
         let stem = ext.isEmpty ? url.lastPathComponent : String(url.lastPathComponent.dropLast(ext.count + 1))
@@ -751,7 +852,7 @@ public struct SafeMover: Sendable {
         while true {
             let name = ext.isEmpty ? "\(stem) (\(number))" : "\(stem) (\(number)).\(ext)"
             let candidate = parent.appendingPathComponent(name)
-            if !exists(candidate) { return candidate }
+            if isFree(candidate) { return candidate }
             number += 1
         }
     }
@@ -778,9 +879,7 @@ public struct SafeMover: Sendable {
     /// `false` — списка прав рядом с архивом нет или он не читается.
     @discardableResult
     static func applyModes(from url: URL, to root: URL, allowed: Set<String>) -> Bool {
-        guard let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber,
-              size.intValue < 200 * 1024 * 1024,
-              let data = try? Data(contentsOf: url),
+        guard let data = SafeFile.read(url, limit: maxSidecarBytes),
               let modes = try? JSONDecoder().decode([String: Int].self, from: data) else { return false }
         // Сначала файлы, потом каталоги — от глубоких к корню.
         for (relative, mode) in modes.sorted(by: { $0.key.count > $1.key.count }) {

@@ -174,6 +174,10 @@ struct SafeStatusPanel: View {
                             }
                         }
                         .labelsHidden()
+                        // Сон, блокировка и простой закрывают сейф выбранного диска. Переключись на другой
+                        // диск при открытом сейфе — прежний остался бы открытым без присмотра.
+                        .disabled(app.safe.isOpen || app.safe.activity != nil)
+                        .help(app.safe.isOpen ? "Закройте сейф, чтобы выбрать другой диск" : "")
                     } else if let volume = app.destination {
                         Label(volume.name, systemImage: "externaldrive.fill")
                             .font(.callout.weight(.medium))

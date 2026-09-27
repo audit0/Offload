@@ -120,9 +120,6 @@ func checksCleanup() {
               "кеш открытой программы не отмечается, даже если его удаляли в прошлый раз, — и сказано почему")
         check(busy.suggest(item("Library/Developer/Xcode/DerivedData", gb: 5, daysAgo: 1, verdict: .blocked("Данные приложений"))).preselected,
               "кеши закрытых программ отмечены как обычно")
-        let jetbrains = CleanupPlanner.busy(home: home, running: ["com.jetbrains.intellij": "IntelliJ IDEA"])
-        check(jetbrains.keys.contains(home.appendingPathComponent("Library/Caches/JetBrains").path) && jetbrains.count == 1,
-              "любая среда JetBrains держит общий кеш JetBrains, и только его")
         check(CleanupPlanner.busy(home: home, running: [:]).isEmpty, "ничего не открыто — ничего не занято")
 
         var ignoring = planner
@@ -136,11 +133,18 @@ func checksCleanup() {
               "не предлагать папку — значит и всё внутри неё, но не соседей с похожим именем")
 
         let fake = scratch.appendingPathComponent("home-regenerable", isDirectory: true)
-        for relative in [".gradle/caches", "Library/Caches/Google/Chrome", "Library/Caches/JetBrains"] {
+        let ide = "Library/Caches/JetBrains/IntelliJIdea2025.2"
+        for relative in [".gradle/caches", "Library/Caches/Google/Chrome", ide + "/caches", ide + "/index", ide + "/LocalHistory"] {
             try fm.createDirectory(at: fake.appendingPathComponent(relative), withIntermediateDirectories: true)
         }
-        check(Set(CleanupPlanner.regenerable(home: fake).keys) == Set([".gradle/caches", "Library/Caches/Google/Chrome", "Library/Caches/JetBrains"]
+        let jetbrainsCaches = [ide + "/caches", ide + "/index"]
+        check(Set(CleanupPlanner.regenerable(home: fake).keys) == Set(([".gradle/caches", "Library/Caches/Google/Chrome"] + jetbrainsCaches)
             .map { fake.appendingPathComponent($0, isDirectory: true).path }), "кеши Gradle, Chrome и JetBrains находятся, если они есть")
+        check(!CleanupPlanner.regenerable(home: fake).keys.contains { $0.contains("LocalHistory") },
+              "локальная история правок JetBrains в мусор не попадает — только кеши и индексы")
+        let jetbrains = CleanupPlanner.busy(home: fake, running: ["com.jetbrains.intellij": "IntelliJ IDEA"])
+        check(Set(jetbrains.keys) == Set(jetbrainsCaches.map { fake.appendingPathComponent($0, isDirectory: true).path }),
+              "любая среда JetBrains держит кеши JetBrains, и только их")
     }
 
     section("Разбор: база решений") {

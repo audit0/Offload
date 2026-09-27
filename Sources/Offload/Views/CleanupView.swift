@@ -512,7 +512,8 @@ struct CleanupView: View {
                         }
                         .prominentButton()
                         .controlSize(.large)
-                        .keyboardShortcut(.defaultAction)
+                        // Без Return: одно нажатие отвечало «да» на все вопросы сразу, включая безвозвратную
+                        // очистку Docker, — хотя человек мог нажать Return, ещё не прочитав их.
                         .help(open.count > together.count
                               ? "Ответить «да» на все вопросы, кроме установщиков: их удаляю только по отдельному ответу"
                               : "Ответить «да» на все вопросы")

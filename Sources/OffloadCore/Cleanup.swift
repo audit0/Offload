@@ -329,11 +329,31 @@ public struct CleanupPlanner: Sendable {
         public var reason: String
         /// Программы, которые держат это место, пока открыты: начала их идентификаторов.
         public var apps: [String]
+        /// Если не пусто — удаляется не само место, а только эти папки внутри каждой его подпапки.
+        public var children: [String]
 
-        public init(_ path: String, _ reason: String, apps: [String] = []) {
+        public init(_ path: String, _ reason: String, apps: [String] = [], children: [String] = []) {
             self.path = path
             self.reason = reason
             self.apps = apps
+            self.children = children
+        }
+    }
+
+    /// Пути места на этом Mac. У места с `children` — только эти папки внутри каждой подпапки:
+    /// у JetBrains в папке среды рядом с кешами лежит локальная история правок (LocalHistory),
+    /// и удалить её вместе с кешем значило бы потерять историю, в том числе файлов вне git.
+    static func paths(of location: RegenerableLocation, home: URL, fileManager: FileManager) -> [String] {
+        let url = home.appendingPathComponent(location.path, isDirectory: true)
+        guard !location.children.isEmpty else { return [url.path] }
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey]
+        let subfolders = ((try? fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: Array(keys))) ?? [])
+            .filter { (try? $0.resourceValues(forKeys: keys)).map { $0.isDirectory == true && $0.isSymbolicLink != true } ?? false }
+            .sorted { $0.path < $1.path }
+        // Путь собирается от самого места: contentsOfDirectory может вернуть его в другом написании
+        // (/private/var вместо /var), и ключи не совпали бы с остальными путями разбора.
+        return subfolders.flatMap { folder in
+            location.children.map { url.appendingPathComponent(folder.lastPathComponent, isDirectory: true).appendingPathComponent($0, isDirectory: true).path }
         }
     }
 
@@ -357,8 +377,8 @@ public struct CleanupPlanner: Sendable {
         RegenerableLocation(".gradle/caches", "Кеш Gradle — зависимости скачаются снова."),
         RegenerableLocation(".cargo/registry/cache", "Скачанные пакеты Cargo — скачаются снова."),
         RegenerableLocation("Library/Caches/ms-playwright", "Браузеры Playwright — скачаются снова командой «playwright install»."),
-        RegenerableLocation("Library/Caches/JetBrains", "Кеши сред JetBrains — пересоздаются при следующем запуске.",
-                            apps: ["com.jetbrains."]),
+        RegenerableLocation("Library/Caches/JetBrains", "Кеши и индексы сред JetBrains — пересоздаются при следующем запуске. Локальная история правок не затрагивается.",
+                            apps: ["com.jetbrains."], children: ["caches", "index"]),
         RegenerableLocation("Library/Application Support/Code/Cache", "Кеш VS Code — пересоздаётся сам.", apps: ["com.microsoft.VSCode"]),
         RegenerableLocation("Library/Application Support/Code/CachedData", "Кеш VS Code — пересоздаётся сам.",
                             apps: ["com.microsoft.VSCode"]),
@@ -373,21 +393,23 @@ public struct CleanupPlanner: Sendable {
     public static func regenerable(home: URL, fileManager: FileManager = .default) -> [String: String] {
         var result: [String: String] = [:]
         for location in regenerableLocations {
-            let url = home.appendingPathComponent(location.path, isDirectory: true)
-            if fileManager.fileExists(atPath: url.path) { result[url.path] = location.reason }
+            for path in paths(of: location, home: home, fileManager: fileManager) where fileManager.fileExists(atPath: path) {
+                result[path] = location.reason
+            }
         }
         return result
     }
 
     /// Какие восстанавливаемые места сейчас держат открытые программы. `running` — идентификатор
     /// открытой программы → её имя. Ответ: путь → почему место не отмечено.
-    public static func busy(home: URL, running: [String: String]) -> [String: String] {
+    public static func busy(home: URL, running: [String: String], fileManager: FileManager = .default) -> [String: String] {
         var result: [String: String] = [:]
         for location in regenerableLocations {
             let holders = running.filter { id, _ in location.apps.contains { id.hasPrefix($0) } }
             guard let name = holders.sorted(by: { $0.key < $1.key }).first?.value else { continue }
-            result[home.appendingPathComponent(location.path, isDirectory: true).path] =
-                "Сейчас открыт \(name): кеш занят. Закройте программу — и его можно будет удалить."
+            for path in paths(of: location, home: home, fileManager: fileManager) {
+                result[path] = "Сейчас открыт \(name): кеш занят. Закройте программу — и его можно будет удалить."
+            }
         }
         return result
     }
@@ -404,7 +426,11 @@ public struct CleanupPlanner: Sendable {
                   (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { continue }
             roots.append(url)
         }
-        return roots.filter { fileManager.fileExists(atPath: $0.path) }
+        // Диск, подключённый прямо в домашнюю папку (~/nas по SMB, ~/mnt), — не Mac: единственная
+        // копия могла бы остаться на нём, а поиск читал бы сеть.
+        func device(_ url: URL) -> NSNumber? { (try? fileManager.attributesOfItem(atPath: url.path))?[.systemNumber] as? NSNumber }
+        let homeDevice = device(home)
+        return roots.filter { fileManager.fileExists(atPath: $0.path) && (homeDevice == nil || device($0) == homeDevice) }
     }
 }
 

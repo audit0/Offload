@@ -66,7 +66,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // в том числе у листов, меню и предупреждений.
         NSApp.appearance = NSAppearance(named: .aqua)
         NSApp.activate()
-        if let directory = ProcessInfo.processInfo.environment["OFFLOAD_SNAPSHOT_DIR"], !directory.isEmpty {
+        // Снимки — только в демонстрационном режиме. Иначе любая программа под этой учётной записью
+        // запустила бы Offload (`open --env OFFLOAD_SNAPSHOT_DIR=…`) и получила бы его руками —
+        // с полным доступом к диску — картинки с именами и размерами папок из защищённых мест,
+        // записанные в любую папку.
+        if Demo.isOn, let directory = ProcessInfo.processInfo.environment["OFFLOAD_SNAPSHOT_DIR"], !directory.isEmpty {
             Task { await Snapshots.run(into: URL(fileURLWithPath: directory, isDirectory: true), delegate: self) }
         }
     }

@@ -53,6 +53,11 @@ final class SafeModel {
     private(set) var encryptedMounts: Set<String> = []
     /// Почему сейф закроется, как только закончится идущая операция.
     private(set) var pendingClose: String?
+    /// Сон или блокировка пришли, пока сейф открывался: закрыть, как только откроется.
+    /// Раньше такое событие терялось — сейф был «ещё закрыт», — и после ввода пароля
+    /// оставался открытым при заблокированном экране.
+    private var closeAfterOpening: String?
+    static let openingTitle = "Открываю сейф…"
 
     var closeOnSleep: Bool { didSet { persist() } }
     var closeOnLock: Bool { didSet { persist() } }
@@ -236,7 +241,8 @@ final class SafeModel {
         let vault = SecretsVault(imageURL: state.imageURL)
         let opened = Collector<URL>()
         unlockError = nil
-        perform("Открываю сейф…", app: app, {
+        closeAfterOpening = nil
+        perform(Self.openingTitle, app: app, {
             opened.append(try vault.attach(password: password))
             return nil
         }, failed: { [weak self] error in
@@ -248,6 +254,10 @@ final class SafeModel {
             if let mount = opened.all.first, self.state?.imageURL == vault.imageURL {
                 self.state?.mount = mount
                 self.state?.isEncrypted = true
+            }
+            if let reason = closeAfterOpening {
+                closeAfterOpening = nil
+                close(app: app, reason: reason)
             }
         })
     }
@@ -324,6 +334,10 @@ final class SafeModel {
     }
 
     func trigger(_ reason: String, app: AppModel) {
+        if activity == Self.openingTitle {
+            closeAfterOpening = reason
+            return
+        }
         guard isOpen else { return }
         if app.isBusy {
             pendingClose = reason
@@ -341,6 +355,10 @@ final class SafeModel {
     /// Если в сейф пишется, а прерывать операции не разрешено, он останется открытым —
     /// и об этом будет сказано, а не промолчано.
     private func closeNow(reason: String, app: AppModel) {
+        if activity == Self.openingTitle {
+            closeAfterOpening = reason
+            return
+        }
         guard let mount = state?.mount else { return }
         if app.isBusy, !interruptOperations {
             pendingClose = reason

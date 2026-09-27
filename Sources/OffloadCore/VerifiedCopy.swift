@@ -150,6 +150,9 @@ public enum VerifiedCopy {
             throw CopyError.writeFailed(destination.path, String(cString: strerror(code)))
         }
         let output = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        // Записанное не оседает в кеше: сверка потом перечитывает копию с носителя, а не из памяти,
+        // где она совпала бы с оригиналом, даже если на диск легло не то.
+        _ = fcntl(descriptor, F_NOCACHE, 1)
         var hasher = SHA256()
         do {
             while true {
@@ -163,8 +166,9 @@ public enum VerifiedCopy {
                 if count == 0 { break }
                 progress(count)
             }
-            // Данные должны лечь на диск до того, как оригинал будет удалён.
-            try output.synchronize()
+            // Данные должны лечь на диск до того, как оригинал будет удалён. fsync на macOS
+            // оставляет их в кеше самого накопителя — выдерни флешку, и они пропадут; нужен F_FULLFSYNC.
+            try SafeFile.fullSync(descriptor, path: destination.path)
             try output.close()
         } catch {
             try? output.close()
@@ -188,8 +192,10 @@ public enum VerifiedCopy {
     ///   как в неё что-то записано. Через него кладётся метка «здесь идёт копирование»: без неё
     ///   соседний экземпляр Offload видит только имя `.offload-partial-…` и дату, которая по ходу
     ///   работы не меняется.
+    /// - Parameter permissionMask: какие биты прав переносить. При возврате из недоверенного архива
+    ///   setuid и setgid отбрасываются.
     public static func copyTree(_ entries: [TreeEntry], from source: URL, to destination: URL,
-                                keepPermissions: Bool,
+                                keepPermissions: Bool, permissionMask: Int = 0o7777,
                                 isCancelled: () -> Bool = { false },
                                 progress: (String, Int) -> Void = { _, _ in },
                                 didCreateRoot: (URL) -> Void = { _ in }) throws -> [String: String] {
@@ -218,7 +224,7 @@ public enum VerifiedCopy {
             if case .symlink = entry.kind { continue }
             var attributes: [FileAttributeKey: Any] = [:]
             if let modified = entry.modified { attributes[.modificationDate] = modified }
-            if keepPermissions, let permissions = entry.permissions { attributes[.posixPermissions] = permissions }
+            if keepPermissions, let permissions = entry.permissions { attributes[.posixPermissions] = permissions & permissionMask }
             try? fm.setAttributes(attributes, ofItemAtPath: url(destination, entry).path)
         }
         return hashes
@@ -360,5 +366,59 @@ public enum VerifiedCopy {
             }
             return "\(hash)  \(path)"
         }.joined(separator: "\n") + "\n"
+    }
+}
+
+/// Служебные файлы рядом с архивом лежат на недоверенном диске: на месте любого из них может
+/// оказаться символическая ссылка на файл с Mac, FIFO или /dev/zero.
+enum SafeFile {
+    /// Содержимое обычного файла не больше `limit` байт. Ссылка, FIFO, устройство или файл
+    /// больше предела — `nil`. O_NONBLOCK — чтобы FIFO не подвесил открытие.
+    static func read(_ url: URL, limit: Int) -> Data? {
+        let descriptor = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+        guard descriptor >= 0 else { return nil }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        defer { try? handle.close() }
+        var info = stat()
+        guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size <= limit else { return nil }
+        guard let data = try? handle.read(upToCount: limit + 1) else { return nil }
+        let result = data ?? Data()
+        return result.count <= limit ? result : nil
+    }
+
+    /// Создаёт новый файл: существующий файл или подложенная на его месте ссылка — ошибка, а не перезапись.
+    static func createExclusive(_ url: URL, contents: Data) throws {
+        let descriptor = open(url.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o644)
+        guard descriptor >= 0 else {
+            let code = errno
+            if code == EEXIST { throw CopyError.destinationExists(url.path) }
+            throw CopyError.writeFailed(url.path, String(cString: strerror(code)))
+        }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        do {
+            try handle.write(contentsOf: contents)
+            try fullSync(descriptor, path: url.path)
+            try handle.close()
+        } catch {
+            try? handle.close()
+            unlink(url.path)
+            throw error
+        }
+    }
+
+    /// Сбросить файл на носитель, минуя кеш накопителя. Файловые системы без F_FULLFSYNC
+    /// (сетевые, часть сторонних) получают обычный fsync.
+    static func fullSync(_ descriptor: Int32, path: String) throws {
+        if fcntl(descriptor, F_FULLFSYNC) == 0 { return }
+        guard fsync(descriptor) == 0 else { throw CopyError.writeFailed(path, String(cString: strerror(errno))) }
+    }
+
+    /// Переименование — запись в каталоге; без сброса каталога после выдернутого диска копия
+    /// может остаться под временным именем или пропасть, хотя оригинал уже удалён.
+    static func syncDirectory(_ url: URL) {
+        let descriptor = open(url.path, O_RDONLY | O_DIRECTORY)
+        guard descriptor >= 0 else { return }
+        defer { close(descriptor) }
+        try? fullSync(descriptor, path: url.path)
     }
 }

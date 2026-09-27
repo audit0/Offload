@@ -29,8 +29,10 @@ public enum Journal {
 
     public static func state(of url: URL) -> State {
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else { return .missing }
-        guard ((attributes[.size] as? NSNumber)?.intValue ?? .max) <= maxManifestBytes,
-              let data = try? Data(contentsOf: url),
+        // Ссылка на /dev/zero или FIFO на месте журнала иначе подвесила бы программу при каждом
+        // подключении диска: размер по lstat у них крошечный, а читается бесконечно.
+        guard attributes[.type] as? FileAttributeType == .typeRegular,
+              let data = SafeFile.read(url, limit: maxManifestBytes),
               let records = try? decoder.decode([MoveRecord].self, from: data) else { return .broken }
         return .records(records)
     }

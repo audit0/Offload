@@ -589,6 +589,10 @@ final class CleanupModel {
             let found = await Task.detached(priority: .userInitiated) { () -> [CleanupSuggestion] in
                 let regenerable = CleanupPlanner.regenerable(home: rules.home)
                 let roots = CleanupPlanner.roots(home: rules.home)
+                // Папка прямо в домашней может сама быть git-репозиторием (~/myrepo): её подпапки —
+                // части проекта, переносить их по одной в сейф нельзя.
+                let gitRoots = Set(roots.filter { FileManager.default.fileExists(atPath: $0.appendingPathComponent(".git").path) }
+                    .map(\.standardizedFileURL.path))
                 // Подключённый образ `isencrypted` не читает — про такие отвечает `hdiutil info`.
                 let attached = SecretsVault.attachedImages()
                 var seen = Set<String>()
@@ -603,7 +607,9 @@ final class CleanupModel {
                     let path = item.url.standardizedFileURL.path
                     let observation = CleanupObservation(
                         url: item.url, bytes: item.bytes, modified: item.modified, isDirectory: item.isDirectory,
-                        verdict: item.verdict,
+                        verdict: gitRoots.contains(item.url.deletingLastPathComponent().standardizedFileURL.path)
+                            ? .blocked("Часть git-репозитория «\(item.url.deletingLastPathComponent().lastPathComponent)». Переносите и сохраняйте проект целиком.")
+                            : item.verdict,
                         isProject: item.isDirectory
                             && FileManager.default.fileExists(atPath: item.url.appendingPathComponent(".git").path),
                         inBackup: sources.contains { path == $0 || path.hasPrefix($0 + "/") },

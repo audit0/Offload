@@ -108,6 +108,11 @@ public struct SafetyRules: Sendable {
             return .blocked("Переносить можно только из домашней папки и /Users/Shared.")
         }
         guard let first = parts.first else { return .blocked("Домашнюю папку целиком переносить нельзя.") }
+        // Служебная папка git: из неё git сам запускает хуки, а без неё проект — уже не репозиторий.
+        // Регистр не важен: на обычном диске Mac «.GIT» и «.git» — одна папка.
+        if parts.contains(where: { $0.lowercased() == ".git" }) {
+            return .blocked("Служебная папка git-репозитория. Переносите проект целиком.")
+        }
 
         if parts.count == 1, Self.standardFolders.contains(first) {
             return .blocked("«\(first)» — стандартная папка macOS. Переносите её содержимое, а не саму папку.")
@@ -117,7 +122,9 @@ public struct SafetyRules: Sendable {
         if first == "Library" { return libraryVerdict(parts) }
         if let bundle = parts.first(where: Self.isRegisteredBundle) { return Self.bundleBlocked(bundle) }
         if first.hasPrefix(".") {
-            if Self.pinnedHiddenFolders.contains(first) {
+            // Регистр не важен: путь, которого ещё нет, realpath не приводит к настоящему регистру,
+            // а «~/.SSH» на обычном диске Mac — та же папка, что «~/.ssh».
+            if Self.pinnedHiddenFolders.contains(where: { $0.lowercased() == first.lowercased() }) {
                 return .blocked("«~/\(first)» — настройки, ключи или инструменты разработки. Им нужно оставаться на месте.")
             }
             if parts.count == 1 {

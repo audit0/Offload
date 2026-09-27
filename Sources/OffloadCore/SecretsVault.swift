@@ -49,7 +49,7 @@ public struct SecretsReport: Sendable {
 /// потому что аргументы командной строки видны любому процессу через `ps`.
 public struct SecretsVault: Sendable {
     public static let volumeName = "OffloadSecrets"
-    public static let minimumPasswordLength = 12
+    public static let minimumPasswordLength = 16
     public static let dotfiles = [".zshrc", ".zprofile", ".bashrc", ".bash_profile", ".gitconfig", ".npmrc", ".pypirc", ".netrc", ".git-credentials"]
 
     public let imageURL: URL
@@ -565,6 +565,7 @@ public struct SecretsVault: Sendable {
         // Шифрование открытого тома подтверждает сама подсистема образов (`hdiutil info`).
         if let mount = status.mountPoint {
             guard status.isEncrypted else { throw VaultError.notEncrypted }
+            _ = Self.restrictToOwner(mount)
             return mount
         }
         // Дешёвый отсев до запуска hdiutil: обычный образ примет любой пароль.
@@ -586,7 +587,19 @@ public struct SecretsVault: Sendable {
             Self.detachIgnoringErrors(mountPoint)
             throw VaultError.notEncrypted
         }
+        // Корень тома после attach — 755: пока сейф открыт, его читали бы другие учётные записи
+        // этого Mac (гость, вход по ssh), а файлы копируются с исходными правами (.env, .npmrc — 644).
+        // Дома их закрывали права ~/Documents; в сейфе закрываем корнем. APFS права хранит.
+        guard Self.restrictToOwner(mountPoint) else {
+            Self.detachIgnoringErrors(mountPoint)
+            throw VaultError.mountFailed("не удалось закрыть сейф от других пользователей этого Mac (chmod 700)")
+        }
         return mountPoint
+    }
+
+    /// Корень открытого сейфа — только для владельца.
+    static func restrictToOwner(_ mountPoint: URL) -> Bool {
+        chmod(mountPoint.path, 0o700) == 0
     }
 
     /// Точка монтирования, если контейнер уже открыт — например, вручную через hdiutil или в Finder.
@@ -627,9 +640,13 @@ public struct SecretsVault: Sendable {
 
     /// Зашифрованный ли это образ диска — `.dmg` в Загрузках, копия в группе одинаковых файлов.
     /// Подключённый образ `isencrypted` не читает, про него отвечает `hdiutil info`.
+    ///
+    /// Нет ответа — считаем зашифрованным. Ответ нужен разбору, чтобы не удалить личный образ:
+    /// при сбое или тайм-ауте hdiutil прежде выходило «не зашифрован», и зашифрованный .dmg
+    /// попадал в старые установщики. А у подключённого образа `isencrypted` не отвечает вовсе.
     public static func isEncryptedImage(_ url: URL, attached: [String: Attachment]? = nil) -> Bool {
         if let attachment = (attached ?? attachedImages())[Paths.resolve(url).path] { return attachment.encrypted }
-        return encryptionInfo(of: url)?.encrypted == true
+        return encryptionInfo(of: url)?.encrypted ?? true
     }
 
     /// Складывает в открытый контейнер: ~/.ssh с правами, дотфайлы, учётку GitHub CLI

@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 
 /// Потоковый SHA-256: файлы любого размера читаются кусками по 4 МБ.
@@ -8,6 +9,8 @@ public enum FileHasher {
     public static func sha256(of url: URL, isCancelled: () -> Bool = { false }, progress: (Int) -> Void = { _ in }) throws -> String {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
+        // Мимо кеша: сверка копии должна читать носитель, а не страницы, оставшиеся в памяти.
+        _ = fcntl(handle.fileDescriptor, F_NOCACHE, 1)
         var hasher = SHA256()
         while true {
             if isCancelled() { throw CancellationError() }
