@@ -2,9 +2,128 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:Offload">
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
-        <StackPanel Margin="32" MaxWidth="980">
-            <TextBlock Text="Safe" Style="{StaticResource Title}" />
-        </StackPanel>
-    </ScrollViewer>
+    <!-- Сейф: состояние и замок, автозакрытие, открытые данные на диске, пароль и заголовок, честно о защите. -->
+    <Grid>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+            <Border Padding="32,32,32,4" MaxWidth="1044">
+                <StackPanel x:Name="Body">
+                    <local:NoticeView x:Name="Message" Margin="0,0,0,28" Visibility="Collapsed" />
+
+                    <!-- Состояние сейфа. -->
+                    <StackPanel Margin="0,0,0,28">
+                        <local:Card>
+                            <StackPanel x:Name="StatusPanel" />
+                        </local:Card>
+                        <TextBlock Style="{StaticResource Caption}" Margin="4,8,4,0"
+                                   Text="Сейф — зашифрованный образ VHDX (BitLocker XTS-AES-256) на внешнем диске. Пока он закрыт, на диске лежит только шифротекст: потерянный или украденный диск ничего не выдаст. Пароль Offload не хранит и не записывает — если его забыть, данные не восстановит никто." />
+                        <TextBlock Style="{StaticResource Caption}" Margin="4,4,4,0"
+                                   Text="Подключать образы и открывать BitLocker Windows разрешает только администратору, поэтому при первом создании, открытии или закрытии сейфа за сеанс она спросит разрешение (окно UAC). Дальше до выхода из Offload — без вопросов." />
+                    </StackPanel>
+
+                    <!-- Автоматическое закрытие. -->
+                    <local:CardSection x:Name="AutoCloseSection" Header="Автоматическое закрытие" Margin="0,0,0,28"
+                                       Footer="Пока сейф открыт, ключ шифрования живёт в памяти компьютера, а файлы доступны программам под вашей учётной записью. Поэтому лучше не держать его открытым без нужды. При выходе из Offload сейф закрывается всегда.">
+                        <StackPanel>
+                            <local:FormRow Title="Когда компьютер уходит в сон">
+                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding Safe.CloseOnSleep}" />
+                            </local:FormRow>
+                            <Separator Style="{StaticResource RowDivider}" />
+                            <local:FormRow Title="Когда экран заблокирован, включилась заставка или сменился пользователь">
+                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding Safe.CloseOnLock}" />
+                            </local:FormRow>
+                            <Separator Style="{StaticResource RowDivider}" />
+                            <local:FormRow Title="Если им не пользоваться">
+                                <ComboBox x:Name="IdlePicker" MinWidth="150" DisplayMemberPath="Title" SelectedValuePath="Value"
+                                          SelectedValue="{Binding Safe.IdleMinutes}" />
+                            </local:FormRow>
+                            <Separator Style="{StaticResource RowDivider}" />
+                            <local:FormRow x:Name="InterruptRow" Title="Прерывать копирование ради закрытия">
+                                <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding Safe.InterruptOperations}" />
+                            </local:FormRow>
+                        </StackPanel>
+                    </local:CardSection>
+
+                    <!-- Открытые данные на диске. -->
+                    <local:CardSection x:Name="ExposureSection" Header="Открытые данные на диске" Margin="0,0,0,28">
+                        <StackPanel x:Name="ExposurePanel" />
+                    </local:CardSection>
+
+                    <!-- Пароль, заголовок, место. -->
+                    <local:CardSection x:Name="KeySection" Header="Пароль, заголовок, место" Margin="0,0,0,28">
+                        <StackPanel>
+                            <local:FormRow Title="Пароль" Detail="Данные не перешифровываются — меняется только заголовок.">
+                                <Button x:Name="ChangePasswordButton" Content="Сменить…" Click="ChangePassword_Click" />
+                            </local:FormRow>
+                            <Separator Style="{StaticResource RowDivider}" />
+                            <local:FormRow Title="Копия заголовка" Detail="Храните отдельно от диска: без заголовка сейф не откроется.">
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="BackupHeaderButton" Content="Сохранить…" Click="BackupHeader_Click" />
+                                    <Button x:Name="RestoreHeaderButton" Content="Восстановить…" Margin="8,0,0,0" Click="RestoreHeader_Click" />
+                                </StackPanel>
+                            </local:FormRow>
+                            <Separator Style="{StaticResource RowDivider}" />
+                            <local:FormRow x:Name="LimitRow" Title="Предел роста">
+                                <Button x:Name="GrowButton" Content="Увеличить…" Click="Grow_Click" />
+                            </local:FormRow>
+                            <Separator Style="{StaticResource RowDivider}" />
+                            <local:FormRow Title="Место на диске" Detail="Образ сам не уменьшается, когда из сейфа удаляют файлы.">
+                                <Button x:Name="CompactButton" Content="Вернуть…" Click="Compact_Click" />
+                            </local:FormRow>
+                        </StackPanel>
+                    </local:CardSection>
+
+                    <!-- Честно о защите. -->
+                    <local:CardSection Header="Что защищено, а что нет" Margin="0,0,0,28">
+                        <StackPanel Margin="18">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="26" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="&#xEC61;" Style="{StaticResource Icon}" Foreground="{StaticResource Ink}" VerticalAlignment="Top" Margin="0,1,0,0" />
+                                <TextBlock Grid.Column="1" Style="{StaticResource Body}" FontSize="12.5">
+                                    <Run FontWeight="SemiBold" Text="Как в VeraCrypt:" />
+                                    <Run Text="XTS-AES-256; пароль не хранится и не пишется на диск, в BitLocker уходит напрямую через его программный интерфейс, а не командной строкой; шифрование проверяется у самой Windows до открытия и после; автозакрытие по сну, блокировке и простою; резервная копия заголовка; смена пароля без перешифровки данных; перенос со сверкой SHA-256." />
+                                </TextBlock>
+                            </Grid>
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="26" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="&#xE738;" Style="{StaticResource Icon}" Foreground="{StaticResource Ink}" VerticalAlignment="Top" Margin="0,1,0,0" />
+                                <TextBlock Grid.Column="1" Style="{StaticResource Body}" FontSize="12.5">
+                                    <Run FontWeight="SemiBold" Text="Иначе, чем в VeraCrypt:" />
+                                    <Run Text="нет скрытых томов и правдоподобного отрицания, каскадов шифров и ключевых файлов. Формат образа — родной для Windows (VHDX с BitLocker): его шифрование написала и проверяет Microsoft, мы не изобретаем своё. Если нужно именно отрицание существования данных — пользуйтесь VeraCrypt." />
+                                </TextBlock>
+                            </Grid>
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="26" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="&#xE7BA;" Style="{StaticResource Icon}" Foreground="{StaticResource Faint}" VerticalAlignment="Top" Margin="0,1,0,0" />
+                                <TextBlock Grid.Column="1" Style="{StaticResource Body}" FontSize="12.5">
+                                    <Run FontWeight="SemiBold" Text="Что сейф не защитит:" />
+                                    <Run Text="открытый сейф — от программ, запущенных под вашей учётной записью; компьютер с вредоносной программой — от перехвата пароля при вводе; слабый пароль — от перебора." />
+                                </TextBlock>
+                            </Grid>
+                        </StackPanel>
+                    </local:CardSection>
+                </StackPanel>
+            </Border>
+        </ScrollViewer>
+
+        <!-- Что сейчас делается с сейфом: капсула поверх страницы. -->
+        <Border x:Name="ActivityPill" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,10,0,0" Padding="14,8"
+                CornerRadius="999" Background="#F2FAFAFC" BorderBrush="#26000000" BorderThickness="1" Visibility="Collapsed">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="16" ShadowDepth="2" Direction="270" Opacity="0.10" Color="Black" />
+            </Border.Effect>
+            <StackPanel Orientation="Horizontal">
+                <ProgressBar Style="{StaticResource Spinner}" />
+                <TextBlock x:Name="ActivityText" Style="{StaticResource Body}" Margin="8,0,0,0" VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+    </Grid>
 </UserControl>

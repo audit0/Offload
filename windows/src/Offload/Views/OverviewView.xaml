@@ -2,9 +2,176 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:Offload">
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
-        <StackPanel Margin="32" MaxWidth="980">
-            <TextBlock Text="Overview" Style="{StaticResource Title}" />
-        </StackPanel>
+    <!-- Обзор: системный диск, внешний диск с сейфом, память; порядок работы; советы; память по приложениям. -->
+    <UserControl.Resources>
+        <Style x:Key="CardGlyph" TargetType="TextBlock" BasedOn="{StaticResource Icon}">
+            <Setter Property="Width" Value="18" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="TextAlignment" Value="Center" />
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+        <Border Padding="32,32,32,4" MaxWidth="1044">
+            <StackPanel>
+
+                <!-- Только что подключили внешний диск — самое время разобрать компьютер. -->
+                <local:Card x:Name="ConnectedCard" Tint="Brand" Margin="0,0,0,28" Visibility="Collapsed">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <local:IconTile Glyph="&#xE88E;" Tone="Brand" Size="40" VerticalAlignment="Top" />
+                        <StackPanel Grid.Column="1" Margin="14,0,0,0">
+                            <TextBlock x:Name="ConnectedTitle" Style="{StaticResource Headline}" />
+                            <TextBlock Style="{StaticResource Callout}" Margin="0,4,0,0"
+                                       Text="Разобрать компьютер: найду, что занимает место зря, и спрошу про каждое — удалить, убрать в сейф или добавить в бэкап. Без вашего «да» ничего не трогаю." />
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <Button Style="{StaticResource ProminentButton}" Click="Cleanup_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xEA99;" FontFamily="{StaticResource IconFont}" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                        <TextBlock Text="Разобрать" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Content="Не сейчас" Margin="8,0,0,0" Click="NotNow_Click" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </local:Card>
+
+                <!-- Три карточки одной высоты: строка сетки берёт высоту самой высокой. -->
+                <Grid Margin="0,0,0,28">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="16" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="16" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Системный диск. -->
+                    <local:Card>
+                        <DockPanel LastChildFill="False">
+                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal">
+                                <TextBlock Text="&#xEDA2;" Style="{StaticResource CardGlyph}" />
+                                <TextBlock Text="Диск" Style="{StaticResource Headline}" />
+                            </StackPanel>
+                            <ProgressBar x:Name="DiskSpinner" DockPanel.Dock="Top" Style="{StaticResource Spinner}" Margin="0,36,0,22" HorizontalAlignment="Center" />
+                            <StackPanel x:Name="DiskBody" DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,14,0,0">
+                                <local:RingGauge x:Name="DiskRing" Width="60" Height="60">
+                                    <TextBlock x:Name="DiskPercent" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource Ink}" />
+                                </local:RingGauge>
+                                <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock x:Name="DiskFree" Style="{StaticResource Display}" FontSize="26" />
+                                    <TextBlock x:Name="DiskTotal" Style="{StaticResource Caption}" Margin="0,2,0,0" />
+                                </StackPanel>
+                            </StackPanel>
+                            <StackPanel x:Name="DiskState" DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,14,0,0">
+                                <TextBlock x:Name="DiskStateGlyph" FontFamily="{StaticResource IconFont}" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBlock x:Name="DiskStateText" FontSize="12.5" FontWeight="Medium" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </DockPanel>
+                    </local:Card>
+
+                    <!-- Внешний диск и сейф на нём: куда Offload переносит и в каком состоянии замок. -->
+                    <local:Card Grid.Column="2">
+                        <DockPanel LastChildFill="False">
+                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal">
+                                <TextBlock Text="&#xE88E;" Style="{StaticResource CardGlyph}" />
+                                <TextBlock Text="Внешний диск" Style="{StaticResource Headline}" />
+                            </StackPanel>
+                            <StackPanel x:Name="HostBody" DockPanel.Dock="Top" Margin="0,14,0,0">
+                                <TextBlock x:Name="HostName" Style="{StaticResource Display}" FontSize="19" TextTrimming="CharacterEllipsis" />
+                                <local:CapacityBar x:Name="HostBar" Margin="0,6,0,0" />
+                                <TextBlock x:Name="HostDetail" Style="{StaticResource Caption}" Margin="0,6,0,0" />
+                            </StackPanel>
+                            <StackPanel x:Name="HostMissing" DockPanel.Dock="Top" Margin="0,14,0,0">
+                                <TextBlock Text="Не подключён" Style="{StaticResource Display}" FontSize="19" Foreground="{StaticResource Muted}" />
+                                <TextBlock Style="{StaticResource Caption}" Margin="0,6,0,0"
+                                           Text="На него Offload переносит то, что не нужно держать на компьютере, и там же живёт сейф." />
+                            </StackPanel>
+                            <StackPanel x:Name="HostSafe" DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,14,0,0">
+                                <TextBlock x:Name="HostSafeGlyph" FontFamily="{StaticResource IconFont}" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBlock x:Name="HostSafeText" FontSize="12.5" FontWeight="Medium" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </DockPanel>
+                    </local:Card>
+
+                    <!-- Память. -->
+                    <local:Card Grid.Column="4">
+                        <DockPanel LastChildFill="False">
+                            <Grid DockPanel.Dock="Top">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="&#xEEA1;" Style="{StaticResource CardGlyph}" />
+                                <TextBlock Grid.Column="1" Text="Память" Style="{StaticResource Headline}" />
+                                <TextBlock x:Name="MemoryTotal" Grid.Column="2" Style="{StaticResource Callout}" VerticalAlignment="Center" />
+                            </Grid>
+                            <ProgressBar x:Name="MemorySpinner" DockPanel.Dock="Top" Style="{StaticResource Spinner}" Margin="0,36,0,22" HorizontalAlignment="Center" />
+                            <StackPanel x:Name="MemoryBody" DockPanel.Dock="Top" Margin="0,14,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse x:Name="PressureDot" Width="10" Height="10" VerticalAlignment="Center" Margin="0,2,8,0" />
+                                    <TextBlock x:Name="PressureTitle" Style="{StaticResource Display}" FontSize="19" />
+                                </StackPanel>
+                                <TextBlock Text="давление памяти" Style="{StaticResource Caption}" Margin="0,2,0,0" />
+                                <StackPanel Margin="0,14,0,0" TextBlock.FontSize="11.5">
+                                    <local:InfoRow Title="Файл подкачки"><TextBlock x:Name="SwapValue" /></local:InfoRow>
+                                    <local:InfoRow Title="Сжато" Margin="0,5,0,0"><TextBlock x:Name="CompressedValue" /></local:InfoRow>
+                                    <local:InfoRow Title="Свободно" Margin="0,5,0,0"><TextBlock x:Name="FreeValue" /></local:InfoRow>
+                                    <local:InfoRow Title="Без перезагрузки" Margin="0,5,0,0"><TextBlock x:Name="UptimeValue" /></local:InfoRow>
+                                </StackPanel>
+                            </StackPanel>
+                        </DockPanel>
+                    </local:Card>
+                </Grid>
+
+                <!-- Порядок работы одним взглядом: что уже сделано, что дальше и куда для этого нажать. -->
+                <local:Card Padding="0" Margin="0,0,0,28">
+                    <StackPanel>
+                        <StackPanel Margin="18">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="&#xE8FD;" Style="{StaticResource CardGlyph}" />
+                                <TextBlock Grid.Column="1" Text="Порядок работы" Style="{StaticResource Headline}" />
+                                <TextBlock x:Name="StepsDone" Grid.Column="2" Style="{StaticResource Callout}" VerticalAlignment="Center" />
+                            </Grid>
+                            <local:CapacityBar x:Name="StepsBar" BarHeight="4" Margin="0,10,0,0" />
+                        </StackPanel>
+                        <Border Height="1" Background="#14000000" />
+                        <StackPanel x:Name="StepsList" />
+                    </StackPanel>
+                </local:Card>
+
+                <!-- Что стоит сделать. -->
+                <local:Card x:Name="AdviceCard" Margin="0,0,0,28">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE82F;" Style="{StaticResource CardGlyph}" />
+                            <TextBlock Text="Что стоит сделать" Style="{StaticResource Headline}" />
+                        </StackPanel>
+                        <StackPanel x:Name="AdviceList" />
+                    </StackPanel>
+                </local:Card>
+
+                <!-- Память по приложениям. -->
+                <local:Card x:Name="AppsCard" Margin="0,0,0,28">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE7B8;" Style="{StaticResource CardGlyph}" />
+                            <TextBlock Text="Память по приложениям" Style="{StaticResource Headline}" />
+                        </StackPanel>
+                        <StackPanel x:Name="AppsList" Margin="0,2,0,0" />
+                    </StackPanel>
+                </local:Card>
+            </StackPanel>
+        </Border>
     </ScrollViewer>
 </UserControl>
