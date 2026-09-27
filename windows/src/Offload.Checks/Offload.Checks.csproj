@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Проверки — отдельная программа без тестового фреймворка, как OffloadChecks у версии для Mac.
+       Запуск: dotnet run, проект src/Offload.Checks. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Offload.Checks</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Offload.Core/Offload.Core.csproj" />
+  </ItemGroup>
+</Project>

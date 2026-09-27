@@ -1,0 +1,18 @@
+<Project>
+  <!-- Общее для всех проектов Windows-версии. Версия — та же, что у версии для Mac: файл VERSION в корне. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <SatelliteResourceLanguages>ru</SatelliteResourceLanguages>
+    <OffloadVersion>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../VERSION').Trim())</OffloadVersion>
+    <Version>$(OffloadVersion)</Version>
+    <Company>audit0</Company>
+    <Product>Offload</Product>
+    <Copyright>MIT</Copyright>
+    <Deterministic>true</Deterministic>
+    <NoWarn>$(NoWarn);CA1416;SYSLIB1054</NoWarn>
+  </PropertyGroup>
+</Project>
