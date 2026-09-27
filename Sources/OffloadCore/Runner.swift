@@ -36,13 +36,20 @@ public enum Runner {
     /// поэтому системные программы оттуда никогда не берутся.
     public static let thirdPartyDirectories = ["/opt/homebrew/bin", "/usr/local/bin", "/Applications/Docker.app/Contents/Resources/bin"]
     public static let thirdPartyTools: Set<String> = ["docker", "zstd", "restic"]
+    /// Claude Code (помощник по файлам): установщик Anthropic кладёт его в ~/.local/bin, Homebrew — в свои каталоги,
+    /// npm — в ~/.npm-global/bin, старая «локальная» установка — в ~/.claude/local. Больше нигде не ищем.
+    public static var claudeDirectories: [String] {
+        let home = NSHomeDirectory()
+        return [home + "/.local/bin", "/opt/homebrew/bin", "/usr/local/bin", home + "/.npm-global/bin", home + "/.claude/local"]
+    }
 
     /// Запись в закрытый канал иначе убивает приложение сигналом SIGPIPE.
     private static let ignoreSigpipe: Void = { signal(SIGPIPE, SIG_IGN) }()
 
     public static func locate(_ name: String) -> URL? {
         guard !name.isEmpty, !name.contains("/") else { return nil }
-        let directories = thirdPartyTools.contains(name) ? thirdPartyDirectories : systemDirectories
+        let directories = name == "claude" ? claudeDirectories
+            : thirdPartyTools.contains(name) ? thirdPartyDirectories : systemDirectories
         for directory in directories {
             let url = URL(fileURLWithPath: directory, isDirectory: true).appendingPathComponent(name)
             if FileManager.default.isExecutableFile(atPath: url.path) { return url }
