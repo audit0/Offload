@@ -1,0 +1,10 @@
+<UserControl x:Class="Offload.SafeView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Offload">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+        <StackPanel Margin="32" MaxWidth="980">
+            <TextBlock Text="Safe" Style="{StaticResource Title}" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

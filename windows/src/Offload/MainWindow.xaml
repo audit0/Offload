@@ -1,0 +1,82 @@
+<Window x:Class="Offload.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Offload"
+        Title="Offload" Width="1180" Height="760" MinWidth="960" MinHeight="620"
+        WindowStartupLocation="CenterScreen" Icon="Assets/Offload.ico"
+        FontFamily="{StaticResource TextFont}" FontSize="13" Foreground="{StaticResource Ink}"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Ideal">
+    <Grid x:Name="Root">
+        <!-- Дымка поверх стекла окна: приглушает яркость, но рабочий стол размыто просвечивает. -->
+        <Border x:Name="Haze" Background="#66D6D6DE" />
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="260" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Боковая колонка — чуть светлее страницы, но тоже стекло. -->
+            <Border Background="#47FFFFFF">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Bottom" Margin="10">
+                        <local:SafeStatusPanel x:Name="StatusPanel" />
+                        <Button Style="{StaticResource LinkButton}" Margin="6,10,0,0" Click="About_Click" Foreground="{StaticResource Muted}">
+                            <TextBlock FontSize="11.5">О программе Offload</TextBlock>
+                        </Button>
+                    </StackPanel>
+                    <ItemsControl x:Name="SidebarList" Margin="10,8,10,0" Focusable="False">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type local:SidebarItem}">
+                                <Button Click="Section_Click" Tag="{Binding}" Focusable="True" Margin="0,0,0,2" Cursor="Hand"
+                                        FocusVisualStyle="{x:Null}" HorizontalAlignment="Stretch">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Back" Height="32" CornerRadius="10" Background="Transparent" BorderThickness="0.8" BorderBrush="Transparent"
+                                                    Padding="10,0">
+                                                <ContentPresenter VerticalAlignment="Center" />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Back" Property="Background" Value="#4DFFFFFF" />
+                                                </Trigger>
+                                                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                    <Setter TargetName="Back" Property="Background" Value="#9EFFFFFF" />
+                                                    <Setter TargetName="Back" Property="BorderBrush" Value="{StaticResource GlassEdge}" />
+                                                </DataTrigger>
+                                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                                    <Setter TargetName="Back" Property="BorderBrush" Value="#66111111" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="20" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock x:Name="Glyph" Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="15" HorizontalAlignment="Center" />
+                                        <TextBlock x:Name="Label" Grid.Column="1" Text="{Binding Title}" Margin="10,0,6,0" VerticalAlignment="Center" FontSize="13.5" />
+                                        <Border Grid.Column="2" CornerRadius="9" Background="{StaticResource Line}" MinWidth="20" Height="18" Padding="6,0"
+                                                Visibility="{Binding Badge, Converter={StaticResource Visible}}">
+                                            <TextBlock Text="{Binding Badge}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Muted}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+                                    </Grid>
+                                </Button>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                        <Setter TargetName="Label" Property="FontWeight" Value="SemiBold" />
+                                        <Setter TargetName="Glyph" Property="Foreground" Value="{StaticResource Ink}" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </DockPanel>
+            </Border>
+
+            <ContentControl x:Name="Page" Grid.Column="1" Focusable="False" />
+        </Grid>
+    </Grid>
+</Window>

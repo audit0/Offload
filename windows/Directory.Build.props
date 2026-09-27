@@ -13,6 +13,6 @@
     <Product>Offload</Product>
     <Copyright>MIT</Copyright>
     <Deterministic>true</Deterministic>
-    <NoWarn>$(NoWarn);CA1416;SYSLIB1054</NoWarn>
+    <NoWarn>$(NoWarn);CA1416;SYSLIB1054;WPF0001</NoWarn>
   </PropertyGroup>
 </Project>
