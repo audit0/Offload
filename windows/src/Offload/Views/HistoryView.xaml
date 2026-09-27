@@ -2,9 +2,79 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:Offload">
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
-        <StackPanel Margin="32" MaxWidth="980">
-            <TextBlock Text="History" Style="{StaticResource Title}" />
-        </StackPanel>
-    </ScrollViewer>
+    <DockPanel>
+        <!-- Идёт возврат: что, на каком этапе, и как остановить. -->
+        <Border x:Name="BusyBar" DockPanel.Dock="Top" Padding="28,14" BorderThickness="0,0,0,1" BorderBrush="#14000000" Visibility="Collapsed">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ProgressBar Style="{StaticResource Spinner}" />
+                    <TextBlock x:Name="BusyTitle" Grid.Column="1" Style="{StaticResource Headline}" Margin="10,0,12,0" VerticalAlignment="Center"
+                               TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="BusyPhase" Grid.Column="2" Style="{StaticResource Callout}" VerticalAlignment="Center" Margin="0,0,12,0" />
+                    <Button Grid.Column="3" Content="Отменить" Click="CancelRestore_Click" />
+                </Grid>
+                <ProgressBar x:Name="BusyProgress" Maximum="1" Margin="0,10,0,0" />
+            </StackPanel>
+        </Border>
+
+        <Grid>
+            <!-- Список. -->
+            <ScrollViewer x:Name="ListPage" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                <Border Padding="32,24,32,32" MaxWidth="1044">
+                    <StackPanel>
+                        <Button x:Name="AddButton" Style="{StaticResource SmallButton}" HorizontalAlignment="Right" Margin="0,0,0,14" Click="Add_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" FontSize="11" VerticalAlignment="Center" Margin="0,1,6,0" />
+                                <TextBlock Text="Добавить вручную…" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <local:NoticeView x:Name="ListNotice" Margin="0,0,0,16" Visibility="Collapsed" />
+                        <UniformGrid Columns="3" Margin="-8,0,-8,0">
+                            <local:Card Margin="8,0">
+                                <StackPanel>
+                                    <local:IconTile Glyph="&#xEDA2;" HorizontalAlignment="Left" />
+                                    <TextBlock x:Name="StoredValue" Style="{StaticResource Title}" FontSize="24" Margin="0,10,0,0" />
+                                    <TextBlock Text="лежит на внешних дисках" Style="{StaticResource Callout}" Margin="0,2,0,0" />
+                                </StackPanel>
+                            </local:Card>
+                            <local:Card Margin="8,0">
+                                <StackPanel>
+                                    <local:IconTile x:Name="CountTile" HorizontalAlignment="Left" />
+                                    <TextBlock x:Name="CountValue" Style="{StaticResource Title}" FontSize="24" Margin="0,10,0,0" />
+                                    <TextBlock x:Name="CountTitle" Style="{StaticResource Callout}" Margin="0,2,0,0" />
+                                    <TextBlock x:Name="CountDetail" Style="{StaticResource Caption}" Foreground="{StaticResource Faint}" Margin="0,2,0,0" />
+                                </StackPanel>
+                            </local:Card>
+                            <local:Card Margin="8,0">
+                                <StackPanel>
+                                    <local:IconTile Glyph="&#xE7A7;" Tone="Neutral" HorizontalAlignment="Left" />
+                                    <TextBlock x:Name="RestoredValue" Style="{StaticResource Title}" FontSize="24" Margin="0,10,0,0" />
+                                    <TextBlock Text="возвращено на компьютер" Style="{StaticResource Callout}" Margin="0,2,0,0" />
+                                </StackPanel>
+                            </local:Card>
+                        </UniformGrid>
+                        <local:Card Padding="0" Margin="0,20,0,0">
+                            <StackPanel x:Name="Rows" />
+                        </local:Card>
+                    </StackPanel>
+                </Border>
+            </ScrollViewer>
+
+            <!-- Пусто. -->
+            <StackPanel x:Name="EmptyPage" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="520" Margin="32" Visibility="Collapsed">
+                <local:NoticeView x:Name="EmptyNotice" Margin="0,0,0,24" Visibility="Collapsed" />
+                <TextBlock Text="&#xE7B8;" Style="{StaticResource Icon}" FontSize="40" HorizontalAlignment="Center" />
+                <TextBlock Text="Пока ничего не перенесено" Style="{StaticResource Title}" FontSize="19" HorizontalAlignment="Center" Margin="0,14,0,0" />
+                <TextBlock x:Name="EmptyText" Style="{StaticResource Callout}" TextAlignment="Center" Margin="0,8,0,0" />
+                <Button x:Name="EmptyAddButton" Content="Добавить вручную…" HorizontalAlignment="Center" Margin="0,16,0,0" Click="Add_Click"
+                        ToolTipService.ShowOnDisabled="True" />
+            </StackPanel>
+        </Grid>
+    </DockPanel>
 </UserControl>
