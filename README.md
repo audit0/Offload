@@ -1,6 +1,6 @@
 # Offload
 
-Разгрузка диска Mac без риска потерять данные. Offload показывает, что занимает место, переносит выбранное в зашифрованный сейф на внешнем диске со сверкой каждого файла, делает обновляемый бэкап проектов и складывает туда же ключи и токены.
+Разгрузка диска Mac без риска потерять данные. Есть [версия для Windows](#windows). Offload показывает, что занимает место, переносит выбранное в зашифрованный сейф на внешнем диске со сверкой каждого файла, делает обновляемый бэкап проектов и складывает туда же ключи и токены.
 
 Главное правило: **оригинал удаляется только после того, как копия перечитана с диска и совпала с ним байт в байт.**
 
@@ -182,6 +182,36 @@ git tag v0.1.0 && git push origin v0.1.0
 
 GitHub Actions прогонит проверки, соберёт universal-сборку (Apple Silicon + Intel), упакует `Offload.zip` и `Offload.dmg` с контрольными суммами и опубликует релиз. Установщик берёт файлы из последнего релиза.
 
+## Windows
+
+Версия для Windows лежит в папке [`windows/`](windows/) и делает то же самое, с теми же разделами, текстами и правилами. Одной командой в PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/audit0/Offload/main/windows/scripts/install.ps1 | iex
+```
+
+Установщик скачивает архив последнего релиза, сверяет SHA-256 и (если стоит `gh`) подтверждение сборки, ставит `Offload.exe` в `%LOCALAPPDATA%\Programs\Offload` и добавляет ярлык в меню «Пуск». Права администратора не нужны. Нужна Windows 10 или 11, x64 или ARM. Отдельно .NET ставить не надо: `Offload.exe` самодостаточный.
+
+Чем отличается от версии для Mac:
+
+- **Сейф** — образ VHDX, зашифрованный BitLocker (XTS-AES-256) с паролем. Для него нужна Windows Pro, Enterprise или Education: в Home нет BitLocker. Подключать образы Windows разрешает только администратору, поэтому при первой операции с сейфом она один раз спросит разрешение (UAC). Остальное Offload делает с обычными правами. Смена пароля, копия заголовка, автозакрытие при сне, блокировке, простое и выходе, Ctrl+Shift+L — как на Mac. «Вернуть место на диск» переписывает сейф заново, со сверкой: сжать VHDX с BitLocker на месте Windows не умеет.
+- **Корзина** — Корзина Windows. **Открытые файлы** определяются через Restart Manager, и Offload называет программу, которая их держит. **Виртуальные машины** — WSL, VirtualBox и VMware: их Offload не переносит и подсказывает, как освободить место в самой программе. **Docker** — Docker Desktop (`docker_data.vhdx`). **Из iCloud** работает с папкой iCloud Drive из «iCloud для Windows» и restic из `winget install restic.restic`.
+- Разбор знает кеши Windows-версий тех же программ (npm, pip, NuGet, Gradle, Cargo, Go, Chrome, Edge, VS Code, JetBrains, Spotify…) и не трогает `AppData`, реестр пользователя, OneDrive и медиатеки.
+- Журнал переносов в том же формате, что на Mac: подключив диск, заполненный на Mac, Windows покажет, что на нём лежит, но вернуть такой перенос можно только на Mac.
+- `Offload.exe` не подписан сертификатом: если скачать его браузером, SmartScreen при первом запуске предложит «Подробнее → Выполнить в любом случае». Установщик PowerShell этого не требует.
+
+Сборка из исходников — .NET SDK 10:
+
+```powershell
+dotnet run --project windows\src\Offload.Checks
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File windows\scripts\install-local.ps1
+```
+
+Проверки (`Offload.Checks`) прогоняют перенос и возврат на настоящем томе exFAT, создание, открытие, смену пароля и восстановление заголовка сейфа — эти части требуют прав администратора и Windows Pro; `OFFLOAD_SKIP_VAULT=1`, `OFFLOAD_SKIP_INTEGRATION=1` и `OFFLOAD_SKIP_DOCKER=1` их отключают. Режим снимков тот же: `OFFLOAD_DEMO=1` и `OFFLOAD_SNAPSHOT_DIR`. Релиз собирается тем же тегом: GitHub Actions выкладывает рядом с `Offload.dmg` архивы `Offload-Windows-x64.zip` и `Offload-Windows-arm64.zip`.
+
 ## Лицензия
 
 [MIT](LICENSE)
@@ -200,4 +230,4 @@ Install:
 curl -fsSL https://raw.githubusercontent.com/audit0/Offload/main/scripts/install.sh | zsh
 ```
 
-Build from source with Xcode Command Line Tools: `swift run OffloadChecks`, then `scripts/install-local.sh`. With Command Line Tools 27+ and no Xcode, plain `swift build` cannot build the SwiftUI layer (the `@State` macro plugin ships with Xcode); `scripts/build-app.sh` falls back to the SDK 26 that ships with the same tools. The UI is in Russian. See [SECURITY.md](SECURITY.md) for the threat model. MIT licensed.
+Build from source with Xcode Command Line Tools: `swift run OffloadChecks`, then `scripts/install-local.sh`. With Command Line Tools 27+ and no Xcode, plain `swift build` cannot build the SwiftUI layer (the `@State` macro plugin ships with Xcode); `scripts/build-app.sh` falls back to the SDK 26 that ships with the same tools. A Windows version (WPF, .NET 10, BitLocker-encrypted VHDX vault) lives in `windows/`; install it with `irm https://raw.githubusercontent.com/audit0/Offload/main/windows/scripts/install.ps1 | iex`. The UI is in Russian. See [SECURITY.md](SECURITY.md) for the threat model. MIT licensed.

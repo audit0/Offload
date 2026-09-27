@@ -1,0 +1,27 @@
+<local:SheetWindow x:Class="Offload.SpaceMachinesSheet"
+                   xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                   xmlns:local="clr-namespace:Offload"
+                   Width="660" Glyph="&#xE7F4;" Heading="Виртуальные машины">
+    <!-- Переносить машины сам Offload не берётся: WSL, VirtualBox и VMware помнят машины по месту, а их диски
+         растут по мере записи. Копия в обход программы потеряла бы и то и другое, поэтому лист ведёт в сами программы. -->
+    <StackPanel>
+        <StackPanel x:Name="LoadingRow" Orientation="Horizontal">
+            <ProgressBar Style="{StaticResource Spinner}" />
+            <TextBlock Text="Считаю, сколько занимает каждая машина…" Style="{StaticResource Body}" Foreground="{StaticResource Muted}"
+                       Margin="10,0,0,0" VerticalAlignment="Center" />
+        </StackPanel>
+        <local:NoticeView x:Name="EmptyNotice" Kind="Info" Visibility="Collapsed"
+                          Text="Виртуальных машин не нашлось: ни дистрибутивов WSL, ни машин в папках «VirtualBox VMs» и «Документы\Virtual Machines». Машины из других папок VirtualBox и VMware показывают у себя в списке." />
+        <local:Card x:Name="ListCard" Padding="0" Visibility="Collapsed">
+            <ScrollViewer x:Name="ListScroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                <StackPanel x:Name="Rows" />
+            </ScrollViewer>
+        </local:Card>
+        <StackPanel x:Name="Steps" Margin="0,18,0,0" />
+    </StackPanel>
+
+    <local:SheetWindow.Actions>
+        <Button Content="Готово" Style="{StaticResource ProminentButton}" IsDefault="True" IsCancel="True" Click="Done_Click" />
+    </local:SheetWindow.Actions>
+</local:SheetWindow>

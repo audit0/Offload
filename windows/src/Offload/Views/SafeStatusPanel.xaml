@@ -1,0 +1,47 @@
+<UserControl x:Class="Offload.SafeStatusPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Offload">
+    <!-- Нижняя панель боковой колонки: диск, сейф и куда класть. Видна из любого раздела — сейф и его замок
+         должны быть перед глазами всегда, а не прятаться в одном из разделов. -->
+    <local:Card Padding="10">
+        <StackPanel>
+            <TextBlock Text="Внешний диск" Style="{StaticResource Caption}" />
+            <StackPanel x:Name="NoDisk" Orientation="Horizontal" Margin="0,6,0,0">
+                <TextBlock Text="&#xE88E;" Style="{StaticResource Icon}" Margin="0,0,8,0" />
+                <TextBlock Text="Не подключён" Style="{StaticResource Callout}" />
+            </StackPanel>
+            <ComboBox x:Name="DiskPicker" Margin="0,6,0,0" SelectionChanged="DiskPicker_SelectionChanged" DisplayMemberPath="Name" />
+            <StackPanel x:Name="DiskName" Orientation="Horizontal" Margin="0,6,0,0">
+                <TextBlock Text="&#xEDA2;" Style="{StaticResource Icon}" Foreground="{StaticResource Ink}" Margin="0,0,8,0" />
+                <TextBlock x:Name="DiskTitle" FontWeight="Medium" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+            <local:CapacityBar x:Name="DiskBar" BarHeight="4" Margin="0,6,0,0" />
+            <TextBlock x:Name="DiskDetail" Style="{StaticResource Caption}" Margin="0,4,0,0" />
+
+            <StackPanel x:Name="SafeBlock">
+                <Border Height="1" Background="#14000000" Margin="0,10" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <local:IconTile x:Name="SafeTile" Size="26" />
+                    <StackPanel Grid.Column="1" Margin="8,0,4,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="SafeTitle" FontWeight="Medium" TextTrimming="CharacterEllipsis" />
+                        <TextBlock x:Name="SafeDetail" Style="{StaticResource Caption}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <ProgressBar x:Name="SafeSpinner" Grid.Column="2" Style="{StaticResource Spinner}" Visibility="Collapsed" />
+                    <Button x:Name="SafeButton" Grid.Column="2" Style="{StaticResource SmallButton}" Click="SafeButton_Click" />
+                </Grid>
+                <Border Style="{StaticResource SegmentBar}" Margin="0,10,0,0" ToolTip="Куда пойдут перенос, бэкап и тома Docker">
+                    <UniformGrid Columns="2">
+                        <RadioButton x:Name="ToSafe" Style="{StaticResource Segment}" Content="В сейф" GroupName="Store" Checked="Store_Checked" />
+                        <RadioButton x:Name="ToDisk" Style="{StaticResource Segment}" Content="Открыто на диск" GroupName="Store" Checked="Store_Checked" />
+                    </UniformGrid>
+                </Border>
+            </StackPanel>
+        </StackPanel>
+    </local:Card>
+</UserControl>

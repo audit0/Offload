@@ -9,3 +9,6 @@ dist/
 xcuserdata/
 DerivedData/
 .claude/worktrees/
+windows/**/bin/
+windows/**/obj/
+windows/dist/
