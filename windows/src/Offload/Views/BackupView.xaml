@@ -2,9 +2,185 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:Offload">
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
-        <StackPanel Margin="32" MaxWidth="980">
-            <TextBlock Text="Backup" Style="{StaticResource Title}" />
-        </StackPanel>
-    </ScrollViewer>
+    <UserControl.Resources>
+        <!-- Значок внутри кнопки: цвет берёт у кнопки (у главной — белый). -->
+        <Style x:Key="ButtonGlyph" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <!-- Имя в списке исключений: моноширинным шрифтом на стеклянной капсуле. -->
+        <DataTemplate x:Key="Chip">
+            <Border CornerRadius="999" Background="#8CFFFFFF" BorderBrush="#1A000000" BorderThickness="1" Padding="8,3" Margin="0,0,6,6">
+                <TextBlock Text="{Binding}" FontFamily="Cascadia Mono, Consolas" FontSize="12.5" Foreground="{StaticResource Ink}" />
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <!-- Страница-колонка: в конструкторе заворачивается в Pages.Scroll. -->
+    <StackPanel x:Name="Root">
+
+        <!-- 1. Что бэкапить -->
+        <local:CardSection Header="Что бэкапить" Number="1">
+            <StackPanel>
+                <StackPanel x:Name="SourcesEmpty">
+                    <TextBlock Text="Добавьте папки с проектами и документами." Style="{StaticResource Body}" Foreground="{StaticResource Muted}" Margin="14,10" />
+                    <Separator Style="{StaticResource RowDivider}" />
+                </StackPanel>
+                <ItemsControl x:Name="SourcesList" Focusable="False">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel>
+                                <Grid Margin="14,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <local:IconTile Glyph="&#xE8B7;" Size="26" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Display}" ToolTip="{Binding Path}" Style="{StaticResource Body}" TextWrapping="NoWrap"
+                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="10,0,8,0" />
+                                    <Button Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE738;" FontSize="14" Tag="{Binding Path}"
+                                            ToolTip="Убрать из бэкапа" Click="RemoveSource_Click" />
+                                </Grid>
+                                <Separator Style="{StaticResource RowDivider}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Button x:Name="AddSourcesButton" Style="{StaticResource LinkButton}" Margin="14,10" Click="AddSources_Click">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE710;" Style="{StaticResource ButtonGlyph}" />
+                        <TextBlock Text="Добавить папки…" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </local:CardSection>
+
+        <!-- Исключения -->
+        <local:CardSection Header="Исключения" Margin="0,28,0,0"
+                           Footer="Эти папки восстанавливаются одной командой (npm install, pip install, сборка). Файлы с ключами и токенами — .env, .envrc, *.pem, *.key, *.p8, id_ed25519 — и папки .ssh, .gnupg, .aws в бэкап проектов не попадают никогда: для них раздел «Ключи и токены» ниже, и лежат они только в сейфе.">
+            <StackPanel Margin="18">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Не копировать папки и файлы с именами" Style="{StaticResource Body}" VerticalAlignment="Center" />
+                    <Button x:Name="EditExclusionsButton" Grid.Column="1" Style="{StaticResource SmallButton}" Content="Изменить" Click="EditExclusions_Click" />
+                </Grid>
+                <TextBox x:Name="ExclusionsEditor" Margin="0,10,0,0" Tag="node_modules, .venv, dist" AcceptsReturn="True" TextWrapping="Wrap"
+                         MinLines="2" MaxLines="6" VerticalScrollBarVisibility="Auto" Visibility="Collapsed"
+                         Text="{Binding Backup.ExcludedText, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBlock x:Name="ExclusionsNone" Text="Ничего не пропускается." Style="{StaticResource Callout}" Margin="0,10,0,0" Visibility="Collapsed" />
+                <ItemsControl x:Name="ExclusionChips" Margin="0,10,0,-6" Focusable="False" ItemTemplate="{StaticResource Chip}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                </ItemsControl>
+            </StackPanel>
+        </local:CardSection>
+
+        <!-- 2. Куда -->
+        <local:CardSection Header="Куда" Number="2" Margin="0,28,0,0">
+            <StackPanel Margin="18">
+                <local:TargetSummary />
+                <StackPanel x:Name="TargetBlock">
+                    <Grid Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Папка" Style="{StaticResource Callout}" VerticalAlignment="Center" />
+                        <TextBox x:Name="DestinationText" Grid.Column="1" Style="{StaticResource SelectableText}" TextWrapping="NoWrap" VerticalAlignment="Center"
+                                 HorizontalAlignment="Right" FontSize="12.5" Margin="12,0,0,0" />
+                        <Button x:Name="ChooseDestinationButton" Grid.Column="2" Content="Выбрать…" Margin="10,0,0,0" Click="ChooseDestination_Click" />
+                    </Grid>
+                    <local:NoticeView x:Name="OpenWarning" Kind="Warning" Margin="0,12,0,0"
+                                      Text="Бэкап ляжет на диск открыто: кто получит диск, прочтёт ваши проекты. Чтобы зашифровать, выберите внизу боковой панели «В сейф»." />
+                    <Grid x:Name="RunningRow" Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ProgressBar Style="{StaticResource Spinner}" />
+                        <TextBlock x:Name="CurrentItemText" Grid.Column="1" Style="{StaticResource Body}" Foreground="{StaticResource Muted}" TextWrapping="NoWrap"
+                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="10,0,12,0" />
+                        <TextBlock x:Name="CopiedText" Grid.Column="2" Style="{StaticResource Body}" VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <Button Grid.Column="3" Content="Остановить" Click="Cancel_Click" />
+                    </Grid>
+                    <Button x:Name="RunButton" Style="{StaticResource ProminentButton}" Margin="0,12,0,0" Click="Run_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE72C;" Style="{StaticResource ButtonGlyph}" />
+                            <TextBlock Text="Обновить бэкап" />
+                        </StackPanel>
+                    </Button>
+                    <StackPanel x:Name="ReportBlock">
+                        <local:NoticeView x:Name="ReportNotice" Margin="0,12,0,0" />
+                        <StackPanel x:Name="SecretsBlock">
+                            <Button x:Name="SecretsToggle" Style="{StaticResource LinkButton}" Margin="0,10,0,0" Click="SecretsToggle_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="SecretsChevron" Text="&#xE76C;" Style="{StaticResource ButtonGlyph}" FontSize="10" />
+                                    <TextBlock Text="Пропущенные файлы с ключами и токенами" />
+                                </StackPanel>
+                            </Button>
+                            <ItemsControl x:Name="SecretsList" Margin="18,6,0,0" Visibility="Collapsed" Focusable="False">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBox Text="{Binding Mode=OneWay}" Style="{StaticResource SelectableText}" FontSize="11.5" Foreground="{StaticResource Muted}"
+                                                 Margin="0,2,0,0" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                        <StackPanel x:Name="ProblemsBlock">
+                            <Button Style="{StaticResource LinkButton}" Margin="0,10,0,0" Click="ProblemsToggle_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="ProblemsChevron" Text="&#xE76C;" Style="{StaticResource ButtonGlyph}" FontSize="10" />
+                                    <TextBlock Text="Проблемы" />
+                                </StackPanel>
+                            </Button>
+                            <ItemsControl x:Name="ProblemsList" Margin="18,6,0,0" Visibility="Collapsed" Focusable="False">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBox Text="{Binding Mode=OneWay}" Style="{StaticResource SelectableText}" FontSize="11.5" Margin="0,2,0,0" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </StackPanel>
+                    <local:NoticeView x:Name="ErrorNotice" Kind="Error" Margin="0,12,0,0" />
+                </StackPanel>
+                <local:SafeUnlockRow x:Name="DestinationUnlock" MaxWidth="440" HorizontalAlignment="Left" Margin="0,12,0,0" />
+            </StackPanel>
+        </local:CardSection>
+
+        <!-- 3. Ключи и токены -->
+        <local:CardSection Header="Ключи и токены — только в сейф" Number="3" Margin="0,28,0,0">
+            <StackPanel Margin="18">
+                <TextBlock Style="{StaticResource Callout}"
+                           Text="%USERPROFILE%\.ssh, учётка GitHub CLI (%APPDATA%\GitHub CLI), дотфайлы с токенами (.gitconfig, .npmrc, .netrc…), профили PowerShell, базы KeePass и .env/.key/.pem из папок бэкапа. Складываются с сохранением путей; инструкция по восстановлению лежит в сейфе рядом." />
+                <StackPanel x:Name="PutKeysRow" Orientation="Horizontal" Margin="0,12,0,0">
+                    <Button x:Name="PutKeysButton" Click="PutKeys_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE8D7;" Style="{StaticResource ButtonGlyph}" />
+                            <TextBlock Text="Сложить в сейф" />
+                        </StackPanel>
+                    </Button>
+                    <ProgressBar x:Name="KeysSpinner" Style="{StaticResource Spinner}" Margin="10,0,0,0" />
+                </StackPanel>
+                <local:SafeUnlockRow x:Name="KeysUnlock" MaxWidth="440" HorizontalAlignment="Left" Margin="0,12,0,0" />
+                <Button x:Name="CreateSafeButton" Content="Создать сейф…" Margin="0,12,0,0" Click="CreateSafe_Click" />
+                <TextBlock x:Name="NoDiskText" Text="Подключите внешний диск." Style="{StaticResource Body}" Foreground="{StaticResource Muted}" Margin="0,12,0,0" />
+                <local:NoticeView x:Name="KeysNotice" Margin="0,12,0,0" />
+                <local:NoticeView x:Name="UnprotectedNotice" Kind="Warning" Margin="0,12,0,0" />
+            </StackPanel>
+        </local:CardSection>
+    </StackPanel>
 </UserControl>
