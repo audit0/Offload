@@ -13,4 +13,8 @@
   <ItemGroup>
     <Resource Include="Assets\Offload.ico" />
   </ItemGroup>
+  <!-- День выхода версии (scripts\build.ps1): ключ Offload Pro открывает версии, вышедшие до конца его обновлений. -->
+  <ItemGroup Condition="'$(OffloadReleaseDate)' != ''">
+    <AssemblyMetadata Include="OffloadReleaseDate" Value="$(OffloadReleaseDate)" />
+  </ItemGroup>
 </Project>

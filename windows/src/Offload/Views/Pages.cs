@@ -10,6 +10,7 @@ public static class Pages
     {
         SidebarSection.Overview => new OverviewView(app),
         SidebarSection.Cleanup => new CleanupView(app),
+        SidebarSection.Assistant => new AssistantView(app),
         SidebarSection.Safe => new SafeView(app),
         SidebarSection.Space => new SpaceView(app),
         SidebarSection.History => new HistoryView(app),

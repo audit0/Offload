@@ -49,8 +49,9 @@ public static class Dialogs
             Text = "Разгрузка диска без риска потерять данные. Оригинал удаляется только после проверенной копии.",
             Style = (Style)Application.Current.FindResource("Body"),
         });
-        var links = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 14, 0, 0) };
-        foreach (var (label, url) in new[] { ("Offload на GitHub", App.RepositoryUrl), ("Сообщить о проблеме", App.RepositoryUrl + "/issues") })
+        var links = new WrapPanel { Margin = new Thickness(0, 14, 0, 0) };
+        foreach (var (label, url) in new[] { ("Offload на GitHub", App.RepositoryUrl), ("Канал Offload в Telegram", "https://t.me/OffLoadAI"),
+                                             ("Сообщить о проблеме", App.RepositoryUrl + "/issues") })
         {
             var link = new Button { Style = (Style)Application.Current.FindResource("LinkButton"), Margin = new Thickness(0, 0, 18, 0),
                                     Content = new TextBlock { Text = label, TextDecorations = TextDecorations.Underline } };

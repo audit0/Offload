@@ -428,6 +428,11 @@ public sealed class BackupModel : Observable
 
     public async void Run(VolumeInfo volume, AppModel app)
     {
+        if (!app.Pro.Allows(ProFeature.ProjectBackup))
+        {
+            app.Pro.Offer(ProFeature.ProjectBackup);
+            return;
+        }
         var token = new CancelToken();
         var operation = app.BeginOperation(token.Cancel);
         tokens[operation] = token;

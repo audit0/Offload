@@ -12,6 +12,20 @@ $arguments = @('publish', (Join-Path $root 'src\Offload\Offload.csproj'), '-c', 
                '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true', '-p:EnableCompressionInSingleFile=true',
                '-p:DebugType=none', '-o', $out, '-nologo')
 if ($Version) { $arguments += "-p:Version=$Version" }
+# День выхода версии: ключ Offload Pro открывает версии, вышедшие до конца его обновлений. Берётся из последнего
+# коммита, а не из часов сборки: пересборка той же версии через год не должна её «состарить».
+$releaseDate = $env:OFFLOAD_RELEASE_DATE
+if (-not $releaseDate) {
+    $git = Get-Command git -ErrorAction SilentlyContinue
+    if ($git) {
+        # День — по UTC, как у сборки для Mac.
+        $zone = $env:TZ; $env:TZ = 'UTC'
+        $releaseDate = (& git -C $root log -1 --date=format-local:%Y-%m-%d --format=%cd 2>$null)
+        $env:TZ = $zone
+    }
+}
+if ($releaseDate -notmatch '^\d{4}-\d{2}-\d{2}$') { $releaseDate = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd') }
+$arguments += "-p:OffloadReleaseDate=$releaseDate"
 & dotnet @arguments
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish завершился с кодом $LASTEXITCODE" }
 $exe = Join-Path $out 'Offload.exe'

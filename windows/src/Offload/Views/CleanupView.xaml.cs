@@ -25,6 +25,7 @@ public partial class CleanupView : UserControl
     string? shownForgetProblem;
     List<string>? shownIgnored;
     string? shownIgnoreProblem;
+    bool? shownPro;
 
     /// <summary>Где разбор ищет — чтобы было видно, что личное в AppData он не трогает.</summary>
     static readonly (string Glyph, string Title)[] PlaceList =
@@ -56,6 +57,7 @@ public partial class CleanupView : UserControl
         Model.PropertyChanged += Changed;
         app.PropertyChanged += Changed;
         app.Safe.PropertyChanged += Changed;
+        app.Pro.PropertyChanged += Changed;
         Loaded += (_, _) =>
         {
             Model.LoadHabits(app.Rules.Home);
@@ -163,7 +165,8 @@ public partial class CleanupView : UserControl
         else LastRunSection.Visibility = Visibility.Collapsed;
 
         LearnedSection.Visibility = Show(Model.StoreProblem == null);
-        if (!ReferenceEquals(shownHabits, Model.Habits) || shownRemembered != Model.Remembered || shownForgetProblem != Model.ForgetProblem) BuildLearned();
+        if (!ReferenceEquals(shownHabits, Model.Habits) || shownRemembered != Model.Remembered || shownForgetProblem != Model.ForgetProblem
+            || shownPro != app.Pro.Allows(ProFeature.Habits)) BuildLearned();
 
         IgnoredSection.Visibility = Show(Model.Ignored.Count > 0);
         IgnoredSection.Header = $"Не предлагаю — {Model.Ignored.Count}";
@@ -178,7 +181,19 @@ public partial class CleanupView : UserControl
         shownHabits = habits;
         shownRemembered = remembered;
         shownForgetProblem = Model.ForgetProblem;
+        shownPro = app.Pro.Allows(ProFeature.Habits);
         Learned.Children.Clear();
+        if (shownPro == false)
+        {
+            var more = new Button { Content = "Подробнее…" };
+            more.Click += (_, _) => app.Pro.Offer(ProFeature.Habits);
+            Learned.Children.Add(Row(new IconTile { Glyph = Glyphs.Lightbulb, Tone = Tone.Neutral }, new TextBlock
+            {
+                Text = "Привычки действуют в Offload Pro. Ваши ответы запоминаются и сейчас — с Pro похожее сразу начнёт попадать в нужный вопрос.",
+                Style = Res("Callout"),
+            }, more));
+            Learned.Children.Add(Divider());
+        }
         if (habits.Count == 0)
         {
             var row = Row(new IconTile { Glyph = Glyphs.Sparkle, Tone = Tone.Neutral }, new TextBlock
@@ -361,7 +376,8 @@ public partial class CleanupView : UserControl
     void UpdateSummary()
     {
         var open = Model.Asking;
-        var together = open.Where(q => q.AnsweredTogether).ToList();
+        // Вопросы из Pro без ключа «Разрешить всё» не отвечает — и в его сумму они не входят.
+        var together = open.Where(q => q.AnsweredTogether && !Model.IsLocked(q.Kind, app)).ToList();
         long togetherBytes = together.Sum(q => q.Bytes);
         long freed = Math.Max(0, Model.Freed ?? 0);
         if (open.Count > 0)
@@ -381,7 +397,7 @@ public partial class CleanupView : UserControl
         AllowAllButton.Visibility = Show(together.Count > 0);
         AllowAllText.Text = togetherBytes > 0 ? $"Разрешить всё · {Format.Bytes(togetherBytes)}" : "Разрешить всё";
         AllowAllButton.ToolTip = open.Count > together.Count
-            ? "Ответить «да» на все вопросы, кроме установщиков: их удаляю только по отдельному ответу"
+            ? "Ответить «да» на все вопросы, кроме установщиков (их удаляю только по отдельному ответу) и вопросов из Offload Pro"
             : "Ответить «да» на все вопросы";
         CancelReviewButton.Visibility = Show(!Model.IsSettled);
         CancelReviewButton.IsEnabled = !Model.IsBusy;

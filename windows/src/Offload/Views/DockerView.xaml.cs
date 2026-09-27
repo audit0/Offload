@@ -47,6 +47,7 @@ public partial class DockerView : UserControl
         {
             app.PropertyChanged += AppChanged;
             Model.PropertyChanged += Changed;
+            app.Pro.PropertyChanged += Changed;
             if (!started)
             {
                 started = true;
@@ -58,6 +59,7 @@ public partial class DockerView : UserControl
         Unloaded += (_, _) =>
         {
             app.PropertyChanged -= AppChanged;
+            app.Pro.PropertyChanged -= Changed;
             Model.PropertyChanged -= Changed;
         };
     }
@@ -98,6 +100,7 @@ public partial class DockerView : UserControl
         ArchiveButton.Visibility = Show(ready);
         ArchiveButton.IsEnabled = model.Selection.Count > 0 && !busy && app.Target != null;
         ArchiveButton.ToolTip = app.TargetProblem ?? "Упаковать выбранные тома и убрать их из Docker";
+        ProTag.Update(ArchiveButton, !app.Pro.Allows(ProFeature.DockerVolumes));
 
         // Состояние Docker
         CheckingState.Visibility = Show(model.Status is DockerStatus.Unknown or DockerStatus.Checking);
@@ -234,6 +237,11 @@ public partial class DockerView : UserControl
     void Archive_Click(object sender, RoutedEventArgs e)
     {
         if (app.Target is not { } target || Model.Selection.Count == 0) return;
+        if (!app.Pro.Allows(ProFeature.DockerVolumes))
+        {
+            app.Pro.Offer(ProFeature.DockerVolumes);
+            return;
+        }
         var sheet = new SheetWindow { Heading = "Архивировать выбранные тома?", Glyph = Glyphs.Package, Owner = Window.GetWindow(this) };
         var body = new StackPanel();
         body.Children.Add(new TextBlock

@@ -23,6 +23,8 @@ static partial class All
         ("restore", ChecksRestore),
         ("harden", ChecksHarden),
         ("safe", ChecksSafe),
+        ("license", ChecksLicense),
+        ("assistant", ChecksAssistant),
     ];
 
     public static void Run()

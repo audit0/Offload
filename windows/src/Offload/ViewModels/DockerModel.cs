@@ -196,6 +196,12 @@ public sealed class DockerModel : Observable
     {
         var names = Volumes.Where(v => Selection.Contains(v.Name)).Select(v => v.Name).ToList();
         if (names.Count == 0) return;
+        // Упаковать — в Pro; вернуть том из архива можно всегда.
+        if (!app.Pro.Allows(ProFeature.DockerVolumes))
+        {
+            app.Pro.Offer(ProFeature.DockerVolumes);
+            return;
+        }
         if (Demo.IsOn)
         {
             Messages = ["Демонстрация: тома не упакованы, Docker не тронут."];

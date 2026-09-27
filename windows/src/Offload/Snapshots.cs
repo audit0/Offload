@@ -29,6 +29,16 @@ public static class Snapshots
             await Task.Delay(2500);
             Save(window, Path.Combine(directory, section.Key() + ".png"));
         }
+        // OFFLOAD_SNAPSHOT_PRO=1 — ещё и окно «Offload Pro», каким его открывает «да» на лишние копии.
+        if (Environment.GetEnvironmentVariable("OFFLOAD_SNAPSHOT_PRO") == "1")
+        {
+            var sheet = new ProSheet(app, Offload.Core.ProFeature.Duplicates) { Owner = window };
+            sheet.Show();
+            await Task.Delay(1500);
+            if (VisualTreeHelper.GetChildrenCount(sheet) > 0 && VisualTreeHelper.GetChild(sheet, 0) is FrameworkElement root)
+                Render(root, sheet, Path.Combine(directory, "pro.png"));
+            sheet.Close();
+        }
         window.Close();
     }
 
@@ -68,7 +78,11 @@ public static class Snapshots
 
     public static void Save(Window window, string path)
     {
-        if (window.Content is not FrameworkElement root) return;
+        if (window.Content is FrameworkElement root) Render(root, window, path);
+    }
+
+    static void Render(FrameworkElement root, Window window, string path)
+    {
         var dpi = VisualTreeHelper.GetDpi(root);
         int width = (int)Math.Round(root.ActualWidth * dpi.DpiScaleX), height = (int)Math.Round(root.ActualHeight * dpi.DpiScaleY);
         var bitmap = new RenderTargetBitmap(width, height, dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);

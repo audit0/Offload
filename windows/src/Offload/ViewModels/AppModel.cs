@@ -5,7 +5,7 @@ namespace Offload;
 
 /// <summary>Порядок разделов — это и есть сценарий: посмотреть, что с компьютером; завести сейф;
 /// освободить место переносом в него; видеть и возвращать перенесённое; бэкапить.</summary>
-public enum SidebarSection { Overview, Cleanup, Safe, Space, History, Backup, ICloud, Docker }
+public enum SidebarSection { Overview, Cleanup, Assistant, Safe, Space, History, Backup, ICloud, Docker }
 
 public static class SidebarSections
 {
@@ -15,6 +15,7 @@ public static class SidebarSections
     {
         SidebarSection.Overview => "Обзор",
         SidebarSection.Cleanup => "Разобрать",
+        SidebarSection.Assistant => "Помощник",
         SidebarSection.Safe => "Сейф",
         SidebarSection.Space => "Освободить место",
         SidebarSection.History => "Перенесённое",
@@ -28,6 +29,7 @@ public static class SidebarSections
     {
         SidebarSection.Overview => Glyphs.Gauge,
         SidebarSection.Cleanup => Glyphs.Sparkle,
+        SidebarSection.Assistant => Glyphs.Lightbulb,
         SidebarSection.Safe => Glyphs.Shield,
         SidebarSection.Space => Glyphs.Chart,
         SidebarSection.History => Glyphs.History,
@@ -64,6 +66,8 @@ public sealed class AppModel : Observable
         }
     }
 
+    /// <summary>Первым: он смотрит, пользовались ли Offload раньше, — до того как остальные модели заведут свои файлы.</summary>
+    public ProModel Pro { get; } = new();
     public SafetyRules Rules { get; } = new();
     public SafeModel Safe { get; } = new();
     public OverviewModel Overview { get; } = new();
@@ -73,6 +77,7 @@ public sealed class AppModel : Observable
     public DockerModel Docker { get; } = new();
     public CleanupModel Cleanup { get; } = new();
     public CloudRestoreModel Cloud { get; } = new();
+    public AssistantModel Assistant { get; }
 
     /// <summary>Только что подключённый внешний диск: «Обзор» предлагает разобрать компьютер одной кнопкой.</summary>
     string? connectedPrompt;
@@ -158,6 +163,7 @@ public sealed class AppModel : Observable
 
     public AppModel()
     {
+        Assistant = new AssistantModel(() => Pro.LicenseText);
         RefreshVolumes();
         Safe.StartGuards(this);
         Safe.Refresh(this);
