@@ -166,7 +166,7 @@ func checksAssistant() {
     }
 
     section("Помощник: ответ Claude Code") {
-        let facts = [FileFact(id: "1", path: "~/Downloads/a.zip", isFolder: false, bytes: 1, modified: nil, verdict: .safe)]
+        let facts = [FileFact(id: "1", path: "~/Downloads/a.zip", isFolder: false, bytes: 1, modified: nil, verdict: .safe, canTrash: true)]
         let claude = ClaudeCodeAssistant()
         let ok = try claude.read(output: #"{"is_error":false,"result":"","total_cost_usd":0.05,"structured_output":{"summary":"s","items":[{"id":"1","importance":"minor","action":"safe","reason":"r"}]}}"#,
                                  errors: "", facts: facts)
@@ -187,7 +187,7 @@ func checksAssistant() {
     }
 
     section("Помощник: ключ API, Ollama и сервер") {
-        let facts = [FileFact(id: "1", path: "~/Downloads/a.zip", isFolder: false, bytes: 1, modified: nil, verdict: .safe)]
+        let facts = [FileFact(id: "1", path: "~/Downloads/a.zip", isFolder: false, bytes: 1, modified: nil, verdict: .safe, canTrash: true)]
         let api = ApiKeyAssistant(key: { "sk-ant-test" })
         let reply = Data(#"{"stop_reason":"end_turn","content":[{"type":"text","text":"{\"summary\":\"s\",\"items\":[{\"id\":\"1\",\"importance\":\"junk\",\"action\":\"trash\",\"reason\":\"r\"}]}"}]}"#.utf8)
         check((try? api.read(data: reply, status: 200, facts: facts))?.items.first?.action == .trash, "ответ Messages API читается из текстовых блоков")
