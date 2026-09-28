@@ -37,7 +37,32 @@ func checksCloudRestore() {
         check(CloudRestore.parseProgress(#"{"message_type":"summary","total_bytes":400,"bytes_restored":400}"#)?.fraction == 1, "итог — 100 %")
         check(CloudRestore.parseProgress("не json") == nil, "посторонние строки — не прогресс")
         check(CloudRestore.parseProblem(#"{"message_type":"error","error":{"message":"read failed"},"during":"restore","item":"/a"}"#) == "/a: read failed",
-              "ошибка с файлом")
+              "ошибка с файлом (restic 0.17 и новее — JSON в stderr)")
+        let old = CloudRestore.failedItem("ignoring error for /Docs/big1.bin: StreamPack: open /r/data/ea/eaea: no such file or directory")
+        check(old?.item == "/Docs/big1.bin" && old?.message == "StreamPack: open /r/data/ea/eaea: no such file or directory",
+              "ошибка с файлом в restic 0.16 — текстом")
+        check(CloudRestore.failedItem("Load(<data/eaeaae5b1e>, 17879973, 0) returned error, retrying after 264ms: open /r/x: no such file") == nil,
+              "повтор чтения — не ошибка с файлом")
+        check(CloudRestore.failedItem(#"{"message_type":"status","percent_done":0.5}"#) == nil, "прогресс — не ошибка")
+        check(CloudRestore.readable("""
+            Load(<data/ea>, 1, 0) returned error, retrying after 264ms: open /r/data/ea/x: no such file or directory
+            {"message_type":"error","error":{"message":"ciphertext verification failed"},"during":"restore","item":"/Docs/a.bin"}
+            {"message_type":"exit_error","code":1,"message":"There were 1 errors"}
+            """) == ["/Docs/a.bin: ciphertext verification failed", "There were 1 errors"],
+              "сообщение об ошибке — по-человечески: без JSON и без повторов чтения")
+
+        // Испорченное restic оставляет с дырами — его убираем. Но только обычный файл и только внутри папки восстановления.
+        let target = scratch.appendingPathComponent("broken-restore", isDirectory: true)
+        try write("испорчен", to: target.appendingPathComponent("Docs/big.bin"))
+        try write("цел", to: target.appendingPathComponent("Docs/small.txt"))
+        try write("чужое", to: scratch.appendingPathComponent("outside.txt"))
+        CloudRestore.removeBroken("/Docs/big.bin", in: target)
+        CloudRestore.removeBroken("/../outside.txt", in: target)
+        CloudRestore.removeBroken("/Docs", in: target)
+        check(!fm.fileExists(atPath: target.appendingPathComponent("Docs/big.bin").path), "испорченный файл убран")
+        check(fm.fileExists(atPath: target.appendingPathComponent("Docs/small.txt").path), "целый рядом остался")
+        check(fm.fileExists(atPath: scratch.appendingPathComponent("outside.txt").path), "путь с «..» из вывода restic за папку не выходит")
+        check(fm.fileExists(atPath: target.appendingPathComponent("Docs").path), "папку с ошибкой (например, прав) не удаляем")
 
         let stall = "Load(<data/a08d985582>, 1425, 57776523) returned error, retrying after 926.43089ms: read /Users/q/Library/Mobile Documents/com~apple~CloudDocs/Бэкапы/ssd-restic/data/a0/a08d98: operation canceled"
         check(CloudRestore.stalledFile(stall)?.path == "/Users/q/Library/Mobile Documents/com~apple~CloudDocs/Бэкапы/ssd-restic/data/a0/a08d98",
@@ -137,6 +162,44 @@ func checksCloudRestore() {
         check(try fm.contentsOfDirectory(atPath: folder.path).count == untouched, "остановленное убрано целиком")
 
         check(try listing(repositoryURL) == before, "в хранилище ничего не записано — ни блокировок, ни кэша")
+    }
+
+    section("Из iCloud: часть бэкапа испорчена — восстановленное остальное остаётся") {
+        // Большой файл займёт свои куски хранилища, маленький ляжет в последний. Испортим самый большой кусок:
+        // restic выйдет с 1, а большой файл оставит полного размера с дырами.
+        let base = scratch.appendingPathComponent("restic-damaged", isDirectory: true)
+        let repositoryURL = base.appendingPathComponent("repo", isDirectory: true)
+        let source = base.appendingPathComponent("SSD", isDirectory: true)
+        let secret = "проверочный пароль 42"
+        var random = SystemRandomNumberGenerator()
+        try fm.createDirectory(at: source.appendingPathComponent("Документы"), withIntermediateDirectories: true)
+        try Data((0..<20_000_000).map { _ in UInt8.random(in: 0...255, using: &random) })
+            .write(to: source.appendingPathComponent("Документы/big.bin"))
+        try write("маленький", to: source.appendingPathComponent("Документы/small.txt"))
+        try Runner.check("restic", ["init", "--repo", repositoryURL.path, "--quiet"], stdin: Data(secret.utf8), timeout: 120)
+        try Runner.check("restic", ["backup", "--repo", repositoryURL.path, "--quiet", source.path], stdin: Data(secret.utf8), timeout: 300)
+        let packs = (fm.enumerator(at: repositoryURL.appendingPathComponent("data"), includingPropertiesForKeys: [.fileSizeKey])?
+            .compactMap { $0 as? URL } ?? [])
+            .filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
+            .sorted { ((try? $0.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) > ((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+        guard let largest = packs.first else { throw CopyError.unreadable("куски хранилища") }
+        try fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: largest.path)
+        var bytes = try Data(contentsOf: largest)
+        for index in stride(from: 1000, to: bytes.count - 1000, by: 4096) { bytes[index] ^= 0xFF }
+        try bytes.write(to: largest)
+
+        let repository = CloudRestore.Repository(url: repositoryURL)
+        let password = CloudRestore.Password.typed(secret)
+        guard let snapshot = try CloudRestore.snapshots(repository, password: password).first,
+              let documents = try CloudRestore.list(repository, password: password, snapshot: snapshot.id, directory: snapshot.root)
+                .first(where: { $0.name == "Документы" }) else { throw CopyError.unreadable("снимок") }
+        let report = try CloudRestore.restore(documents, from: repository, password: password, snapshot: snapshot,
+                                              into: scratch.appendingPathComponent("restored-damaged", isDirectory: true))
+        check(!report.verified && report.problems.contains { $0.contains("big.bin") }, "не всё прочиталось: сказано, что именно, и что сверки не было")
+        check(!fm.fileExists(atPath: report.item.appendingPathComponent("big.bin").path), "испорченный файл убран, а не оставлен с дырами")
+        check((try? String(contentsOf: report.item.appendingPathComponent("small.txt"), encoding: .utf8)) == "маленький",
+              "целый файл восстановлен и остался")
+        check(report.files == 1, "в отчёте — то, что осталось")
     }
 }
 

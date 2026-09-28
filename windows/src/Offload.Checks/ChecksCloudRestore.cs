@@ -52,7 +52,35 @@ static partial class All
             Check(CloudRestore.ParseProgress("""{"message_type":"summary","total_bytes":400,"bytes_restored":400}""")?.Fraction == 1, "итог — 100 %");
             Check(CloudRestore.ParseProgress("не json") == null, "посторонние строки — не прогресс");
             Check(CloudRestore.ParseProblem("""{"message_type":"error","error":{"message":"read failed"},"during":"restore","item":"/a"}""") == "/a: read failed",
-                  "ошибка с файлом");
+                  "ошибка с файлом (restic 0.17 и новее — JSON в stderr)");
+            Check(CloudRestore.FailedItem(@"ignoring error for /Docs/big1.bin: StreamPack: open C:\r\data\ea\eaea: The system cannot find the file specified.")
+                      is ("/Docs/big1.bin", @"StreamPack: open C:\r\data\ea\eaea: The system cannot find the file specified."),
+                  "ошибка с файлом в restic 0.16 — текстом");
+            Check(CloudRestore.FailedItem(@"Load(<data/eaeaae5b1e>, 17879973, 0) returned error, retrying after 264ms: open C:\r\x: not found") == null,
+                  "повтор чтения — не ошибка с файлом");
+            Check(CloudRestore.FailedItem("""{"message_type":"status","percent_done":0.5}""") == null
+                  && CloudRestore.FailedItem("""{"message_type":"error","error":5,"item":7}""") is ("", "ошибка"),
+                  "прогресс — не ошибка; поля не той формы — без исключения");
+            Check(CloudRestore.Readable("""
+                Load(<data/ea>, 1, 0) returned error, retrying after 264ms: open C:\r\data\ea\x: not found
+                {"message_type":"error","error":{"message":"ciphertext verification failed"},"during":"restore","item":"/Docs/a.bin"}
+                {"message_type":"exit_error","code":1,"message":"There were 1 errors"}
+                """).SequenceEqual(["/Docs/a.bin: ciphertext verification failed", "There were 1 errors"]),
+                  "сообщение об ошибке — по-человечески: без JSON и без повторов чтения");
+
+            // Испорченное restic оставляет с дырами — его убираем. Но только обычный файл и только внутри папки восстановления.
+            var target = Room("broken-restore");
+            Write("испорчен", Path.Combine(target, @"Docs\big.bin"));
+            Write("цел", Path.Combine(target, @"Docs\small.txt"));
+            var outside = Path.Combine(Scratch, "outside.txt");
+            Write("чужое", outside);
+            CloudRestore.RemoveBroken("/Docs/big.bin", target);
+            CloudRestore.RemoveBroken("/../outside.txt", target);
+            CloudRestore.RemoveBroken("/Docs", target);
+            Check(!File.Exists(Path.Combine(target, @"Docs\big.bin")), "испорченный файл убран");
+            Check(File.Exists(Path.Combine(target, @"Docs\small.txt")), "целый рядом остался");
+            Check(File.Exists(outside), "путь с «..» из вывода restic за папку не выходит");
+            Check(Directory.Exists(Path.Combine(target, "Docs")), "папку с ошибкой (например, прав) не удаляем");
 
             var stall = @"Load(<data/a08d985582>, 1425, 57776523) returned error, retrying after 926.43089ms: read C:\Users\q\iCloudDrive\Бэкапы\ssd-restic\data\a0\a08d98: The cloud operation was unsuccessful.";
             Check(CloudRestore.StalledFile(stall) == @"C:\Users\q\iCloudDrive\Бэкапы\ssd-restic\data\a0\a08d98", "кусок, который ждёт iCloud");
@@ -164,6 +192,37 @@ static partial class All
             var after = Listing(repositoryPath);
             Check(after.Count == before.Count && after.All(p => before.TryGetValue(p.Key, out var size) && size == p.Value),
                   "в хранилище ничего не записано — ни блокировок, ни кэша");
+        });
+
+        Section("Из iCloud: часть бэкапа испорчена — восстановленное остальное остаётся", () =>
+        {
+            // Большой файл займёт свои куски хранилища, маленький ляжет в последний. Испортим самый большой кусок:
+            // restic выйдет с 1, а большой файл оставит полного размера с дырами.
+            var baseFolder = Room("restic-damaged");
+            var repositoryPath = Path.Combine(baseFolder, "repo");
+            var source = Path.Combine(baseFolder, "SSD");
+            const string secret = "проверочный пароль 42";
+            Directory.CreateDirectory(Path.Combine(source, "Документы"));
+            File.WriteAllBytes(Path.Combine(source, @"Документы\big.bin"), System.Security.Cryptography.RandomNumberGenerator.GetBytes(20_000_000));
+            Write("маленький", Path.Combine(source, @"Документы\small.txt"));
+            Runner.Check("restic", ["init", "--repo", repositoryPath, "--quiet"], Encoding.UTF8.GetBytes(secret), TimeSpan.FromMinutes(2));
+            Runner.Check("restic", ["backup", "--repo", repositoryPath, "--quiet", source], Encoding.UTF8.GetBytes(secret), TimeSpan.FromMinutes(5));
+            var largest = Directory.EnumerateFiles(Path.Combine(repositoryPath, "data"), "*", SearchOption.AllDirectories)
+                .OrderByDescending(p => new FileInfo(p).Length).First();
+            File.SetAttributes(largest, FileAttributes.Normal);
+            var bytes = File.ReadAllBytes(largest);
+            for (int index = 1000; index < bytes.Length - 1000; index += 4096) bytes[index] ^= 0xFF;
+            File.WriteAllBytes(largest, bytes);
+
+            var repository = new CloudRestore.Repository(repositoryPath);
+            var password = new CloudRestore.Password.Typed(secret);
+            var snapshot = CloudRestore.Snapshots(repository, password).First();
+            var documents = CloudRestore.List(repository, password, snapshot.Id, snapshot.Root).First(e => e.Name == "Документы");
+            var report = CloudRestore.Restore(documents, repository, password, snapshot, Path.Combine(Scratch, "restored-damaged"));
+            Check(!report.Verified && report.Problems.Any(p => p.Contains("big.bin")), "не всё прочиталось: сказано, что именно, и что сверки не было");
+            Check(!File.Exists(Path.Combine(report.Item, "big.bin")), "испорченный файл убран, а не оставлен с дырами");
+            Check(Read(Path.Combine(report.Item, "small.txt")) == "маленький", "целый файл восстановлен и остался");
+            Check(report.Files == 1, "в отчёте — то, что осталось");
         });
     }
 

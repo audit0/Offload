@@ -269,6 +269,12 @@ public sealed class LineLog(int limit = 200)
         lock (gate) { if (lines.Count < limit) lines.Add(line); }
     }
 
+    /// <summary>Без повторов: об одном файле restic пишет столько раз, сколько кусков его не прочиталось.</summary>
+    public void AppendUnique(string line)
+    {
+        lock (gate) { if (lines.Count < limit && !lines.Contains(line)) lines.Add(line); }
+    }
+
     public List<string> All
     {
         get { lock (gate) return [.. lines]; }

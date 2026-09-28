@@ -161,6 +161,9 @@ final class CloudRestoreModel {
     /// Забыть пароль и всё прочитанное из хранилища.
     func lock() {
         token?.cancel()
+        // Начатый просмотр или поиск, узнав, что снимка больше нет, выходит молча — индикатор снимается здесь,
+        // иначе «Открыть» так и крутился бы до перезапуска.
+        loading = nil
         password = nil
         snapshots = []
         snapshotID = nil
@@ -274,9 +277,9 @@ final class CloudRestoreModel {
                 let what = entry.isDirectory
                     ? "\(report.files) \(pluralRu(report.files, "файл", "файла", "файлов")), \(Format.bytes(report.bytes))"
                     : Format.bytes(report.bytes)
-                restoreMessage = report.problems.isEmpty
+                restoreMessage = report.verified && report.problems.isEmpty
                     ? Notice.Message(.success, "«\(entry.name)» восстановлено и сверено с бэкапом: \(what).")
-                    : Notice.Message(.warning, "«\(entry.name)» восстановлено не целиком: \(what). Не удалось:",
+                    : Notice.Message(.warning, "«\(entry.name)» восстановлено не целиком: \(what). Файлы, которые не прочитались из бэкапа, убраны — они были бы испорчены; остальное с бэкапом не сверено: после ошибок restic не сверяет. Не удалось:",
                                      details: Array(report.problems.prefix(10)))
             } catch is CancellationError {
                 restoreMessage = Notice.Message(.info, "Восстановление остановлено, недокачанное убрано.")

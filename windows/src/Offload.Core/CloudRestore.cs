@@ -43,7 +43,9 @@ public static class CloudRestore
 
     public readonly record struct Progress(double Fraction, long BytesDone, long BytesTotal);
 
-    public sealed record Report(string Item, long Bytes, int Files, IReadOnlyList<string> Problems);
+    /// <summary>Problems — что восстановить не удалось, по файлу на строку; такие файлы убраны: restic оставляет их с дырами.
+    /// Verified — сверено ли восстановленное с бэкапом (--verify): после ошибок restic сверку не делает.</summary>
+    public sealed record Report(string Item, long Bytes, int Files, IReadOnlyList<string> Problems, bool Verified);
 
     public enum RestoreErrorKind { ResticMissing, WrongPassword, NotARepository, NotEnoughSpace, Failed }
 
@@ -124,9 +126,36 @@ public static class CloudRestore
             case 12: return new RestoreException(RestoreErrorKind.WrongPassword);
             case 10: return new RestoreException(RestoreErrorKind.NotARepository, repository.Path);
         }
-        var message = string.Join(" ", stderr.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).TakeLast(3));
+        var message = string.Join(" ", Readable(stderr).TakeLast(3));
         if (message.Contains("wrong password", StringComparison.OrdinalIgnoreCase)) return new RestoreException(RestoreErrorKind.WrongPassword);
         return new RestoreException(RestoreErrorKind.Failed, $"restic завершился с кодом {status}" + (message.Length == 0 ? "." : $": {message}"));
+    }
+
+    /// <summary>Строки stderr restic для человека: из JSON — только сообщение («There were 3 errors»), без служебных полей;
+    /// повторы чтения, которых ждёт облако, — не ошибка и не показываются.</summary>
+    public static List<string> Readable(string stderr)
+    {
+        var result = new List<string>();
+        foreach (var raw in stderr.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0 || line.Contains("returned error, retrying", StringComparison.Ordinal)) continue;
+            if (ParseProblem(line) is { } problem) { result.Add(problem); continue; }
+            if (line.StartsWith('{'))
+            {
+                try
+                {
+                    using var document = JsonDocument.Parse(line);
+                    if (document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("message", out var message)
+                        && message.ValueKind == JsonValueKind.String)
+                        result.Add(message.GetString()!);
+                    continue;
+                }
+                catch (JsonException) { }
+            }
+            result.Add(line);
+        }
+        return result;
     }
 
     /// <summary>Снимки хранилища, новые сверху. Проверяет и пароль: с неверным restic не отдаст ничего.</summary>
@@ -159,7 +188,8 @@ public static class CloudRestore
     }
 
     /// <summary>Восстанавливает файл или папку из снимка в новую папку внутри folder и сверяет восстановленное
-    /// с хранилищем (--verify). Существующее не трогается: новая папка создаётся всегда своя. Прерванное — убирается целиком.</summary>
+    /// с хранилищем (--verify). Существующее не трогается: новая папка создаётся всегда своя. Прерванное — убирается целиком.
+    /// Если не прочитались отдельные файлы, они убираются, а остальное остаётся (см. Report.Problems и Report.Verified).</summary>
     public static Report Restore(Entry entry, Repository repository, Password password, Snapshot snapshot, string folder,
                                  Func<bool>? isCancelled = null, Action<string>? waitingForCloud = null, Action<Progress>? progress = null)
     {
@@ -179,12 +209,23 @@ public static class CloudRestore
         var parent = ParentDirectory(entry.Path);
         var (arguments, stdin) = Invocation(["restore", $"{snapshot.Id}:{parent}", "--include", "/" + EscapePattern(entry.Name),
                                              "--target", target, "--verify"], repository, password);
-        var problems = new LineLog();
+        var problems = new LineLog(20);
+        // Все пути, а не первые сколько-то: каждый такой файл испорчен и будет убран.
+        var broken = new LineLog(int.MaxValue);
+        void Note(string line)
+        {
+            if (FailedItem(line) is not { } failure) return;
+            var (failedPath, message) = failure;
+            problems.AppendUnique(failedPath.Length == 0 ? message : $"{failedPath}: {message}");
+            if (failedPath.Length > 0) broken.Append(failedPath);
+        }
         CommandResult result;
         try
         {
             result = Runner.Stream("restic", arguments, stdin, isCancelled, onErrorLine: line =>
             {
+                // Ошибки с отдельными файлами restic пишет в stderr.
+                Note(line);
                 // Кусок бэкапа есть только в облаке: просим iCloud скачать его (атрибут «Всегда хранить на этом устройстве»).
                 if (StalledFile(line) is not { } pack) return;
                 RequestDownload(pack);
@@ -192,7 +233,7 @@ public static class CloudRestore
             }, onLine: line =>
             {
                 if (ParseProgress(line) is { } update) progress?.Invoke(update);
-                if (ParseProblem(line) is { } problem) problems.Append(problem);
+                Note(line);
             });
         }
         catch
@@ -200,23 +241,40 @@ public static class CloudRestore
             FileSystem.TryDeleteTree(target);
             throw;
         }
-        // 3 — восстановлено не всё: часть файлов не прочиталась. Остальное оставляем.
-        if (!result.Succeeded && result.Status != 3)
-        {
-            FileSystem.TryDeleteTree(target);
-            throw Error(result.Status, result.Stderr, repository);
-        }
         var item = System.IO.Path.Combine(target, entry.Name);
-        if (!FileSystem.Exists(item))
+        RestoreException Fail(RestoreException error)
         {
             FileSystem.TryDeleteTree(target);
-            throw new RestoreException(RestoreErrorKind.Failed, $"restic ничего не восстановил: «{entry.Path}» нет в снимке.");
+            return error;
         }
-        var stderrProblems = result.Status == 3
-            ? result.Stderr.Split('\n').Where(l => l.Trim().Length > 0 && StalledFile(l) == null).Take(20).ToList()
-            : [];
+        // Не прочитались отдельные файлы — restic выходит с 1 (кода «восстановлено не всё» у restore нет).
+        // Такие файлы он оставляет полного размера, но с нулями на месте недочитанного: их убираем, а остальное
+        // оставляем — повтор, скорее всего, упрётся в то же место. Сверку (--verify) после ошибок restic не делает.
+        if (!result.Succeeded)
+        {
+            if (result.Status != 1 || broken.All.Count == 0 || !FileSystem.Exists(item))
+                throw Fail(Error(result.Status, result.Stderr, repository));
+            foreach (var path in broken.All) RemoveBroken(path, target);
+        }
+        if (!FileSystem.Exists(item))
+            throw Fail(result.Succeeded ? new RestoreException(RestoreErrorKind.Failed, $"restic ничего не восстановил: «{entry.Path}» нет в снимке.")
+                                        : Error(result.Status, result.Stderr, repository));
         var (files, bytes) = Count(item);
-        return new Report(item, bytes, files, [.. problems.All, .. stderrProblems]);
+        // Из папки не восстановилось ни одного файла — это не «не целиком», а неудача.
+        if (!result.Succeeded && files == 0) throw Fail(Error(result.Status, result.Stderr, repository));
+        return new Report(item, bytes, files, problems.All, result.Succeeded);
+    }
+
+    /// <summary>Убирает файл, который restic восстановил не целиком. Путь пришёл из вывода restic, поэтому — только
+    /// обычный файл и только внутри папки восстановления; папки с ошибкой (например, прав) остаются.</summary>
+    public static void RemoveBroken(string item, string target)
+    {
+        string full;
+        try { full = System.IO.Path.GetFullPath(System.IO.Path.Combine(target, item.TrimStart('/').Replace('/', System.IO.Path.DirectorySeparatorChar))); }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException) { return; }
+        if (Paths.Same(full, target) || !Paths.IsWithin(full, target) || !FileSystem.IsRegularFile(full)) return;
+        try { File.Delete(full); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 
     /// <summary>Попросить облако скачать файл: атрибут «закреплён» — то же, что «Всегда хранить на этом устройстве».</summary>
@@ -315,17 +373,34 @@ public static class CloudRestore
     }
 
     /// <summary>Сообщение restic об ошибке с конкретным файлом: «путь: что случилось».</summary>
-    public static string? ParseProblem(string line)
+    public static string? ParseProblem(string line) =>
+        FailedItem(line) is { } failure ? (failure.item.Length == 0 ? failure.message : $"{failure.item}: {failure.message}") : null;
+
+    /// <summary>То же по частям: путь внутри восстанавливаемого (с «/» в начале; пустой — ошибка не с файлом) и что случилось.
+    /// restic 0.17 и новее пишет такую ошибку строкой JSON, 0.16 — текстом «ignoring error for /путь: что случилось».</summary>
+    public static (string item, string message)? FailedItem(string line)
     {
-        try
+        line = line.TrimEnd('\r');
+        if (line.StartsWith('{'))
         {
-            using var document = JsonDocument.Parse(line);
-            var item = document.RootElement;
-            if (!item.TryGetProperty("message_type", out var type) || type.GetString() != "error") return null;
-            var message = item.TryGetProperty("error", out var error) && error.TryGetProperty("message", out var text) ? text.GetString() ?? "ошибка" : "ошибка";
-            return item.TryGetProperty("item", out var name) && name.GetString() is { Length: > 0 } itemName ? $"{itemName}: {message}" : message;
+            try
+            {
+                using var document = JsonDocument.Parse(line);
+                var root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("message_type", out var type)
+                    || type.ValueKind != JsonValueKind.String || type.GetString() != "error") return null;
+                var message = root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object
+                    && error.TryGetProperty("message", out var text) && text.ValueKind == JsonValueKind.String ? text.GetString() ?? "ошибка" : "ошибка";
+                var item = root.TryGetProperty("item", out var name) && name.ValueKind == JsonValueKind.String ? name.GetString() ?? "" : "";
+                return (item, message);
+            }
+            catch (JsonException) { return null; }
         }
-        catch (Exception ex) when (ex is JsonException or InvalidOperationException) { return null; }
+        const string prefix = "ignoring error for ";
+        if (!line.StartsWith(prefix, StringComparison.Ordinal)) return null;
+        var rest = line[prefix.Length..];
+        int colon = rest.IndexOf(": ", StringComparison.Ordinal);
+        return colon < 0 ? (rest, "ошибка") : (rest[..colon], rest[(colon + 2)..]);
     }
 
     static readonly Regex StalledPattern = new(@"returned error, retrying.*?: read (?<path>(?:[A-Za-z]:\\|/).+): [^:]+$", RegexOptions.Compiled);

@@ -52,9 +52,10 @@ public sealed class AssistantView : UserControl
             Text = "Смотрит на папку и говорит, что в ней важно, что менее важно, а что мусор. Сам ничего не удаляет и не переносит — только советует, а решаете вы.",
             Style = Res("Callout"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, Theme.SectionSpacing),
         });
-        if (!Model.Consent) { root.Children.Add(ConsentCard()); return; }
+        // Сначала — где думает помощник: от этого зависит, куда уйдут сведения, и согласие даётся на него.
         var problem = Demo.IsOn ? null : Model.Provider.Problem();
         root.Children.Add(ProviderCard(problem));
+        if (!Model.Consent) { root.Children.Add(ConsentCard()); return; }
         if (problem != null) return;
         root.Children.Add(AskCard());
         if (Model.Error is { } error)
@@ -68,20 +69,24 @@ public sealed class AssistantView : UserControl
         body.Children.Add(new TextBlock { Text = "Что уходит помощнику", Style = Res("Headline") });
         body.Children.Add(new TextBlock
         {
-            Text = "Имена и пути файлов и папок от домашней папки, их размеры и даты, пометки правил OffLoadAI, несколько имён внутри папок " +
-                   "и начало небольших текстовых файлов — до 20 строк. Файлы с ключами, токенами и паролями не читаются никогда, " +
-                   "а ключи, найденные в других файлах, вырезаются. Фото, видео и документы целиком никуда не уходят.",
+            Text = "Имена и пути файлов и папок от домашней папки, их размеры и даты, пометки правил OffLoadAI и несколько имён внутри папок. " +
+                   "Содержимое файлов — нет: начало небольших текстовых файлов уходит, только если вы сами это включите, и никогда — " +
+                   "таблицы (.csv), файлы с ключами и те, где видны пароль, токен, номер карты или фраза восстановления. " +
+                   "Файлы, которые лежат только в облаке, не скачиваются. Фото, видео и документы никуда не уходят.",
             Style = Res("Body"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0),
         });
         body.Children.Add(new TextBlock
         {
-            Text = "Куда — выбираете вы: Claude от Anthropic через Claude Code на этом компьютере или по вашему ключу API, сервер OffLoadAI " +
-                   "(он передаёт вопрос Claude и ничего не хранит) — или локальная модель, и тогда сведения не покидают компьютер вовсе. " +
-                   "Остальной OffLoadAI по-прежнему работает без сети; помощник выходит в сеть, только когда вы его спрашиваете.",
+            Text = "Куда: " + AssistantModel.Destination(Model.ProviderKind),
+            Style = Res("Body"), FontWeight = FontWeights.Medium, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0),
+        });
+        body.Children.Add(new TextBlock
+        {
+            Text = "Остальной OffLoadAI работает без сети. Согласие — отдельно для каждого варианта; отозвать его можно в любой момент.",
             Style = Res("Callout"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0),
         });
-        var agree = new Button { Content = "Согласен, включить помощника", Style = Res("ProminentButton"), Margin = new Thickness(0, 16, 0, 0) };
-        agree.Click += (_, _) => { Model.Consent = true; Update(); };
+        var agree = new Button { Content = "Согласен — включить «" + AssistantModel.Title(Model.ProviderKind) + "»", Style = Res("ProminentButton"), Margin = new Thickness(0, 16, 0, 0) };
+        agree.Click += (_, _) => { Model.SetConsent(true); Update(); };
         body.Children.Add(agree);
         return new Card { Content = body };
     }
@@ -152,6 +157,17 @@ public sealed class AssistantView : UserControl
             retry.Click += (_, _) => Update();
             body.Children.Add(retry);
         }
+        if (Model.Consent && !Demo.IsOn)
+        {
+            var revoke = new Button
+            {
+                Content = "Отозвать согласие на «" + AssistantModel.Title(Model.ProviderKind) + "»", Style = Res("LinkButton"),
+                HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 12, 0, 0),
+                ToolTip = "Сведения о файлах больше не уйдут сюда, пока вы снова не согласитесь",
+            };
+            revoke.Click += (_, _) => { Model.SetConsent(false); Update(); };
+            body.Children.Add(revoke);
+        }
         return new Card { Content = body, Margin = new Thickness(0, 0, 0, Theme.SectionSpacing) };
     }
 
@@ -183,6 +199,20 @@ public sealed class AssistantView : UserControl
         if (question.Parent is Panel old) old.Children.Remove(question);
         question.IsEnabled = !Model.IsBusy;
         body.Children.Add(question);
+
+        var previews = new CheckBox
+        {
+            Content = "Показывать помощнику начало небольших текстовых файлов", IsChecked = Model.SendsPreviews, IsEnabled = !Model.IsBusy,
+            Margin = new Thickness(0, 12, 0, 0),
+        };
+        previews.Click += (_, _) => Model.SendsPreviews = previews.IsChecked == true;
+        body.Children.Add(previews);
+        body.Children.Add(new TextBlock
+        {
+            Text = "До 20 строк — так понятнее, что это за файл. Таблицы (.csv), файлы с ключами и те, где видны пароль, токен, " +
+                   "номер карты или фраза восстановления, не уходят никогда.",
+            Style = Res("Caption"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0),
+        });
 
         if (Model.IsBusy)
         {
@@ -253,7 +283,21 @@ public sealed class AssistantView : UserControl
 
         FrameworkElement action;
         if (Model.Done(advice.Id) is { } outcome)
-            action = new TextBlock { Text = "✓ " + outcome, Style = Res("Callout"), VerticalAlignment = VerticalAlignment.Center };
+        {
+            var status = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            status.Children.Add(new TextBlock { Text = "✓ " + outcome, Style = Res("Callout"), HorizontalAlignment = HorizontalAlignment.Right });
+            if (Model.CanPutBack(advice.Id))
+            {
+                var back = new Button { Content = "Вернуть", Margin = new Thickness(0, 4, 0, 0), HorizontalAlignment = HorizontalAlignment.Right, ToolTip = "Вернуть из Корзины на прежнее место" };
+                back.Click += async (_, _) =>
+                {
+                    if (await Model.PutBack(advice.Id, app) is { } problem)
+                        Dialogs.Inform(Window.GetWindow(this), "Не получилось", problem, Glyphs.Warning, Tone.Caution);
+                };
+                status.Children.Add(back);
+            }
+            action = status;
+        }
         else if (item == null || advice.Action == AdviceAction.Keep)
             action = new TextBlock { Text = "оставить", Style = Res("Caption"), VerticalAlignment = VerticalAlignment.Center };
         else if (advice.Action == AdviceAction.Safe)
@@ -264,7 +308,7 @@ public sealed class AssistantView : UserControl
         }
         else
         {
-            var trash = new Button { Content = "В Корзину", VerticalAlignment = VerticalAlignment.Center, ToolTip = "Вернуть можно из Корзины, пока её не очистили" };
+            var trash = new Button { Content = "В Корзину", VerticalAlignment = VerticalAlignment.Center, ToolTip = "Вернуть можно здесь же или из Корзины, пока её не очистили" };
             trash.Click += async (_, _) => await ToTrash(advice.Id, item);
             action = trash;
         }
@@ -288,7 +332,7 @@ public sealed class AssistantView : UserControl
     async Task ToTrash(string id, SpaceItem item)
     {
         if (!Dialogs.Confirm(Window.GetWindow(this), $"Отправить «{Paths.Name(item.Path)}» в Корзину?",
-                $"{Format.Bytes(item.Bytes)}. Вернуть можно из Корзины, пока её не очистили.", "В Корзину", "Отмена", Tone.Caution, Glyphs.Trash))
+                $"{Format.Bytes(item.Bytes)}. Вернуть можно здесь же или из Корзины, пока её не очистили.", "В Корзину", "Отмена", Tone.Caution, Glyphs.Trash))
             return;
         if (await Model.Trash(id, app) is { } problem)
             Dialogs.Inform(Window.GetWindow(this), "Не получилось", problem, Glyphs.Warning, Tone.Caution);

@@ -9,11 +9,14 @@ public sealed class AssistantModel : Observable
 {
     public enum StageKind { Idle, Scanning, Thinking, Done, Failed }
 
-    const string ConsentKey = "assistant.consent";
+    /// <summary>Согласие — отдельно для каждого варианта: сведения уходят в разные места. Ключи новые: прежнее общее
+    /// согласие давалось на описание, по которому начало текстовых файлов уходило всегда.</summary>
+    static string ConsentKey(Kind kind) => "assistant.consent." + kind;
     const string KindKey = "assistant.provider";
     const string ApiKeyKey = "assistant.apiKey";
     const string LocalModelKey = "assistant.ollamaModel";
     const string ServerKey = "assistant.server";
+    const string PreviewsKey = "assistant.previews";
 
     /// <summary>Где думает помощник — по порядку: Claude Code на компьютере, ключ API, локальная модель, сервер OffLoadAI.</summary>
     public enum Kind { ClaudeCode, ApiKey, Local, Server }
@@ -24,6 +27,15 @@ public sealed class AssistantModel : Observable
         Kind.ApiKey => "Ключ API",
         Kind.Local => "На компьютере",
         _ => "Сервер OffLoadAI",
+    };
+
+    /// <summary>Куда уходят сведения о файлах — для согласия: у каждого варианта своё.</summary>
+    public static string Destination(Kind kind) => kind switch
+    {
+        Kind.ClaudeCode => "в Anthropic (Claude) — через Claude Code на этом компьютере, под вашей учётной записью Claude.",
+        Kind.ApiKey => "в Anthropic (Claude) — по вашему ключу API.",
+        Kind.Local => "никуда: их читает модель в Ollama на этом компьютере, в интернет они не уходят.",
+        _ => "на сервер OffLoadAI, а он передаёт их Claude (Anthropic). Вместе с ними уходит ваш ключ OffLoadAI Pro — в нём номер ключа и имя, которое вы назвали при покупке.",
     };
 
     readonly Dictionary<Kind, IAssistantProvider> providers;
@@ -83,11 +95,24 @@ public sealed class AssistantModel : Observable
     /// <summary>Папка, которую разбирали последней.</summary>
     public string? Folder { get => folder; private set => Set(ref folder, value); }
 
-    /// <summary>Человек согласился, что сведения о файлах уходят модели. Без этого помощник не запускается.</summary>
-    public bool Consent
+    /// <summary>Человек согласился, что сведения о файлах уходят туда, куда их отправляет выбранный вариант
+    /// (<see cref="Destination"/>). Без этого помощник не запускается.</summary>
+    public bool Consent => Demo.IsOn || Settings.Get<bool?>(ConsentKey(provider)) == true;
+
+    /// <summary>Дать или отозвать согласие на выбранный вариант. Отозванное действует сразу: начатый вопрос прерывается.</summary>
+    public void SetConsent(bool given)
     {
-        get => Demo.IsOn || Settings.Get<bool?>(ConsentKey) == true;
-        set { Settings.Set(ConsentKey, value); Raise(); }
+        Settings.Set(ConsentKey(provider), given);
+        if (!given) Cancel();
+        Raise(nameof(Consent));
+    }
+
+    /// <summary>Показывать ли помощнику начало небольших текстовых файлов. По умолчанию — нет: имя, размер и дата
+    /// обычно и так говорят, что это за файл, а в тексте бывает то, что уходить не должно.</summary>
+    public bool SendsPreviews
+    {
+        get => Settings.Get<bool?>(PreviewsKey) == true;
+        set { Settings.Set(PreviewsKey, value); Raise(); }
     }
 
     /// <summary>Объект по номеру из ответа — настоящий путь, а не тот, что видел помощник.</summary>
@@ -103,6 +128,10 @@ public sealed class AssistantModel : Observable
         Raise(nameof(Answer));
     }
 
+    /// <summary>Что по советам ушло в Корзину и где лежит теперь — чтобы вернуть здесь же, как в «Разобрать».</summary>
+    Dictionary<string, CleanupModel.TrashedItem> trashed = [];
+    public bool CanPutBack(string id) => trashed.ContainsKey(id);
+
     CancellationTokenSource? cancel;
 
     public async void Run(string target, string? question, AppModel app)
@@ -114,8 +143,10 @@ public sealed class AssistantModel : Observable
         Error = null;
         Answer = null;
         done = [];
+        trashed = [];
         Stage = StageKind.Scanning;
         Status = "Считаю, что лежит в папке…";
+        var previews = SendsPreviews;
         try
         {
             List<SpaceItem> measured;
@@ -140,7 +171,8 @@ public sealed class AssistantModel : Observable
             var picked = AssistantFacts.Pick(measured);
             items = picked.Select((item, i) => (item, i)).ToDictionary(p => (p.i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture), p => p.item);
             var home = app.Rules.Home;
-            var facts = await Task.Run(() => AssistantFacts.Build(picked, home), token);
+            // Что можно удалить, решают правила «Разобрать», а не помощник.
+            var facts = await Task.Run(() => AssistantFacts.Build(picked, home, previews, AssistantTrash.Current(home).Allows), token);
             Stage = StageKind.Thinking;
             Status = $"Помощник смотрит {facts.Count} {Plural.Ru(facts.Count, "объект", "объекта", "объектов")}…";
             Answer = Demo.IsOn ? DemoAnswer(facts) : await Provider.Ask(facts, question, token);
@@ -153,10 +185,8 @@ public sealed class AssistantModel : Observable
             Status = null;
         }
         catch (AssistantException problem) { Fail(problem.Message); }
-        catch (Exception problem) when (problem is IOException or UnauthorizedAccessException or RunnerException)
-        {
-            Fail(problem.Message);
-        }
+        // Любая другая ошибка (нет claude.exe, ответ не JSON, сбой SDK) — тоже сообщение, а не страница, навсегда «в работе».
+        catch (Exception problem) { Fail(problem.Message); }
     }
 
     void Fail(string message)
@@ -168,7 +198,7 @@ public sealed class AssistantModel : Observable
 
     public void Cancel() => cancel?.Cancel();
 
-    /// <summary>В Корзину — вернуть можно, пока Корзина не очищена. Правила OffLoadAI проверяются ещё раз:
+    /// <summary>В Корзину — вернуть можно здесь же или из Корзины, пока её не очистили. Правила OffLoadAI проверяются ещё раз:
     /// помощник мог ошибиться, а объект — измениться с тех пор.</summary>
     public async Task<string?> Trash(string id, AppModel app)
     {
@@ -180,17 +210,37 @@ public sealed class AssistantModel : Observable
         }
         var verdict = app.Rules.PathVerdict(item.Path);
         if (verdict.Kind != VerdictKind.Safe) return "Правила OffLoadAI не дают отправить это в Корзину: " + string.Join(" ", verdict.Notes);
+        var home = app.Rules.Home;
+        // Удалить можно только то, что разрешают правила «Разобрать», — что бы ни советовал помощник.
+        // Сведения — свежие: файл могли заменить новым с тем же именем.
+        var current = item with { Verdict = verdict, Modified = FileSystem.Stat(item.Path)?.Modified ?? item.Modified };
+        if (!await Task.Run(() => AssistantTrash.Current(home).Allows(current)))
+            return "Удалять OffLoadAI разрешает только то, что создаётся заново, и старые установщики. Это можно убрать в сейф.";
         try
         {
-            await Task.Run(() => RecycleBin.Trash(item.Path));
+            var (inTrash, identity) = await Task.Run(() => RecycleBin.Trash(item.Path));
+            trashed = new Dictionary<string, CleanupModel.TrashedItem>(trashed) { [id] = new CleanupModel.TrashedItem(item.Path, inTrash, item.Bytes, identity) };
             MarkDone(id, "в Корзине");
             app.Space.InvalidateAll();
             return null;
         }
-        catch (Exception problem) when (problem is IOException or UnauthorizedAccessException or InvalidOperationException)
+        catch (Exception problem) when (problem is IOException or UnauthorizedAccessException or InvalidOperationException or RecycleBin.RecycleException)
         {
             return problem.Message;
         }
+    }
+
+    /// <summary>Вернуть из Корзины на прежнее место то, что туда отправил совет. Ответ — что помешало (null — получилось).</summary>
+    public async Task<string?> PutBack(string id, AppModel app)
+    {
+        if (!trashed.TryGetValue(id, out var item)) return "В Корзине его уже нет.";
+        var (back, problems) = await Task.Run(() => CleanupModel.PutBack([item]));
+        if (back.Count == 0) return problems.FirstOrDefault() ?? "Вернуть не получилось.";
+        trashed = trashed.Where(p => p.Key != id).ToDictionary(p => p.Key, p => p.Value);
+        done = done.Where(p => p.Key != id).ToDictionary(p => p.Key, p => p.Value);
+        Raise(nameof(Answer));
+        app.Space.InvalidateAll();
+        return null;
     }
 
     /// <summary>Вымышленные «Загрузки» для снимков и демонстрации: что там обычно лежит.</summary>
@@ -214,12 +264,12 @@ public sealed class AssistantModel : Observable
         {
             "Отпуск 2023 (1).mp4" => new Advice(fact.Id, Importance.Minor, AdviceAction.Safe, "Видео из отпуска с «(1)» в имени — похоже на повторную загрузку; сохранить стоит, но не на диске компьютера."),
             "Фото с дачи.zip" => new Advice(fact.Id, Importance.Minor, AdviceAction.Safe, "Архив с личными фото: нужен, но редко — место ему в сейфе."),
-            "Win11_24H2_Russian_x64.iso" => new Advice(fact.Id, Importance.Junk, AdviceAction.Trash, "Образ установки Windows: скачивается заново с сайта Microsoft."),
-            "temp-export" => new Advice(fact.Id, Importance.Junk, AdviceAction.Trash, "Временная выгрузка, которую давно не открывали."),
+            "Win11_24H2_Russian_x64.iso" => new Advice(fact.Id, Importance.Minor, AdviceAction.Safe, "Образ установки Windows: скачивается заново с сайта Microsoft, а пока пусть лежит в сейфе — вдруг к нему подключена виртуальная машина."),
+            "temp-export" => new Advice(fact.Id, Importance.Minor, AdviceAction.Safe, "Временная выгрузка, которую давно не открывали: в сейфе она не мешает, а понадобится — вернёте."),
             "node-v22.11.0-x64.msi" or "ChromeSetup.exe" => new Advice(fact.Id, Importance.Junk, AdviceAction.Trash, "Установщик уже поставленной программы."),
             _ => new Advice(fact.Id, Importance.Important, AdviceAction.Keep, "Личный документ — оставить на месте."),
         }).ToList();
-        return new AssistantAnswer("В «Загрузках» почти 7 ГБ мусора — образ Windows, установщики и старая выгрузка. Видео и архив с фото лучше убрать в сейф, документы оставить.",
+        return new AssistantAnswer("В «Загрузках» из мусора — только установщики. Больше всего места освободят образ Windows, видео, архив с фото и старая выгрузка: их лучше убрать в сейф, документы оставить.",
                                    advice, "Демонстрация");
     }
 }

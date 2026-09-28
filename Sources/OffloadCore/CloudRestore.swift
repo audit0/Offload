@@ -72,8 +72,10 @@ public enum CloudRestore {
         public let item: URL
         public let bytes: Int64
         public let files: Int
-        /// Что восстановить не удалось — по файлу на строку.
+        /// Что восстановить не удалось — по файлу на строку. Такие файлы убраны: restic оставляет их с дырами.
         public let problems: [String]
+        /// Сверено ли восстановленное с бэкапом (`--verify`). После ошибок restic сверку не делает.
+        public let verified: Bool
     }
 
     public enum RestoreError: LocalizedError, Equatable {
@@ -159,10 +161,23 @@ public enum CloudRestore {
         case 12: return .wrongPassword
         case 10: return .notARepository(repository.url.path)
         default:
-            let message = stderr.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty }.suffix(3).joined(separator: " ")
+            let message = readable(stderr).suffix(3).joined(separator: " ")
             if message.localizedCaseInsensitiveContains("wrong password") { return .wrongPassword }
             return .failed("restic завершился с кодом \(status)" + (message.isEmpty ? "." : ": \(message)"))
+        }
+    }
+
+    /// Строки stderr restic для человека: из JSON — только сообщение («There were 3 errors»), без служебных полей;
+    /// повторы чтения, которых ждёт iCloud, — не ошибка и не показываются.
+    public static func readable(_ stderr: String) -> [String] {
+        stderr.split(separator: "\n").compactMap { raw -> String? in
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty, stalledFile(line) == nil, !line.contains("returned error, retrying") else { return nil }
+            if let problem = parseProblem(line) { return problem }
+            if let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] {
+                return object["message"] as? String
+            }
+            return line
         }
     }
 
@@ -196,7 +211,8 @@ public enum CloudRestore {
 
     /// Восстанавливает файл или папку из снимка в новую папку внутри `folder`
     /// и сверяет восстановленное с хранилищем (`--verify`). Существующее не трогается:
-    /// новая папка создаётся всегда своя. Прерванное — убирается целиком.
+    /// новая папка создаётся всегда своя. Прерванное — убирается целиком. Если не прочитались отдельные
+    /// файлы, они убираются, а остальное остаётся (см. `Report.problems` и `Report.verified`).
     public static func restore(_ entry: Entry, from repository: Repository, password: Password, snapshot: Snapshot,
                                into folder: URL, isCancelled: @escaping @Sendable () -> Bool = { false },
                                waitingForCloud: @escaping @Sendable (URL) -> Void = { _ in },
@@ -219,37 +235,64 @@ public enum CloudRestore {
         let call = invocation(["restore", "\(snapshot.id):\(parent)", "--include", "/" + escapePattern(entry.name),
                                "--target", target.path, "--verify"],
                               repository: repository, password: password)
-        let lines = LineLog()
+        let problems = LineLog(limit: 20)
+        // Все пути, а не первые сколько-то: каждый такой файл испорчен и будет убран.
+        let broken = LineLog(limit: .max)
+        @Sendable func note(_ line: String) {
+            guard let failure = failedItem(line) else { return }
+            problems.appendUnique(failure.item.isEmpty ? failure.message : "\(failure.item): \(failure.message)")
+            if !failure.item.isEmpty { broken.append(failure.item) }
+        }
         let result: CommandResult
         do {
             result = try Runner.stream("restic", call.arguments, stdin: call.stdin, isCancelled: isCancelled, onErrorLine: { line in
+                // Ошибки с отдельными файлами restic пишет в stderr.
+                note(line)
                 // Кусок бэкапа убран с Mac и лежит только в iCloud: просим iCloud его скачать.
                 guard let pack = stalledFile(line) else { return }
                 try? FileManager.default.startDownloadingUbiquitousItem(at: pack)
                 waitingForCloud(pack)
             }) { line in
                 if let update = parseProgress(line) { progress(update) }
-                if let problem = parseProblem(line) { lines.append(problem) }
+                note(line)
             }
         } catch {
             try? fm.removeItem(at: target)
             throw error
         }
-        // 3 — восстановлено не всё: часть файлов не прочиталась. Остальное оставляем.
-        guard result.succeeded || result.status == 3 else {
-            try? fm.removeItem(at: target)
-            throw Self.error(status: result.status, stderr: result.stderr, repository: repository)
-        }
         let item = target.appendingPathComponent(entry.name)
-        guard fm.fileExists(atPath: item.path) else {
+        func fail(_ error: RestoreError) -> RestoreError {
             try? fm.removeItem(at: target)
-            throw RestoreError.failed("restic ничего не восстановил: «\(entry.path)» нет в снимке.")
+            return error
         }
-        var stderrProblems = result.status == 3
-            ? result.stderr.split(separator: "\n").map(String.init).filter { !$0.isEmpty && stalledFile($0) == nil } : []
-        if stderrProblems.count > 20 { stderrProblems = Array(stderrProblems.prefix(20)) }
+        // Не прочитались отдельные файлы — restic выходит с 1 (кода «восстановлено не всё» у restore нет).
+        // Такие файлы он оставляет полного размера, но с нулями на месте недочитанного: их убираем, а остальное
+        // оставляем — повтор, скорее всего, упрётся в то же место. Сверку (--verify) после ошибок restic не делает.
+        if !result.succeeded {
+            guard result.status == 1, !broken.all.isEmpty, fm.fileExists(atPath: item.path) else {
+                throw fail(Self.error(status: result.status, stderr: result.stderr, repository: repository))
+            }
+            for path in broken.all { removeBroken(path, in: target) }
+        }
+        guard fm.fileExists(atPath: item.path) else {
+            throw fail(result.succeeded ? RestoreError.failed("restic ничего не восстановил: «\(entry.path)» нет в снимке.")
+                : Self.error(status: result.status, stderr: result.stderr, repository: repository))
+        }
         let counted = count(item)
-        return Report(item: item, bytes: counted.bytes, files: counted.files, problems: lines.all + stderrProblems)
+        // Из папки не восстановилось ни одного файла — это не «не целиком», а неудача.
+        if !result.succeeded, counted.files == 0 {
+            throw fail(Self.error(status: result.status, stderr: result.stderr, repository: repository))
+        }
+        return Report(item: item, bytes: counted.bytes, files: counted.files, problems: problems.all, verified: result.succeeded)
+    }
+
+    /// Убирает файл, который restic восстановил не целиком. Путь пришёл из вывода restic, поэтому — только
+    /// обычный файл и только внутри папки восстановления; папки с ошибкой (например, прав) остаются.
+    public static func removeBroken(_ item: String, in target: URL) {
+        let url = target.appendingPathComponent(String(item.drop { $0 == "/" })).standardizedFileURL
+        guard url.path.hasPrefix(target.standardizedFileURL.path + "/"),
+              (try? FileManager.default.attributesOfItem(atPath: url.path)[.type] as? FileAttributeType) == .typeRegular else { return }
+        try? FileManager.default.removeItem(at: url)
     }
 
     // MARK: - Разбор вывода restic
@@ -298,11 +341,22 @@ public enum CloudRestore {
 
     /// Сообщение restic об ошибке с конкретным файлом: «путь: что случилось».
     public static func parseProblem(_ line: String) -> String? {
-        guard let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
-              object["message_type"] as? String == "error" else { return nil }
-        let message = (object["error"] as? [String: Any])?["message"] as? String ?? "ошибка"
-        if let item = object["item"] as? String, !item.isEmpty { return "\(item): \(message)" }
-        return message
+        failedItem(line).map { $0.item.isEmpty ? $0.message : "\($0.item): \($0.message)" }
+    }
+
+    /// То же по частям: путь внутри восстанавливаемого (с «/» в начале; пустой — ошибка не с файлом) и что случилось.
+    /// restic 0.17 и новее пишет такую ошибку строкой JSON, 0.16 — текстом «ignoring error for /путь: что случилось».
+    public static func failedItem(_ line: String) -> (item: String, message: String)? {
+        if let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] {
+            guard object["message_type"] as? String == "error" else { return nil }
+            let message = (object["error"] as? [String: Any])?["message"] as? String ?? "ошибка"
+            return (object["item"] as? String ?? "", message)
+        }
+        let prefix = "ignoring error for "
+        guard line.hasPrefix(prefix) else { return nil }
+        let rest = line.dropFirst(prefix.count)
+        guard let colon = rest.range(of: ": ") else { return (String(rest), "ошибка") }
+        return (String(rest[..<colon.lowerBound]), String(rest[colon.upperBound...]))
     }
 
     /// Строка restic о том, что файл хранилища не прочитался и чтение будет повторено:
@@ -410,5 +464,7 @@ final class LineLog: @unchecked Sendable {
     init(limit: Int = 200) { self.limit = limit }
 
     func append(_ line: String) { lock.withLock { if lines.count < limit { lines.append(line) } } }
+    /// Без повторов: об одном файле restic пишет столько раз, сколько кусков его не прочиталось.
+    func appendUnique(_ line: String) { lock.withLock { if lines.count < limit, !lines.contains(line) { lines.append(line) } } }
     var all: [String] { lock.withLock { lines } }
 }
