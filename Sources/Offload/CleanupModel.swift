@@ -727,7 +727,8 @@ final class CleanupModel {
     }
 
     /// В Корзину; ответ — где объект лежит теперь и какой это файл (nil, если macOS не сказала, куда положила).
-    nonisolated private static func trash(_ url: URL) throws -> (url: URL, identity: FileIdentity?)? {
+    /// Им же пользуется помощник: вернуть отправленное можно одинаково.
+    nonisolated static func trash(_ url: URL) throws -> (url: URL, identity: FileIdentity?)? {
         let identity = FileIdentity.of(url)
         var resulting: NSURL?
         try FileManager.default.trashItem(at: url, resultingItemURL: &resulting)
@@ -797,7 +798,8 @@ final class CleanupModel {
         }
     }
 
-    nonisolated private static func putBack(_ items: [TrashedItem]) async -> ([TrashedItem], [String]) {
+    /// Вернуть из Корзины на прежние места; ответ — что вернулось и что помешало остальному.
+    nonisolated static func putBack(_ items: [TrashedItem]) async -> ([TrashedItem], [String]) {
         await Task.detached(priority: .userInitiated) { () -> ([TrashedItem], [String]) in
             let fm = FileManager.default
             var back: [TrashedItem] = []

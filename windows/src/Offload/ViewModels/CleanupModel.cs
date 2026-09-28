@@ -802,7 +802,9 @@ public sealed class CleanupModel : Observable
         RaiseAnswers();
     }
 
-    static (List<TrashedItem>, List<string>) PutBack(IReadOnlyList<TrashedItem> items)
+    /// <summary>Вернуть из Корзины на прежние места; ответ — что вернулось и что помешало остальному.
+    /// Им же пользуется помощник: вернуть отправленное можно одинаково.</summary>
+    internal static (List<TrashedItem>, List<string>) PutBack(IReadOnlyList<TrashedItem> items)
     {
         var back = new List<TrashedItem>();
         var problems = new List<string>();

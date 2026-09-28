@@ -301,9 +301,10 @@ public sealed class CloudRestoreModel : Observable
             var what = entry.IsDirectory
                 ? $"{report.Files} {Plural.Ru(report.Files, "файл", "файла", "файлов")}, {Format.Bytes(report.Bytes)}"
                 : Format.Bytes(report.Bytes);
-            RestoreMessage = report.Problems.Count == 0
+            RestoreMessage = report.Verified && report.Problems.Count == 0
                 ? new NoticeMessage(NoticeKind.Success, $"«{entry.Name}» восстановлено и сверено с бэкапом: {what}.")
-                : new NoticeMessage(NoticeKind.Warning, $"«{entry.Name}» восстановлено не целиком: {what}. Не удалось:", report.Problems.Take(10).ToList());
+                : new NoticeMessage(NoticeKind.Warning, $"«{entry.Name}» восстановлено не целиком: {what}. Файлы, которые не прочитались из бэкапа, убраны — они были бы испорчены; остальное с бэкапом не сверено: после ошибок restic не сверяет. Не удалось:",
+                                    report.Problems.Take(10).ToList());
         }
         catch (OperationCanceledException) { RestoreMessage = new NoticeMessage(NoticeKind.Info, "Восстановление остановлено, недокачанное убрано."); }
         catch (Exception failure) { RestoreMessage = new NoticeMessage(NoticeKind.Error, failure.Message); }

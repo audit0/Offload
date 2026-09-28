@@ -45,15 +45,14 @@ struct AssistantView: View {
                 Text("Смотрит на папку и говорит, что в ней важно, что менее важно, а что мусор. Сам ничего не удаляет и не переносит — только советует, а решаете вы.")
                     .foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             }
+            // Сначала — где думает помощник: от этого зависит, куда уйдут сведения, и согласие даётся на него.
+            providerCard
             if !model.consent {
                 consentCard
-            } else {
-                providerCard
-                if model.problem == nil || Demo.isOn {
-                    askCard
-                    if let error = model.error { Notice(.error, error) }
-                    if let answer = model.answer { answerSection(answer) }
-                }
+            } else if model.problem == nil || Demo.isOn {
+                askCard
+                if let error = model.error { Notice(.error, error) }
+                if let answer = model.answer { answerSection(answer) }
             }
         }
         .navigationTitle("Помощник")
@@ -84,7 +83,7 @@ struct AssistantView: View {
             }
             Button("Отмена", role: .cancel) {}
         } message: { target in
-            Text("\(Format.bytes(target.item.bytes)). Вернуть можно из Корзины, пока её не очистили.")
+            Text("\(Format.bytes(target.item.bytes)). Вернуть можно здесь же или из Корзины, пока её не очистили.")
         }
         .alert("Не получилось", isPresented: Binding(get: { trashProblem != nil }, set: { if !$0 { trashProblem = nil } })) {
             Button("Понятно", role: .cancel) {}
@@ -96,13 +95,16 @@ struct AssistantView: View {
     // MARK: - Согласие
 
     private var consentCard: some View {
-        Card(spacing: 12) {
+        let model = app.assistant
+        return Card(spacing: 12) {
             CardTitle("Что уходит помощнику", systemImage: "hand.raised")
-            Text("Имена и пути файлов и папок от домашней папки, их размеры и даты, пометки правил OffLoadAI, несколько имён внутри папок и начало небольших текстовых файлов — до 20 строк. Файлы с ключами, токенами и паролями не читаются никогда, а ключи, найденные в других файлах, вырезаются. Файлы, которые лежат только в iCloud, не скачиваются и не читаются. Фото, видео и документы целиком никуда не уходят.")
+            Text("Имена и пути файлов и папок от домашней папки, их размеры и даты, пометки правил OffLoadAI и несколько имён внутри папок. Содержимое файлов — нет: начало небольших текстовых файлов уходит, только если вы сами это включите, и никогда — таблицы (.csv), файлы с ключами и те, где видны пароль, токен, номер карты или фраза восстановления. Файлы, которые лежат только в iCloud, не скачиваются. Фото, видео и документы никуда не уходят.")
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Куда — выбираете вы: Claude от Anthropic через Claude Code на этом Mac или по вашему ключу API, сервер OffLoadAI (он передаёт вопрос Claude и ничего не хранит) — или локальная модель, и тогда сведения не покидают Mac вовсе. Остальной OffLoadAI по-прежнему работает без сети; помощник выходит в сеть, только когда вы его спрашиваете.")
+            Text("Куда: \(model.kind.destination)")
+                .fontWeight(.medium).fixedSize(horizontal: false, vertical: true)
+            Text("Остальной OffLoadAI работает без сети. Согласие — отдельно для каждого варианта; отозвать его можно в любой момент.")
                 .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
-            Button("Согласен, включить помощника") { app.assistant.consent = true }
+            Button("Согласен — включить «\(model.kind.title)»") { model.setConsent(true) }
                 .prominentButton()
                 .padding(.top, 4)
         }
@@ -163,6 +165,12 @@ struct AssistantView: View {
                 Button("Проверить снова") { Task { await model.check(app: app) } }
                     .disabled(model.isChecking)
             }
+            if model.consent, !Demo.isOn {
+                Button("Отозвать согласие на «\(model.kind.title)»") { model.setConsent(false) }
+                    .buttonStyle(.link)
+                    .font(.callout)
+                    .help("Сведения о файлах больше не уйдут сюда, пока вы снова не согласитесь")
+            }
         }
     }
 
@@ -176,6 +184,7 @@ struct AssistantView: View {
 
     private var askCard: some View {
         let model = app.assistant
+        @Bindable var bindable = model
         return Card(spacing: 12) {
             CardTitle("Какую папку разобрать", systemImage: "folder")
             FlowLayout(spacing: 8, lineSpacing: 8) {
@@ -188,6 +197,12 @@ struct AssistantView: View {
             TextField("Вопрос помощнику (необязательно): например, «что из этого можно удалить?»", text: $question)
                 .textFieldStyle(.roundedBorder)
                 .disabled(model.isBusy)
+            VStack(alignment: .leading, spacing: 3) {
+                Toggle("Показывать помощнику начало небольших текстовых файлов", isOn: $bindable.sendsPreviews)
+                    .disabled(model.isBusy)
+                Text("До 20 строк — так понятнее, что это за файл. Таблицы (.csv), файлы с ключами и те, где видны пароль, токен, номер карты или фраза восстановления, не уходят никогда.")
+                    .font(.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+            }
             if model.isBusy {
                 HStack(spacing: 10) {
                     ProgressView().controlSize(.small)
@@ -281,7 +296,14 @@ struct AssistantView: View {
     private func action(_ advice: Advice, item: SpaceItem?) -> some View {
         let model = app.assistant
         if let outcome = model.done[advice.id] {
-            Label(outcome, systemImage: "checkmark").font(.callout).foregroundStyle(Theme.ok)
+            VStack(alignment: .trailing, spacing: 4) {
+                Label(outcome, systemImage: "checkmark").font(.callout).foregroundStyle(Theme.ok)
+                if model.canPutBack(advice.id) {
+                    Button("Вернуть") { Task { trashProblem = await model.putBack(advice.id, app: app) } }
+                        .controlSize(.small)
+                        .help("Вернуть из Корзины на прежнее место")
+                }
+            }
         } else if let item, advice.action != .keep {
             if advice.action == .safe {
                 Button("В сейф…") {
@@ -292,7 +314,7 @@ struct AssistantView: View {
             } else {
                 Button("В Корзину") { trashing = Target(id: advice.id, item: item) }
                     .controlSize(.small)
-                    .help("Вернуть можно из Корзины, пока её не очистили")
+                    .help("Вернуть можно здесь же или из Корзины, пока её не очистили")
             }
         } else {
             Text("оставить").font(.caption).foregroundStyle(Theme.faint).padding(.top, 3)

@@ -33,12 +33,25 @@ final class AssistantModel {
             case .server: return "Сервер OffLoadAI передаёт вопрос Claude и ничего не хранит. Входит в OffLoadAI Pro — ни Claude Code, ни ключа не нужно."
             }
         }
+
+        /// Куда уходят сведения о файлах — для согласия: у каждого варианта своё.
+        var destination: String {
+            switch self {
+            case .claudeCode: return "в Anthropic (Claude) — через Claude Code на этом Mac, под вашей учётной записью Claude."
+            case .apiKey: return "в Anthropic (Claude) — по вашему ключу API."
+            case .local: return "никуда: их читает модель в Ollama на этом Mac, в интернет они не уходят."
+            case .server: return "на сервер OffLoadAI, а он передаёт их Claude (Anthropic). Вместе с ними уходит ваш ключ OffLoadAI Pro — в нём номер ключа и имя, которое вы назвали при покупке."
+            }
+        }
     }
 
-    private static let consentKey = "assistant.consent"
+    /// Согласие — отдельно для каждого варианта: сведения уходят в разные места. Ключи новые: прежнее общее
+    /// согласие давалось на описание, по которому начало текстовых файлов уходило всегда.
+    private static func consentKey(_ kind: Kind) -> String { "assistant.consent.\(kind.rawValue)" }
     private static let kindKey = "assistant.provider"
     private static let localModelKey = "assistant.ollamaModel"
     private static let serverKey = "assistant.server"
+    private static let previewsKey = "assistant.previews"
 
     private(set) var stage: Stage = .idle
     var isBusy: Bool { stage == .scanning || stage == .thinking }
@@ -63,9 +76,23 @@ final class AssistantModel {
         }
     }
 
-    /// Человек согласился, что сведения о файлах уходят модели. Без этого помощник не запускается.
-    var consent: Bool = Demo.isOn || UserDefaults.standard.bool(forKey: consentKey) {
-        didSet { if !Demo.isOn { UserDefaults.standard.set(consent, forKey: Self.consentKey) } }
+    /// На какие варианты человек согласился: сведения о файлах уходят туда, куда их отправляет вариант
+    /// (`Kind.destination`). Без согласия на выбранный вариант помощник не запускается.
+    private(set) var consented: Set<Kind> = Demo.isOn ? Set(Kind.allCases)
+        : Set(Kind.allCases.filter { UserDefaults.standard.bool(forKey: AssistantModel.consentKey($0)) })
+    var consent: Bool { consented.contains(kind) }
+
+    /// Дать или отозвать согласие на выбранный вариант. Отозванное действует сразу: начатый вопрос прерывается.
+    func setConsent(_ given: Bool) {
+        if given { consented.insert(kind) } else { consented.remove(kind) }
+        if !Demo.isOn { UserDefaults.standard.set(given, forKey: Self.consentKey(kind)) }
+        if !given { cancel() }
+    }
+
+    /// Показывать ли помощнику начало небольших текстовых файлов. По умолчанию — нет: имя, размер и дата
+    /// обычно и так говорят, что это за файл, а в тексте бывает то, что уходить не должно.
+    var sendsPreviews: Bool = UserDefaults.standard.bool(forKey: previewsKey) {
+        didSet { if !Demo.isOn { UserDefaults.standard.set(sendsPreviews, forKey: Self.previewsKey) } }
     }
 
     var localModel: String? = UserDefaults.standard.string(forKey: localModelKey) {
@@ -79,6 +106,10 @@ final class AssistantModel {
     /// Что уже сделано по совету: «в Корзине», «в сейфе».
     private(set) var done: [String: String] = [:]
     func markDone(_ id: String, _ outcome: String) { done[id] = outcome }
+
+    /// Что по советам ушло в Корзину и где лежит теперь — чтобы вернуть здесь же, как в «Разобрать».
+    private(set) var trashed: [String: CleanupModel.TrashedItem] = [:]
+    func canPutBack(_ id: String) -> Bool { trashed[id] != nil }
 
     @ObservationIgnored private var task: Task<Void, Never>?
 
@@ -133,10 +164,13 @@ final class AssistantModel {
         error = nil
         answer = nil
         done = [:]
+        trashed = [:]
         stage = .scanning
         status = "Считаю, что лежит в папке…"
         let rules = app.rules
         let asked = provider(app: app)
+        let previews = sendsPreviews
+        let demo = Demo.isOn
         task = Task {
             do {
                 let measured: [SpaceItem]
@@ -164,7 +198,12 @@ final class AssistantModel {
                 let picked = AssistantFacts.pick(measured)
                 items = Dictionary(uniqueKeysWithValues: picked.enumerated().map { (String($0.offset + 1), $0.element) })
                 let home = rules.home
-                let facts = await Task.detached(priority: .userInitiated) { AssistantFacts.build(picked, home: home) }.value
+                let facts = await Task.detached(priority: .userInitiated) { () -> [FileFact] in
+                    // Что можно удалить, решают правила «Разобрать», а не помощник. В демонстрации hdiutil не спрашиваем.
+                    let trash = demo ? AssistantTrash(planner: CleanupPlanner(home: home), encrypted: { _ in false })
+                        : AssistantTrash.current(home: home)
+                    return AssistantFacts.build(picked, home: home, previews: previews, canTrash: trash.allows)
+                }.value
                 try Task.checkCancellation()
                 stage = .thinking
                 status = "Помощник смотрит \(facts.count) \(pluralRu(facts.count, "объект", "объекта", "объектов"))…"
@@ -189,7 +228,7 @@ final class AssistantModel {
 
     func cancel() { task?.cancel() }
 
-    /// В Корзину — вернуть можно, пока Корзина не очищена. Правила OffLoadAI проверяются ещё раз:
+    /// В Корзину — вернуть можно здесь же или из Корзины, пока её не очистили. Правила OffLoadAI проверяются ещё раз:
     /// помощник мог ошибиться, а объект — измениться с тех пор. Ответ — что помешало (nil — получилось).
     func trash(_ id: String, app: AppModel) async -> String? {
         guard let item = item(id) else { return "Объект не найден." }
@@ -202,21 +241,42 @@ final class AssistantModel {
             return "Правила OffLoadAI не дают отправить это в Корзину: " + verdict.notes.joined(separator: " ")
         }
         let url = item.url
+        let home = app.rules.home
+        // Удалить можно только то, что разрешают правила «Разобрать», — что бы ни советовал помощник.
+        // Сведения — свежие: файл могли заменить новым с тем же именем.
+        let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? item.modified
+        let current = SpaceItem(url: url, bytes: item.bytes, modified: modified, isDirectory: item.isDirectory,
+                                accessDenied: item.accessDenied, verdict: verdict, isMeasured: item.isMeasured)
+        guard await Task.detached(priority: .userInitiated, operation: { AssistantTrash.current(home: home).allows(current) }).value else {
+            return "Удалять OffLoadAI разрешает только то, что создаётся заново, и старые установщики. Это можно убрать в сейф."
+        }
         // Как и в «Разобрать»: то, что сейчас открыто в программе, на ходу не удаляем.
         if let holders = await Task.detached(priority: .userInitiated, operation: { SafeMover.openFiles(in: url) }).value,
            !holders.isEmpty {
             return "«\(url.lastPathComponent)» сейчас использует \(holders.prefix(3).joined(separator: ", ")). Закройте программу и повторите."
         }
         do {
-            try await Task.detached(priority: .userInitiated) {
-                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
-            }.value
+            let trashedAt = try await Task.detached(priority: .userInitiated) { try CleanupModel.trash(url) }.value
+            if let trashedAt {
+                trashed[id] = CleanupModel.TrashedItem(original: url, inTrash: trashedAt.url, bytes: item.bytes, identity: trashedAt.identity)
+            }
             markDone(id, "в Корзине")
             app.space.invalidateAll()
             return nil
         } catch {
             return error.localizedDescription
         }
+    }
+
+    /// Вернуть из Корзины на прежнее место то, что туда отправил совет. Ответ — что помешало (nil — получилось).
+    func putBack(_ id: String, app: AppModel) async -> String? {
+        guard let item = trashed[id] else { return "В Корзине его уже нет." }
+        let (back, problems) = await CleanupModel.putBack([item])
+        guard !back.isEmpty else { return problems.first ?? "Вернуть не получилось." }
+        trashed[id] = nil
+        done[id] = nil
+        app.space.invalidateAll()
+        return nil
     }
 
     // MARK: - Демонстрация
@@ -248,14 +308,14 @@ final class AssistantModel {
             case "Xcode_16.4.xip":
                 return Advice(id: fact.id, importance: .junk, action: .trash, reason: "Архив установки Xcode: скачивается заново с сайта Apple.")
             case "temp-export":
-                return Advice(id: fact.id, importance: .junk, action: .trash, reason: "Временная выгрузка, которую давно не открывали.")
+                return Advice(id: fact.id, importance: .minor, action: .safe, reason: "Временная выгрузка, которую давно не открывали: в сейфе она не мешает, а понадобится — вернёте.")
             case "node-v22.11.0.pkg", "googlechrome.dmg":
                 return Advice(id: fact.id, importance: .junk, action: .trash, reason: "Установщик уже поставленной программы.")
             default:
                 return Advice(id: fact.id, importance: .important, action: .keep, reason: "Личный документ — оставить на месте.")
             }
         }
-        return AssistantAnswer(summary: "В «Загрузках» почти 7 ГБ мусора — архив Xcode, установщики и старая выгрузка. Видео и архив с фото лучше убрать в сейф, документы оставить.",
+        return AssistantAnswer(summary: "В «Загрузках» около 6 ГБ мусора — архив Xcode и установщики. Видео, архив с фото и старую выгрузку лучше убрать в сейф, документы оставить.",
                                items: advice, provider: "Демонстрация")
     }
 }
