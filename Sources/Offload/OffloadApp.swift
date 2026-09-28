@@ -22,6 +22,10 @@ struct OffloadApp: App {
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("О программе OffLoadAI") { AboutPanel.show() }
+                Button("Проверить обновления…") { model.updates.checkNow() }
+                    .disabled(model.updates.isChecking)
+                Toggle("Сообщать о новых версиях", isOn: Binding(get: { model.updates.enabled == true },
+                                                                 set: { model.updates.setEnabled($0) }))
                 Button("OffLoadAI Pro…") { model.pro.offer() }
             }
             // Как «Dismount All» в VeraCrypt: закрыть сейф из любого места одним сочетанием.

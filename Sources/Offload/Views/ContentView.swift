@@ -8,6 +8,7 @@ struct ContentView: View {
         @Bindable var app = app
         @Bindable var safe = app.safe
         @Bindable var pro = app.pro
+        @Bindable var updates = app.updates
         NavigationSplitView {
             // Своя колонка вместо List: выделение у List macOS рисует системным синим,
             // а здесь оно чёрно-белое — светло-серая подложка и жирный текст.
@@ -25,6 +26,9 @@ struct ContentView: View {
             .navigationSplitViewColumnWidth(min: 240, ideal: 260)
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 4) {
+                    if let release = app.updates.available {
+                        UpdateSidebarRow(release: release).padding(.horizontal, 10)
+                    }
                     ProSidebarRow().padding(.horizontal, 10)
                     SafeStatusPanel().padding([.horizontal, .bottom], 10)
                 }
@@ -59,8 +63,19 @@ struct ContentView: View {
         // Сменили диск — перечитываем, есть ли на нём сейф и открыт ли он.
         .task(id: app.destinationID) { app.safe.refresh(app: app) }
         .sheet(isPresented: $pro.isPresented) { ProSheet() }
-        // Пробный период считается днями: окно могло простоять открытым со вчера.
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in app.pro.refresh() }
+        .sheet(isPresented: $updates.isPresented) { UpdateSheet() }
+        .alert("Обновления", isPresented: updateResultShown) {
+            Button("Готово", role: .cancel) {}
+        } message: {
+            Text(updates.checkResult ?? "")
+        }
+        // Пробный период считается днями: окно могло простоять открытым со вчера. О новой версии — раз в сутки,
+        // если человек это включил.
+        .task { app.updates.checkIfDue() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            app.pro.refresh()
+            app.updates.checkIfDue()
+        }
         // Закрыть сейф не дали открытые в нём файлы — откуда бы ни закрывали: из панели, меню или раздела.
         .alert("Сейф не закрывается", isPresented: $safe.closeBlocked) {
             Button("Закрыть принудительно", role: .destructive) { app.safe.close(app: app, force: true) }
@@ -71,6 +86,11 @@ struct ContentView: View {
         // Журнал нужен не только разделу «Перенесённое»: «Обзор» и «Сейф» по нему видят,
         // что лежит на диске открыто. Поэтому читается сразу и при каждой смене дисков и сейфа.
         .task(id: app.historyVolumes.map(\.id)) { app.history.reload(volumes: app.historyVolumes) }
+    }
+
+    /// Итог проверки обновлений из меню: установлена последняя версия или почему проверить не вышло.
+    private var updateResultShown: Binding<Bool> {
+        Binding(get: { app.updates.checkResult != nil }, set: { if !$0 { app.updates.checkResult = nil } })
     }
 
     /// Сколько перенесённого лежит на дисках — видно, не заходя в раздел. Ноль не показывается.

@@ -77,6 +77,7 @@ public sealed class AppModel : Observable
     public DockerModel Docker { get; } = new();
     public CleanupModel Cleanup { get; } = new();
     public CloudRestoreModel Cloud { get; } = new();
+    public UpdatesModel Updates { get; } = new();
     public AssistantModel Assistant { get; }
 
     /// <summary>Только что подключённый внешний диск: «Обзор» предлагает разобрать компьютер одной кнопкой.</summary>

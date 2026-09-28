@@ -25,6 +25,7 @@ static partial class All
         ("safe", ChecksSafe),
         ("license", ChecksLicense),
         ("assistant", ChecksAssistant),
+        ("updates", ChecksUpdate),
     ];
 
     public static void Run()

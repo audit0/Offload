@@ -40,6 +40,26 @@
                     </Grid>
                 </local:Card>
 
+                <!-- Сообщать ли о новых версиях — висит, пока человек не решит. -->
+                <local:Card x:Name="UpdatesCard" Margin="0,0,0,28" Visibility="Collapsed">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <local:IconTile Glyph="&#xE896;" Tone="Brand" Size="40" VerticalAlignment="Top" />
+                        <StackPanel Grid.Column="1" Margin="14,0,0,0">
+                            <TextBlock Text="Сообщать о новых версиях?" Style="{StaticResource Headline}" />
+                            <TextBlock Style="{StaticResource Callout}" Margin="0,4,0,0"
+                                       Text="Раз в сутки OffLoadAI спросит у GitHub номер последней версии и скажет, если вышла новая: в новых версиях бывают исправления безопасности. В запросе нет ничего о компьютере и файлах — GitHub видит только адрес сети, как при открытии любой страницы. Обновление ставите вы сами. Передумать можно в «О программе OffLoadAI»." />
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <Button Content="Сообщать" Style="{StaticResource ProminentButton}" Click="UpdatesOn_Click" />
+                                <Button Content="Не надо" Margin="8,0,0,0" Click="UpdatesOff_Click" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </local:Card>
+
                 <!-- Три карточки одной высоты: строка сетки берёт высоту самой высокой. -->
                 <Grid Margin="0,0,0,28">
                     <Grid.ColumnDefinitions>

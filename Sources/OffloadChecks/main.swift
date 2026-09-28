@@ -663,6 +663,7 @@ checksHabits()
 checksCloudRestore()
 checksLicense()
 checksAssistant()
+checksUpdate()
 
 try? fm.removeItem(at: scratch)
 print("")

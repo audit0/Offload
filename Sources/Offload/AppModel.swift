@@ -71,6 +71,7 @@ final class AppModel {
     let cleanup = CleanupModel()
     let assistant = AssistantModel()
     let cloud = CloudRestoreModel()
+    let updates = UpdatesModel()
 
     /// Только что подключённый внешний диск: «Обзор» предлагает разобрать Mac одной кнопкой.
     var connectedPrompt: String?

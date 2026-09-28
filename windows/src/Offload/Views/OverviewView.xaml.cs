@@ -41,6 +41,7 @@ public partial class OverviewView : UserControl
             app.Safe.PropertyChanged += Changed;
             app.Backup.PropertyChanged += Changed;
             app.History.PropertyChanged += Changed;
+            app.Updates.PropertyChanged += Changed;
         }
         else
         {
@@ -49,6 +50,7 @@ public partial class OverviewView : UserControl
             app.Safe.PropertyChanged -= Changed;
             app.Backup.PropertyChanged -= Changed;
             app.History.PropertyChanged -= Changed;
+            app.Updates.PropertyChanged -= Changed;
         }
     }
 
@@ -58,6 +60,7 @@ public partial class OverviewView : UserControl
     {
         var model = app.Overview;
         UpdateConnected();
+        UpdatesCard.Visibility = app.Updates.Enabled == null ? Visibility.Visible : Visibility.Collapsed;
         UpdateDisk(model.Disk);
         UpdateHost();
         UpdateMemory(model.Memory);
@@ -84,6 +87,12 @@ public partial class OverviewView : UserControl
     }
 
     void NotNow_Click(object sender, RoutedEventArgs e) => app.ConnectedPrompt = null;
+
+    // MARK: Сообщать ли о новых версиях
+
+    void UpdatesOn_Click(object sender, RoutedEventArgs e) => app.Updates.SetEnabled(true);
+
+    void UpdatesOff_Click(object sender, RoutedEventArgs e) => app.Updates.SetEnabled(false);
 
     // MARK: Карточки
 
