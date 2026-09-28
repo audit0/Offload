@@ -17,6 +17,11 @@ public sealed class ClaudeCodeAssistant(string model = "sonnet") : IAssistantPro
     public string Title => "Claude Code на этом компьютере";
     public static readonly TimeSpan Timeout = TimeSpan.FromMinutes(4);
 
+    /// <summary>Что Claude Code получает сверх окружения Runner: папка его настроек и входа, путь к Git Bash,
+    /// прокси сети и сертификаты прокси. Ключи API и выбор другого облака (Bedrock, Vertex) сюда не входят.</summary>
+    public static readonly string[] ClaudeVariables =
+        ["CLAUDE_CONFIG_DIR", "CLAUDE_CODE_GIT_BASH_PATH", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "ALL_PROXY", "NODE_EXTRA_CA_CERTS"];
+
     public string? Problem() => Runner.Locate("claude") == null
         ? "Claude Code не найден. Установите его (claude.com/claude-code) и войдите своей учётной записью Claude — затем «Проверить снова»."
         : null;
@@ -37,8 +42,12 @@ public sealed class ClaudeCodeAssistant(string model = "sonnet") : IAssistantPro
             ], redirectStdin: true);
             process.StartInfo.WorkingDirectory = scratch;
             process.StartInfo.StandardOutputEncoding = Encoding.UTF8;
-            // Вложенный запуск из другой сессии Claude Code и чужой прокси не должны мешать: вход — подписка пользователя.
+            // Окружение Runner — без чужих переменных: вложенный запуск из другой сессии Claude Code, чужой прокси
+            // Anthropic, свой ANTHROPIC_API_KEY или Bedrock не должны мешать — вход только подпиской пользователя.
+            // Нужное самому Claude Code остаётся: где его настройки и вход, где Git Bash, прокси сети и его сертификаты.
             foreach (var name in new[] { "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "ANTHROPIC_BASE_URL" }) process.StartInfo.Environment.Remove(name);
+            foreach (var name in ClaudeVariables)
+                if (Environment.GetEnvironmentVariable(name) is { Length: > 0 } value) process.StartInfo.Environment[name] = value;
             process.StartInfo.Environment["CLAUDE_CODE_ENTRYPOINT"] = "offloadai";
             process.Start();
             var output = process.StandardOutput.ReadToEndAsync(cancel);

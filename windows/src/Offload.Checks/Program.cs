@@ -13,7 +13,7 @@ Console.OutputEncoding = Encoding.UTF8;
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
 // Программа проверок служит и подопытной внешней программой для проверок Runner: печатает аргументы,
-// отдаёт stdin, спит или завершается с кодом.
+// отдаёт stdin, спит, завершается с кодом или печатает переменную окружения.
 if (args.Length >= 1 && args[0] == "--echo-args")
 {
     using var output = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false));
@@ -35,6 +35,11 @@ if (args.Length == 2 && args[0] == "--sleep")
     return 0;
 }
 if (args.Length == 2 && args[0] == "--exit") return int.Parse(args[1]);
+if (args.Length == 2 && args[0] == "--env")
+{
+    Console.Write(Environment.GetEnvironmentVariable(args[1]) ?? "");
+    return 0;
+}
 
 Directory.CreateDirectory(Scratch);
 Journal.LocalOverride = Path.Combine(Scratch, "history.json");
