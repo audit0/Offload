@@ -36,7 +36,10 @@ function Install-Offload {
         # Сумма лежит в том же релизе и от подмены релиза не защищает. Подтверждение сборки (attestation)
         # подписано Sigstore и говорит, что архив собран workflow release.yml этого репозитория.
         $gh = Get-Command gh -ErrorAction SilentlyContinue
-        if ($gh -and (& gh auth status 2>$null; $LASTEXITCODE -eq 0)) {
+        # Отдельной строкой: Windows PowerShell 5.1 не принимает «;» внутри скобок условия.
+        $ghReady = $false
+        if ($gh) { & gh auth status *> $null; $ghReady = ($LASTEXITCODE -eq 0) }
+        if ($ghReady) {
             Write-Host '→ проверяю подтверждение сборки (gh attestation verify)'
             & gh attestation verify "$tmp\$name" --repo $repo --signer-workflow "$repo/.github/workflows/release.yml" *> $null
             if ($LASTEXITCODE -eq 0) { Write-Host "  сборка подтверждена: собрана GitHub Actions из $repo" }
