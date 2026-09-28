@@ -24,6 +24,24 @@ static partial class All
             Check(Runner.Locate("notepad") == null, "программа не из списка известных не ищется вовсе — PATH не используется");
             Check(!Runner.ChildEnvironment["PATH"].Split(';').Any(p => p.Contains(@"\Temp", StringComparison.OrdinalIgnoreCase)),
                   "в PATH запускаемых программ нет временных папок");
+            // Свои настройки человека не меняют того, что делают запущенные программы: restic не берёт чужой пароль
+            // вместо введённого в OffLoadAI, Claude Code не платит по ключу API и не уходит в другое облако.
+            string[] foreign = ["RESTIC_PASSWORD", "RESTIC_REPOSITORY", "ANTHROPIC_API_KEY", "CLAUDE_CODE_USE_BEDROCK"];
+            var saved = foreign.Append("DOCKER_CONTEXT").ToDictionary(name => name, Environment.GetEnvironmentVariable);
+            foreach (var name in foreign) Environment.SetEnvironmentVariable(name, "чужое");
+            Environment.SetEnvironmentVariable("DOCKER_CONTEXT", "desktop-linux");
+            try
+            {
+                var env = Runner.ChildEnvironment;
+                Check(!foreign.Any(env.ContainsKey), "свои RESTIC_PASSWORD, ANTHROPIC_API_KEY и прочие настройки человека запускаемым программам не передаются");
+                Check(env.TryGetValue("DOCKER_CONTEXT", out var context) && context == "desktop-linux", "куда подключаться Docker — передаётся");
+                Check(new[] { "SystemRoot", "TEMP", "USERPROFILE", "LOCALAPPDATA" }.All(name => Environment.GetEnvironmentVariable(name) == null || env.ContainsKey(name)),
+                      "каталог Windows, временная папка и профиль — передаются");
+            }
+            finally
+            {
+                foreach (var (name, value) in saved) Environment.SetEnvironmentVariable(name, value);
+            }
 
             var abc = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
             Check(FileHasher.Sha256(Encoding.UTF8.GetBytes("abc")) == abc, "SHA-256 по эталону");
@@ -51,6 +69,14 @@ static partial class All
                 Check(echoed.Output == hostile + "\n\n" + "второй аргумент\n", $"аргументы не интерпретируются оболочкой: «{echoed.Output}»");
                 Check(!File.Exists(pwned), "подстановка команды не выполнилась");
                 Check(Runner.Check("offload-self", ["--cat"], stdin: Encoding.UTF8.GetBytes("секрет")).Output == "секрет", "stdin передаётся программе");
+                var password = Environment.GetEnvironmentVariable("RESTIC_PASSWORD");
+                Environment.SetEnvironmentVariable("RESTIC_PASSWORD", "чужой пароль");
+                try
+                {
+                    Check(Runner.Check("offload-self", ["--env", "RESTIC_PASSWORD"]).Output == "", "свой RESTIC_PASSWORD человека до запущенной программы не доходит");
+                    Check(Runner.Check("offload-self", ["--env", "SystemRoot"]).Output.Length > 0, "каталог Windows до запущенной программы доходит");
+                }
+                finally { Environment.SetEnvironmentVariable("RESTIC_PASSWORD", password); }
                 ExpectError("зависшая программа прерывается по таймауту",
                             () => Runner.Run("offload-self", ["--sleep", "10"], timeout: TimeSpan.FromMilliseconds(500)),
                             ex => ex is RunnerException { Kind: RunnerErrorKind.TimedOut });

@@ -130,14 +130,31 @@ public static class Runner
         return null;
     }
 
-    /// <summary>Окружение для запускаемых программ: как у OffLoadAI, но PATH — только известные каталоги.</summary>
+    /// <summary>
+    /// Переменные окружения, которые получают запускаемые программы, — как на Mac, только нужное: каталоги Windows,
+    /// профиль и временная папка, без которых программы не работают или ищут свои файлы не там, и куда подключаться
+    /// Docker и где лежат машины VirtualBox. Остальные настройки человека не передаются: свой RESTIC_PASSWORD
+    /// подменил бы пароль, введённый в OffLoadAI, а ANTHROPIC_API_KEY — вход в Claude Code.
+    /// </summary>
+    public static readonly IReadOnlySet<string> ChildVariables = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "SystemRoot", "SystemDrive", "windir", "ComSpec", "PATHEXT", "TEMP", "TMP",
+        "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA", "ProgramData", "ALLUSERSPROFILE", "PUBLIC",
+        "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "CommonProgramFiles", "CommonProgramFiles(x86)", "CommonProgramW6432",
+        "USERNAME", "USERDOMAIN", "USERDOMAIN_ROAMINGPROFILE", "COMPUTERNAME", "LOGONSERVER", "SESSIONNAME",
+        "OS", "PROCESSOR_ARCHITECTURE", "PROCESSOR_IDENTIFIER", "PROCESSOR_LEVEL", "PROCESSOR_REVISION", "NUMBER_OF_PROCESSORS",
+        "PSModulePath", "DriverData",
+        "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "VBOX_USER_HOME",
+    };
+
+    /// <summary>Окружение для запускаемых программ: только <see cref="ChildVariables"/>, а PATH — только известные каталоги.</summary>
     public static Dictionary<string, string> ChildEnvironment
     {
         get
         {
             var env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
-                env[(string)entry.Key] = (string?)entry.Value ?? "";
+                if (entry.Key is string name && ChildVariables.Contains(name)) env[name] = (string?)entry.Value ?? "";
             env["PATH"] = string.Join(';', new[] { System32, SystemRoot, Path.Combine(System32, "Wbem"),
                 Path.Combine(System32, @"WindowsPowerShell\v1.0"), Path.Combine(System32, "OpenSSH") }.Concat(ThirdPartyDirectories));
             return env;

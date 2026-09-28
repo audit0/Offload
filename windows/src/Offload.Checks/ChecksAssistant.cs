@@ -137,6 +137,8 @@ static partial class All
             ExpectError("не вошёл в учётную запись — понятная ошибка", () => claude.Read("""{"is_error":true,"result":"Not logged in · Please run /login"}""", "", facts),
                         e => e is AssistantException { Kind: AssistantErrorKind.NotSignedIn });
             ExpectError("мусор вместо JSON — ошибка", () => claude.Read("oops", "boom", facts), e => e is AssistantException { Kind: AssistantErrorKind.Failed });
+            Check(!ClaudeCodeAssistant.ClaudeVariables.Any(name => name.StartsWith("ANTHROPIC_") || name.StartsWith("CLAUDE_CODE_USE_")),
+                  "Claude Code не получает ни ключ API, ни выбор другого облака");
         });
 
         if (!Env("OFFLOAD_ASSISTANT_LIVE")) return;
