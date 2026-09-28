@@ -11,6 +11,7 @@ struct OverviewView: View {
                 ConnectedPrompt(disk: disk)
             }
             if !app.hasFullDiskAccess { FullDiskAccessBanner() }
+            if app.updates.enabled == nil { UpdateQuestionCard() }
             // Три карточки одной высоты: fixedSize по вертикали отдаёт ряду высоту самой высокой,
             // а карточки с fillsHeight растягиваются до неё.
             HStack(alignment: .top, spacing: 16) {

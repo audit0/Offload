@@ -82,7 +82,7 @@ public sealed class AssistantView : UserControl
         });
         body.Children.Add(new TextBlock
         {
-            Text = "Остальной OffLoadAI работает без сети. Согласие — отдельно для каждого варианта; отозвать его можно в любой момент.",
+            Text = "Остальной OffLoadAI работает без сети — кроме сообщений о новых версиях, если вы их включили. Согласие — отдельно для каждого варианта; отозвать его можно в любой момент.",
             Style = Res("Callout"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0),
         });
         var agree = new Button { Content = "Согласен — включить «" + AssistantModel.Title(Model.ProviderKind) + "»", Style = Res("ProminentButton"), Margin = new Thickness(0, 16, 0, 0) };

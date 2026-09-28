@@ -35,10 +35,16 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = app;
         StatusPanel.App = app;
+        UpdateRowHost.Content = new UpdateSidebarRow(app);
         ProRowHost.Content = new ProSidebarRow(app);
         app.Pro.Offered += ShowPro;
-        // Пробный период считается днями: окно могло простоять открытым со вчера.
-        Activated += (_, _) => app.Pro.Refresh();
+        // Пробный период считается днями: окно могло простоять открытым со вчера. О новой версии — раз в сутки,
+        // если человек это включил.
+        Activated += (_, _) =>
+        {
+            app.Pro.Refresh();
+            app.Updates.CheckIfDue();
+        };
         SidebarList.ItemsSource = items;
         app.PropertyChanged += App_PropertyChanged;
         app.History.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(HistoryModel.PendingCount)) UpdateBadges(); };
@@ -112,7 +118,7 @@ public partial class MainWindow : Window
         Page.Content = page;
     }
 
-    void About_Click(object sender, RoutedEventArgs e) => Dialogs.About(this);
+    void About_Click(object sender, RoutedEventArgs e) => Dialogs.About(this, app.Updates);
 
     // MARK: Окно: стекло Windows 11 и подключение дисков
 

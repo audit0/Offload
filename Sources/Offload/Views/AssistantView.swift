@@ -102,7 +102,7 @@ struct AssistantView: View {
                 .fixedSize(horizontal: false, vertical: true)
             Text("Куда: \(model.kind.destination)")
                 .fontWeight(.medium).fixedSize(horizontal: false, vertical: true)
-            Text("Остальной OffLoadAI работает без сети. Согласие — отдельно для каждого варианта; отозвать его можно в любой момент.")
+            Text("Остальной OffLoadAI работает без сети — кроме сообщений о новых версиях, если вы их включили. Согласие — отдельно для каждого варианта; отозвать его можно в любой момент.")
                 .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             Button("Согласен — включить «\(model.kind.title)»") { model.setConsent(true) }
                 .prominentButton()

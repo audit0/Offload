@@ -39,8 +39,8 @@ public static class Dialogs
     public static string Version =>
         Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "разработка";
 
-    /// <summary>О программе: версия и ссылки на GitHub.</summary>
-    public static void About(Window owner)
+    /// <summary>О программе: версия, ссылки на GitHub и сообщения о новых версиях.</summary>
+    public static void About(Window owner, UpdatesModel updates)
     {
         var sheet = new SheetWindow { Heading = "OffLoadAI", Subtitle = $"Версия {Version} для Windows", Glyph = Glyphs.Drive, Owner = owner };
         var body = new StackPanel();
@@ -59,6 +59,36 @@ public static class Dialogs
             links.Children.Add(link);
         }
         body.Children.Add(links);
+
+        // Сообщения о новых версиях: выключены, пока человек их не включит, — сам OffLoadAI в сеть не ходит.
+        var notify = new CheckBox { Content = "Сообщать о новых версиях", IsChecked = updates.Enabled == true, Margin = new Thickness(0, 18, 0, 0) };
+        notify.Click += (_, _) => updates.SetEnabled(notify.IsChecked == true);
+        body.Children.Add(notify);
+        body.Children.Add(new TextBlock
+        {
+            Text = "Раз в сутки OffLoadAI спросит у GitHub номер последней версии. В запросе нет ничего о компьютере и файлах — GitHub видит только адрес сети.",
+            Style = (Style)Application.Current.FindResource("Caption"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0),
+        });
+        var status = new TextBlock { Style = (Style)Application.Current.FindResource("Caption"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
+        var check = new Button
+        {
+            Style = (Style)Application.Current.FindResource("LinkButton"), Margin = new Thickness(0, 10, 0, 0), HorizontalAlignment = HorizontalAlignment.Left,
+            Content = new TextBlock { Text = "Проверить обновления сейчас", TextDecorations = TextDecorations.Underline },
+        };
+        check.Click += async (_, _) =>
+        {
+            check.IsEnabled = false;
+            status.Text = "Спрашиваю GitHub…";
+            var message = await updates.CheckNow();
+            check.IsEnabled = true;
+            status.Text = message ?? "";
+            if (message != null || updates.Available == null) return;
+            sheet.Close();
+            UpdateSheet.Show(owner, updates);
+        };
+        body.Children.Add(check);
+        body.Children.Add(status);
+
         sheet.Content = body;
         var done = new Button { Content = "Готово", Style = (Style)Application.Current.FindResource("ProminentButton"), IsDefault = true, IsCancel = true };
         done.Click += (_, _) => sheet.Close();
