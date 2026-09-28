@@ -78,16 +78,45 @@ main() {
   mkdir -p "$dest"
 
   # До переименования программа звалась Offload: закрываем и её (идентификатор приложения тот же).
-  if pgrep -xq 'OffLoadAI|Offload'; then
+  # Во время копирования OffLoadAI сначала спрашивает, прервать ли его, — ждём ответа. Не закрылся —
+  # установка останавливается: подменить программу под работающей значит оставить человека в старой версии.
+  running() { pgrep -xq -U "$UID" 'OffLoadAI|Offload'; }
+  if running; then
     print "→ закрываю запущенный OffLoadAI"
     osascript -e "tell application id \"$bundle_id\" to quit" >/dev/null 2>&1 || true
-    for _ in {1..20}; do pgrep -xq 'OffLoadAI|Offload' || break; sleep 0.25; done
+    local waited
+    for waited in {1..240}; do
+      running || break
+      if (( waited == 12 )); then print "  OffLoadAI ещё открыт: если он спрашивает, прервать ли копирование, ответьте в его окне"; fi
+      sleep 0.25
+    done
+    if running; then
+      fail "OffLoadAI не закрылся, установка отменена, программа не тронута. Дождитесь конца копирования или закройте OffLoadAI сами и запустите установку снова."
+    fi
   fi
 
+  # Новая версия сначала копируется рядом и встаёт на место прежней переименованием: если установку
+  # прервать, остаётся прежняя программа, а не пустое место.
   print "→ устанавливаю в $dest"
-  rm -rf "$dest/OffLoadAI.app"
-  ditto "$app" "$dest/OffLoadAI.app"
-  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$dest/OffLoadAI.app" >/dev/null 2>&1 || true
+  local target="$dest/OffLoadAI.app" staged="$dest/.OffLoadAI.app.new-$$" previous="$dest/.OffLoadAI.app.old-$$"
+  trap "rm -rf ${(q)tmp} ${(q)staged}" EXIT
+  rm -rf "$staged" "$previous"
+  if ! ditto "$app" "$staged" || ! codesign --verify --strict "$staged" 2>/dev/null; then
+    rm -rf "$staged"
+    fail "Не удалось скопировать новую версию в $dest, прежняя осталась на месте."
+  fi
+  if [[ -e "$target" || -L "$target" ]] && ! mv "$target" "$previous"; then
+    rm -rf "$staged"
+    fail "Не удалось заменить $target, прежняя версия осталась на месте."
+  fi
+  if ! mv "$staged" "$target"; then
+    if [[ -e "$previous" ]] && ! mv "$previous" "$target"; then
+      fail "Не удалось поставить новую версию. Прежняя лежит в $previous — переименуйте её в OffLoadAI.app."
+    fi
+    fail "Не удалось поставить новую версию, прежняя осталась на месте."
+  fi
+  rm -rf "$previous" || print -u2 -- "⚠️  Не удалось удалить прежнюю версию $previous — удалите её вручную."
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$target" >/dev/null 2>&1 || true
 
   # Прежняя копия под старым именем: удаляем, только если это наше приложение. Настройки, ключ Pro,
   # журнал и база решений остаются на месте — новая версия читает их сама.
