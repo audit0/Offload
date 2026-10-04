@@ -44,7 +44,7 @@ enum Demo {
             AppMemory(name: "Figma", bytes: 1_300 << 20, processes: 5),
             AppMemory(name: "Slack", bytes: 900 << 20, processes: 6),
             AppMemory(name: "Telegram", bytes: 610 << 20, processes: 2),
-            AppMemory(name: "Музыка", bytes: 380 << 20, processes: 1),
+            AppMemory(name: tr("Музыка"), bytes: 380 << 20, processes: 1),
         ])
 
     static func spaceItems() -> [SpaceItem] {
@@ -55,10 +55,10 @@ enum Demo {
         }
         return [
             item("Movies", 142.6, .safe, daysAgo: 210),
-            item("Library", 96.1, .blocked("Данные приложений: перенос сломает программы, которые их используют."), daysAgo: 0),
+            item("Library", 96.1, .blocked(tr("Данные приложений: перенос сломает программы, которые их используют.")), daysAgo: 0),
             item("Downloads", 58.3, .safe, daysAgo: 3),
-            item("Pictures", 41.7, .caution(["Внутри медиатека «Фото» — её перенести нельзя, остальное можно."]), daysAgo: 12),
-            item("Projects", 31.2, .caution(["Внутри git-репозитории: после переноса с ними можно работать только с диска."]), daysAgo: 1),
+            item("Pictures", 41.7, .caution([tr("Внутри медиатека «Фото» — её перенести нельзя, остальное можно.")]), daysAgo: 12),
+            item("Projects", 31.2, .caution([tr("Внутри git-репозитории: после переноса с ними можно работать только с диска.")]), daysAgo: 1),
             item("Music", 12.4, .safe, daysAgo: 400),
             item("Documents", 17.5, .safe, daysAgo: 5),
             item("Desktop", 2.9, .safe, daysAgo: 0),
@@ -76,15 +76,15 @@ enum Demo {
                               originalRemoved: true, restored: restored, note: note, inSafe: inSafe ? true : nil)
         }
         return [
-            record("Movies/Съёмки 2023", 86.4, files: 412, daysAgo: 1),
+            record(tr("Movies/Съёмки 2023"), 86.4, files: 412, daysAgo: 1),
             record("Library/Application Support/MobileSync/Backup/iPhone 15", 48.2, files: 9_811, daysAgo: 2,
-                   note: "Резервная копия iPhone. После возврата Finder снова её увидит."),
-            record("Downloads/Установщики", 21.7, files: 64, daysAgo: 2),
-            record("Pictures/Экспорт Lightroom 2022", 12.9, files: 1_840, daysAgo: 30, inSafe: false,
-                   note: "Перенесено до появления сейфа — лежит на диске открыто."),
+                   note: tr("Резервная копия iPhone. После возврата Finder снова её увидит.")),
+            record(tr("Downloads/Установщики"), 21.7, files: 64, daysAgo: 2),
+            record(tr("Pictures/Экспорт Lightroom 2022"), 12.9, files: 1_840, daysAgo: 30, inSafe: false,
+                   note: tr("Перенесено до появления сейфа — лежит на диске открыто.")),
             record("Music/Logic Projects", 9.8, files: 2_377, daysAgo: 6),
             record("Projects/old-prototypes", 6.3, files: 18_204, daysAgo: 9),
-            record("Documents/Сканы договоров", 1.2, files: 146, daysAgo: 14, restored: true),
+            record(tr("Documents/Сканы договоров"), 1.2, files: 146, daysAgo: 14, restored: true),
         ]
     }
 
@@ -103,13 +103,13 @@ enum Demo {
             DuplicateCopy(url: home.appendingPathComponent(relative), allocated: Int64(gb * Double(gigabyte)),
                           modified: now.addingTimeInterval(-daysAgo * 86_400), created: now.addingTimeInterval(-daysAgo * 86_400))
         }
-        let library = Verdict.blocked("Данные приложений")
+        let library = Verdict.blocked(tr("Данные приложений"))
         let regenerable = Dictionary(uniqueKeysWithValues: CleanupPlanner.regenerableLocations
             .filter { ["Library/Developer/Xcode/DerivedData", "Library/Caches/Homebrew", "Library/Caches/Google/Chrome",
                        ".npm/_cacache"].contains($0.path) }
             .map { (path($0.path), $0.reason) })
         var remembered = memory
-        remembered[path("Downloads/Датасеты")] = .safe
+        remembered[path(tr("Downloads/Датасеты"))] = .safe
         let planner = CleanupPlanner(now: now, home: home, regenerable: regenerable, memory: remembered, habits: habits,
                                      busy: CleanupPlanner.busy(home: home, running: ["com.google.Chrome": "Google Chrome"]))
         return planner.suggestions([
@@ -117,21 +117,21 @@ enum Demo {
             item("Library/Caches/Homebrew", 3.4, daysAgo: 5, verdict: library),
             item("Library/Caches/Google/Chrome", 1.6, daysAgo: 0, verdict: library),
             item(".npm/_cacache", 1.1, daysAgo: 7, verdict: library),
-            item("Movies/Съёмки 2023", 86.4, daysAgo: 210),
-            item("Downloads/Датасеты", 24.1, daysAgo: 150),
-            item("Movies/Интервью 2024", 12.6, daysAgo: 50),
-            item("Documents/Архив 2019", 9.4, daysAgo: 900),
-            item("Documents/Работа", 8.1, daysAgo: 2),
-            item("Pictures/Photos Library.photoslibrary", 41.7, daysAgo: 1, verdict: .blocked("Медиатека «Фото»")),
+            item(tr("Movies/Съёмки 2023"), 86.4, daysAgo: 210),
+            item(tr("Downloads/Датасеты"), 24.1, daysAgo: 150),
+            item(tr("Movies/Интервью 2024"), 12.6, daysAgo: 50),
+            item(tr("Documents/Архив 2019"), 9.4, daysAgo: 900),
+            item(tr("Documents/Работа"), 8.1, daysAgo: 2),
+            item("Pictures/Photos Library.photoslibrary", 41.7, daysAgo: 1, verdict: .blocked(tr("Медиатека «Фото»"))),
             item("Downloads/Xcode_16.xip", 7.9, daysAgo: 60, directory: false),
             item("Downloads/Figma.dmg", 0.3, daysAgo: 40, directory: false),
             item("Projects/offload-site", 1.2, daysAgo: 120, project: true),
         ], duplicates: [
             DuplicateGroup(id: "demo-video", bytes: Int64(2.4 * Double(gigabyte)), copies: [
-                copy("Movies/Отпуск 2023.mov", 2.4, daysAgo: 300), copy("Downloads/Отпуск 2023.mov", 2.4, daysAgo: 40),
-                copy("Desktop/Отпуск 2023 (1).mov", 2.4, daysAgo: 12)]),
+                copy(tr("Movies/Отпуск 2023.mov"), 2.4, daysAgo: 300), copy(tr("Downloads/Отпуск 2023.mov"), 2.4, daysAgo: 40),
+                copy(tr("Desktop/Отпуск 2023 (1).mov"), 2.4, daysAgo: 12)]),
             DuplicateGroup(id: "demo-pdf", bytes: 14_000_000, copies: [
-                copy("Documents/Договор аренды.pdf", 0.014, daysAgo: 90), copy("Downloads/Договор аренды (1).pdf", 0.014, daysAgo: 30)]),
+                copy(tr("Documents/Договор аренды.pdf"), 0.014, daysAgo: 90), copy(tr("Downloads/Договор аренды (1).pdf"), 0.014, daysAgo: 30)]),
         ])
     }
 
@@ -147,10 +147,10 @@ enum Demo {
         }
         // Отснятое в «Фильмах» убирает в сейф; старые папки в «Документах» оставляет, хотя OffLoadAI
         // предлагал сейф; проекты добавляет в бэкап, как и советуют правила.
-        return ["Съёмки 2019", "Съёмки 2020", "Свадьба Ани", "Съёмки 2021", "Съёмки 2022"].enumerated().map { index, name in
+        return [tr("Съёмки 2019"), tr("Съёмки 2020"), tr("Свадьба Ани"), tr("Съёмки 2021"), tr("Съёмки 2022")].enumerated().map { index, name in
             decision("Movies/\(name)", .safe, suggested: .safe, kind: .folder, 18 + Double(index) * 11,
                      daysAgo: 200 + Double(index) * 60, decidedDaysAgo: 20 + Double(index) * 25)
-        } + ["Архив 2015", "Архив 2016", "Архив 2017", "Архив 2018"].enumerated().map { index, name in
+        } + [tr("Архив 2015"), tr("Архив 2016"), tr("Архив 2017"), tr("Архив 2018")].enumerated().map { index, name in
             decision("Documents/\(name)", .keep, suggested: .safe, kind: .folder, 2.5 + Double(index) * 1.5,
                      daysAgo: 400 + Double(index) * 200, decidedDaysAgo: 10 + Double(index) * 30)
         } + ["landing", "telegram-bot", "scripts"].enumerated().map { index, name in
@@ -205,7 +205,7 @@ enum Demo {
     // MARK: - Из iCloud
 
     static var cloudRepositories: [CloudRestore.Repository] {
-        [CloudRestore.Repository(url: CloudRestore.iCloudDrive.appendingPathComponent("Бэкапы/ssd-restic", isDirectory: true))]
+        [CloudRestore.Repository(url: CloudRestore.iCloudDrive.appendingPathComponent(tr("Бэкапы/ssd-restic"), isDirectory: true))]
     }
 
     static var cloudSnapshots: [CloudRestore.Snapshot] {

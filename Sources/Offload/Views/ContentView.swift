@@ -64,8 +64,8 @@ struct ContentView: View {
         .task(id: app.destinationID) { app.safe.refresh(app: app) }
         .sheet(isPresented: $pro.isPresented) { ProSheet() }
         .sheet(isPresented: $updates.isPresented) { UpdateSheet() }
-        .alert("Обновления", isPresented: updateResultShown) {
-            Button("Готово", role: .cancel) {}
+        .alert(tr("Обновления"), isPresented: updateResultShown) {
+            Button(tr("Готово"), role: .cancel) {}
         } message: {
             Text(updates.checkResult ?? "")
         }
@@ -77,11 +77,11 @@ struct ContentView: View {
             app.updates.checkIfDue()
         }
         // Закрыть сейф не дали открытые в нём файлы — откуда бы ни закрывали: из панели, меню или раздела.
-        .alert("Сейф не закрывается", isPresented: $safe.closeBlocked) {
-            Button("Закрыть принудительно", role: .destructive) { app.safe.close(app: app, force: true) }
-            Button("Оставить открытым", role: .cancel) {}
+        .alert(tr("Сейф не закрывается"), isPresented: $safe.closeBlocked) {
+            Button(tr("Закрыть принудительно"), role: .destructive) { app.safe.close(app: app, force: true) }
+            Button(tr("Оставить открытым"), role: .cancel) {}
         } message: {
-            Text("В нём открыты файлы в других программах. Закройте их и повторите — или закройте сейф принудительно: несохранённое в этих программах может пропасть.")
+            Text(tr("В нём открыты файлы в других программах. Закройте их и повторите — или закройте сейф принудительно: несохранённое в этих программах может пропасть."))
         }
         // Журнал нужен не только разделу «Перенесённое»: «Обзор» и «Сейф» по нему видят,
         // что лежит на диске открыто. Поэтому читается сразу и при каждой смене дисков и сейфа.

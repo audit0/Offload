@@ -98,24 +98,24 @@ public struct SafetyRules: Sendable {
         } else if path.hasPrefix("/Users/Shared/") {
             let shared = path.dropFirst("/Users/Shared/".count).split(separator: "/").map(String.init)
             if shared.first == "Library" {
-                return .blocked("Данные приложений в /Users/Shared/Library (например, движок BlueStacks): приложение перестанет их находить.")
+                return .blocked(tr("Данные приложений в /Users/Shared/Library (например, движок BlueStacks): приложение перестанет их находить."))
             }
             if let bundle = shared.first(where: Self.isRegisteredBundle) { return Self.bundleBlocked(bundle) }
             return .safe
         } else if path == homePath {
-            return .blocked("Домашнюю папку целиком переносить нельзя.")
+            return .blocked(tr("Домашнюю папку целиком переносить нельзя."))
         } else {
-            return .blocked("Переносить можно только из домашней папки и /Users/Shared.")
+            return .blocked(tr("Переносить можно только из домашней папки и /Users/Shared."))
         }
-        guard let first = parts.first else { return .blocked("Домашнюю папку целиком переносить нельзя.") }
+        guard let first = parts.first else { return .blocked(tr("Домашнюю папку целиком переносить нельзя.")) }
         // Служебная папка git: из неё git сам запускает хуки, а без неё проект — уже не репозиторий.
         // Регистр не важен: на обычном диске Mac «.GIT» и «.git» — одна папка.
         if parts.contains(where: { $0.lowercased() == ".git" }) {
-            return .blocked("Служебная папка git-репозитория. Переносите проект целиком.")
+            return .blocked(tr("Служебная папка git-репозитория. Переносите проект целиком."))
         }
 
         if parts.count == 1, Self.standardFolders.contains(first) {
-            return .blocked("«\(first)» — стандартная папка macOS. Переносите её содержимое, а не саму папку.")
+            return .blocked(tr("«\(first)» — стандартная папка macOS. Переносите её содержимое, а не саму папку."))
         }
         // У ~/Library свои правила и свой поиск пакетов: здесь папки приложений названы
         // идентификаторами, а «com.utmapp.UTM» оканчивается на «.UTM», как пакет виртуальной машины.
@@ -125,12 +125,12 @@ public struct SafetyRules: Sendable {
             // Регистр не важен: путь, которого ещё нет, realpath не приводит к настоящему регистру,
             // а «~/.SSH» на обычном диске Mac — та же папка, что «~/.ssh».
             if Self.pinnedHiddenFolders.contains(where: { $0.lowercased() == first.lowercased() }) {
-                return .blocked("«~/\(first)» — настройки, ключи или инструменты разработки. Им нужно оставаться на месте.")
+                return .blocked(tr("«~/\(first)» — настройки, ключи или инструменты разработки. Им нужно оставаться на месте."))
             }
             if parts.count == 1 {
-                return .blocked("Скрытая папка приложения целиком: приложение перестанет работать. Переносите отдельные данные внутри неё.")
+                return .blocked(tr("Скрытая папка приложения целиком: приложение перестанет работать. Переносите отдельные данные внутри неё."))
             }
-            return .caution(["Приложение, которому принадлежит «~/\(first)», будет искать эти данные по старому пути. Переносите, только если в нём можно указать новую папку (как папку моделей в LM Studio)."])
+            return .caution([tr("Приложение, которому принадлежит «~/\(first)», будет искать эти данные по старому пути. Переносите, только если в нём можно указать новую папку (как папку моделей в LM Studio).")])
         }
         return .safe
     }
@@ -145,7 +145,7 @@ public struct SafetyRules: Sendable {
     }
 
     static func bundleBlocked(_ bundle: String) -> Verdict {
-        .blocked("«\(bundle)» зарегистрирован в приложении (виртуальная машина, медиатека или проект). После переноса приложение его потеряет, даже если данные целы.")
+        .blocked(tr("«\(bundle)» зарегистрирован в приложении (виртуальная машина, медиатека или проект). После переноса приложение его потеряет, даже если данные целы."))
     }
 
     func libraryVerdict(_ parts: [String]) -> Verdict {
@@ -156,16 +156,16 @@ public struct SafetyRules: Sendable {
 
         // Известные крупные места — с объяснением, как освободить их правильно.
         if under(["Library", "Containers", "com.docker.docker"]) {
-            return .blocked("Диск Docker. Место в нём освобождается в разделе «Docker»: очисткой образов и кеша сборки и архивацией неиспользуемых томов.")
+            return .blocked(tr("Диск Docker. Место в нём освобождается в разделе «Docker»: очисткой образов и кеша сборки и архивацией неиспользуемых томов."))
         }
         if under(["Library", "Containers", "com.utmapp.UTM"]) {
-            return .blocked("Виртуальные машины UTM. Удаляйте и переносите их через сам UTM, иначе он их потеряет.")
+            return .blocked(tr("Виртуальные машины UTM. Удаляйте и переносите их через сам UTM, иначе он их потеряет."))
         }
         if parts.count >= 3, parts[1] == "Group Containers", parts[2].hasSuffix(".ru.keepcoder.Telegram") {
-            return .blocked("База и кеш Telegram. Кеш очищается в самом Telegram: Настройки → Данные и память → Использование памяти.")
+            return .blocked(tr("База и кеш Telegram. Кеш очищается в самом Telegram: Настройки → Данные и память → Использование памяти."))
         }
         if under(["Library", "Application Support", "Claude", "vm_bundles"]) {
-            return .blocked("Виртуальная машина приложения Claude — она нужна ему для работы.")
+            return .blocked(tr("Виртуальная машина приложения Claude — она нужна ему для работы."))
         }
         // Пакеты в ~/Library запрещены, как и везде. Кроме имени сразу под Containers, Caches
         // и т. п., похожего на идентификатор: это папка приложения, а не пакет. Только там:
@@ -182,10 +182,10 @@ public struct SafetyRules: Sendable {
         }
         if inside(["Library", "Logs"]) { return .safe }
         if inside(["Library", "Application Support", "MobileSync", "Backup"]) {
-            return .caution(["Finder не увидит эту резервную копию iPhone, пока вы не вернёте её на место."])
+            return .caution([tr("Finder не увидит эту резервную копию iPhone, пока вы не вернёте её на место.")])
         }
         if let last = parts.last, (last as NSString).pathExtension.lowercased() == "log" { return .safe }
-        return .blocked("Данные приложений в ~/Library: приложение перестанет их находить. Отсюда можно переносить только прошивки iPhone, логи и резервные копии iPhone.")
+        return .blocked(tr("Данные приложений в ~/Library: приложение перестанет их находить. Отсюда можно переносить только прошивки iPhone, логи и резервные копии iPhone."))
     }
 
     /// Итоговое решение с учётом содержимого и открытых файлов.
@@ -197,27 +197,27 @@ public struct SafetyRules: Sendable {
         case .safe: break
         }
         if !openBy.isEmpty {
-            return .blocked("Файлы сейчас открыты: \(openBy.prefix(3).joined(separator: ", ")). Закройте приложение и повторите.")
+            return .blocked(tr("Файлы сейчас открыты: \(openBy.prefix(3).joined(separator: ", ")). Закройте приложение и повторите."))
         }
         guard let content else { return notes.isEmpty ? .safe : .caution(notes) }
         if let mounted = content.mountedVolume {
-            return .blocked("Внутри смонтирован другой диск («\(mounted)»). Отключите его или переносите по частям.")
+            return .blocked(tr("Внутри смонтирован другой диск («\(mounted)»). Отключите его или переносите по частям."))
         }
         if let bundle = content.registeredBundle {
-            return .blocked("Внутри лежит «\(bundle)» — пакет, зарегистрированный в приложении (например, виртуальная машина UTM). После переноса приложение его потеряет.")
+            return .blocked(tr("Внутри лежит «\(bundle)» — пакет, зарегистрированный в приложении (например, виртуальная машина UTM). После переноса приложение его потеряет."))
         }
         if content.unreadable > 0 {
-            return .blocked("Нет доступа к \(content.unreadable) объектам внутри. Выдайте OffLoadAI полный доступ к диску в Системных настройках.")
+            return .blocked(tr("Нет доступа к \(content.unreadable) объектам внутри. Выдайте OffLoadAI полный доступ к диску в Системных настройках."))
         }
         if content.truncated {
-            return .blocked("Файлов слишком много, проверка не закончена — переносите по частям.")
+            return .blocked(tr("Файлов слишком много, проверка не закончена — переносите по частям."))
         }
         if let date = content.newestModification, now.timeIntervalSince(date) < activeWithin {
-            notes.append("Менялось \(Format.relative(date, now: now)) — возможно, ещё используется.")
+            notes.append(tr("Менялось \(Format.relative(date, now: now)) — возможно, ещё используется."))
         }
-        if content.containsGitRepo { notes.append("Внутри git-репозиторий — похоже на рабочий проект.") }
+        if content.containsGitRepo { notes.append(tr("Внутри git-репозиторий — похоже на рабочий проект.")) }
         if content.undeletable > 0 {
-            notes.append("Удалить оригинал не получится: внутри папки только для чтения или защищённые файлы (\(content.undeletableExamples.prefix(3).joined(separator: ", "))). Перенести можно только копией, оставив оригинал на месте.")
+            notes.append(tr("Удалить оригинал не получится: внутри папки только для чтения или защищённые файлы (\(content.undeletableExamples.prefix(3).joined(separator: ", "))). Перенести можно только копией, оставив оригинал на месте."))
         }
         return notes.isEmpty ? .safe : .caution(notes)
     }
@@ -235,20 +235,20 @@ extension SafetyRules {
     public static func checkDestination(_ volume: VolumeInfo, sourceVolume: VolumeInfo?, content: ContentReport) -> DestinationCheck {
         var check = DestinationCheck()
         if volume.isReadOnly {
-            check.blockers.append("Диск «\(volume.name)» доступен только для чтения (\(volume.fsDisplayName)).")
+            check.blockers.append(tr("Диск «\(volume.name)» доступен только для чтения (\(volume.fsDisplayName))."))
         }
         if let sourceVolume, sourceVolume.mountPoint == volume.mountPoint {
-            check.blockers.append("Источник и назначение на одном диске — место не освободится.")
+            check.blockers.append(tr("Источник и назначение на одном диске — место не освободится."))
         }
         if content.symlinkCount > 0 {
             if !volume.keepsSymlinks {
-                check.blockers.append("\(volume.fsDisplayName) не хранит символические ссылки, а внутри их \(content.symlinkCount). Перенос бы их сломал.")
+                check.blockers.append(tr("\(volume.fsDisplayName) не хранит символические ссылки, а внутри их \(content.symlinkCount). Перенос бы их сломал."))
             } else if volume.emulatesSymlinks {
-                check.notes.append("Символических ссылок внутри: \(content.symlinkCount). На \(volume.fsDisplayName) macOS хранит их в своём формате: на Mac они работают, а Windows и Linux могут увидеть вместо них обычные файлы.")
+                check.notes.append(tr("Символических ссылок внутри: \(content.symlinkCount). На \(volume.fsDisplayName) macOS хранит их в своём формате: на Mac они работают, а Windows и Linux могут увидеть вместо них обычные файлы."))
             }
         }
         if let limit = volume.maxFileSize, content.largestFile > limit {
-            check.blockers.append("\(volume.fsDisplayName) не принимает файлы больше 4 ГБ, а самый большой здесь — \(Format.bytes(content.largestFile)).")
+            check.blockers.append(tr("\(volume.fsDisplayName) не принимает файлы больше 4 ГБ, а самый большой здесь — \(Format.bytes(content.largestFile))."))
         }
         // Ни одной из двух мер по отдельности верить нельзя, поэтому берём большую.
         // Логический размер мал для дерева из тысяч мелких файлов: каждый занимает на диске
@@ -262,22 +262,22 @@ extension SafetyRules {
         let margin: Int64 = 512 * 1024 * 1024
         check.requiredBytes = max(content.logicalBytes, content.allocatedBytes) + overhead + margin
         if volume.availableBytes < check.requiredBytes {
-            check.blockers.append("На «\(volume.name)» свободно \(Format.bytes(volume.availableBytes)), а нужно около \(Format.bytes(check.requiredBytes)).")
+            check.blockers.append(tr("На «\(volume.name)» свободно \(Format.bytes(volume.availableBytes)), а нужно около \(Format.bytes(check.requiredBytes))."))
         }
         if content.sparseFiles > 0 {
-            check.notes.append("Разрежённые или сжатые файлы (\(content.sparseFiles)) займут на диске полный размер: \(Format.bytes(content.logicalBytes)) вместо \(Format.bytes(content.allocatedBytes)).")
+            check.notes.append(tr("Разрежённые или сжатые файлы (\(content.sparseFiles)) займут на диске полный размер: \(Format.bytes(content.logicalBytes)) вместо \(Format.bytes(content.allocatedBytes))."))
         }
         if content.hardLinkedFiles > 0 {
-            check.notes.append("Файлов, на которые ведёт несколько имён (жёсткие ссылки): \(content.hardLinkedFiles). В копии каждое имя станет отдельным файлом: места займёт больше, а правка одного больше не будет видна в остальных.")
+            check.notes.append(tr("Файлов, на которые ведёт несколько имён (жёсткие ссылки): \(content.hardLinkedFiles). В копии каждое имя станет отдельным файлом: места займёт больше, а правка одного больше не будет видна в остальных."))
         }
         if content.taggedFiles > 0 {
-            check.notes.append("У \(content.taggedFiles) объектов есть метки Finder, комментарии или другие расширенные атрибуты. Данные и права копируются, а эти пометки — нет: после возврата их не будет.")
+            check.notes.append(tr("У \(content.taggedFiles) объектов есть метки Finder, комментарии или другие расширенные атрибуты. Данные и права копируются, а эти пометки — нет: после возврата их не будет."))
         }
         if volume.createsAppleDouble, content.appleDoubleNamed > 0 {
-            check.blockers.append("На \(volume.fsDisplayName) macOS хранит служебные данные файла X в файле «._X» и перезаписывает его сама, а у вас такие файлы есть (\(content.appleDoubleExamples.prefix(3).joined(separator: ", "))). Целыми они туда не лягут — переносите в сейф или на диск APFS.")
+            check.blockers.append(tr("На \(volume.fsDisplayName) macOS хранит служебные данные файла X в файле «._X» и перезаписывает его сама, а у вас такие файлы есть (\(content.appleDoubleExamples.prefix(3).joined(separator: ", "))). Целыми они туда не лягут — переносите в сейф или на диск APFS."))
         }
         if volume.createsAppleDouble {
-            check.notes.append("macOS создаст рядом служебные файлы ._* — OffLoadAI удалит их после сверки.")
+            check.notes.append(tr("macOS создаст рядом служебные файлы ._* — OffLoadAI удалит их после сверки."))
         }
         return check
     }

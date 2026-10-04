@@ -42,9 +42,9 @@ struct HistoryGroup: Identifiable {
 extension MoveRecord {
     var symbol: String { restored ? "arrow.uturn.backward" : (isEncrypted ? "lock.fill" : "externaldrive.fill") }
     var tone: Tone { restored ? .neutral : (isEncrypted ? .good : .caution) }
-    var location: String { isEncrypted ? "в сейфе «\(volumeName)»" : "открыто на «\(volumeName)»" }
+    var location: String { isEncrypted ? tr("в сейфе «\(volumeName)»") : tr("открыто на «\(volumeName)»") }
     /// Почему вернуть сейчас нельзя.
-    var unavailableReason: String { isEncrypted ? "Сейф закрыт" : "Диск не подключён" }
+    var unavailableReason: String { isEncrypted ? tr("Сейф закрыт") : tr("Диск не подключён") }
 }
 
 struct HistoryView: View {
@@ -59,10 +59,10 @@ struct HistoryView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         ProgressView().controlSize(.small)
-                        Text("Возвращаю «\(URL(fileURLWithPath: record.originalPath).lastPathComponent)»").font(.headline)
+                        Text(tr("Возвращаю «\(URL(fileURLWithPath: record.originalPath).lastPathComponent)»")).font(.headline)
                         Spacer()
-                        Text(model.progress?.phase.rawValue ?? "Подготовка").foregroundStyle(Theme.muted)
-                        Button("Отменить") { model.cancel() }
+                        Text(model.progress.map { trDynamic($0.phase.rawValue) } ?? tr("Подготовка")).foregroundStyle(Theme.muted)
+                        Button(tr("Отменить")) { model.cancel() }
                     }
                     ProgressView(value: model.progress?.fraction ?? 0)
                 }
@@ -75,15 +75,15 @@ struct HistoryView: View {
                     Notice(message).padding(16)
                 }
                 ContentUnavailableView {
-                    Label("Пока ничего не перенесено", systemImage: "tray")
+                    Label(tr("Пока ничего не перенесено"), systemImage: "tray")
                 } description: {
                     Text(app.destination == nil
-                         ? "Перенесённые на внешний диск папки и файлы появятся здесь. Подключите диск и выберите его внизу боковой панели — тогда можно будет добавить в журнал и то, что вы перенесли раньше без OffLoadAI."
-                         : "Перенесённые на внешний диск папки и файлы появятся здесь. Вернуть их можно, пока диск подключён. То, что вы перенесли раньше без OffLoadAI, можно добавить вручную.")
+                         ? tr("Перенесённые на внешний диск папки и файлы появятся здесь. Подключите диск и выберите его внизу боковой панели — тогда можно будет добавить в журнал и то, что вы перенесли раньше без OffLoadAI.")
+                         : tr("Перенесённые на внешний диск папки и файлы появятся здесь. Вернуть их можно, пока диск подключён. То, что вы перенесли раньше без OffLoadAI, можно добавить вручную."))
                 } actions: {
-                    Button("Добавить вручную…") { showImport = true }
+                    Button(tr("Добавить вручную…")) { showImport = true }
                         .disabled(app.destination == nil)
-                        .help(app.destination == nil ? "Нужен подключённый внешний диск" : "")
+                        .help(app.destination == nil ? tr("Нужен подключённый внешний диск") : "")
                 }
             } else {
                 PageScroll {
@@ -112,24 +112,24 @@ struct HistoryView: View {
                 }
             }
         }
-        .navigationTitle("Перенесённое")
+        .navigationTitle(tr("Перенесённое"))
         .toolbar {
-            Button { showImport = true } label: { Label("Добавить вручную…", systemImage: "plus") }
+            Button { showImport = true } label: { Label(tr("Добавить вручную…"), systemImage: "plus") }
                 .disabled(app.destination == nil)
                 .help(app.destination == nil
-                      ? "Нужен подключённый внешний диск: выберите его внизу боковой панели"
-                      : "Зарегистрировать папку или файл, уже перенесённые на внешний диск без OffLoadAI")
+                      ? tr("Нужен подключённый внешний диск: выберите его внизу боковой панели")
+                      : tr("Зарегистрировать папку или файл, уже перенесённые на внешний диск без OffLoadAI"))
         }
         .sheet(isPresented: $showImport) { ImportSheet() }
         .task(id: app.historyVolumes.map(\.id)) { model.reload(volumes: app.historyVolumes) }
-        .confirmationDialog("Вернуть на Mac?",
+        .confirmationDialog(tr("Вернуть на Mac?"),
                             isPresented: Binding(get: { pendingRestore != nil }, set: { if !$0 { pendingRestore = nil } }),
                             presenting: pendingRestore) { record in
-            Button("Вернуть и оставить копию на диске") { model.restore(record, deleteArchive: false, app: app) }
-            Button("Вернуть и удалить с диска", role: .destructive) { model.restore(record, deleteArchive: true, app: app) }
-            Button("Отмена", role: .cancel) {}
+            Button(tr("Вернуть и оставить копию на диске")) { model.restore(record, deleteArchive: false, app: app) }
+            Button(tr("Вернуть и удалить с диска"), role: .destructive) { model.restore(record, deleteArchive: true, app: app) }
+            Button(tr("Отмена"), role: .cancel) {}
         } message: { record in
-            Text("«\(relativeToHome(record.originalPath, home: app.rules.home))» будет скопирован обратно: каждый файл перечитывается с диска и сверяется по SHA-256 со списком, записанным при переносе. На Mac понадобится \(Format.bytes(record.bytes)).")
+            Text(tr("«\(relativeToHome(record.originalPath, home: app.rules.home))» будет скопирован обратно: каждый файл перечитывается с диска и сверяется по SHA-256 со списком, записанным при переносе. На Mac понадобится \(Format.bytes(record.bytes))."))
         }
     }
 
@@ -137,13 +137,13 @@ struct HistoryView: View {
         let onDisks = records.filter { !$0.restored }
         let open = onDisks.filter { !$0.isEncrypted }.count
         return HStack(alignment: .top, spacing: 16) {
-            StatTile(value: Format.bytes(onDisks.reduce(0) { $0 + $1.bytes }), title: "лежит на внешних дисках",
+            StatTile(value: Format.bytes(onDisks.reduce(0) { $0 + $1.bytes }), title: tr("лежит на внешних дисках"),
                      systemImage: "externaldrive.fill")
             StatTile(value: "\(onDisks.count)",
-                     title: pluralRu(onDisks.count, "перенесённый объект", "перенесённых объекта", "перенесённых объектов"),
-                     detail: "в сейфе \(onDisks.count - open) · открыто \(open)",
+                     title: pluralRu(onDisks.count, tr("перенесённый объект"), tr("перенесённых объекта"), tr("перенесённых объектов")),
+                     detail: tr("в сейфе \(onDisks.count - open) · открыто \(open)"),
                      systemImage: open > 0 ? "lock.open.fill" : "lock.fill", tone: open > 0 ? .caution : .good)
-            StatTile(value: "\(records.count - onDisks.count)", title: "возвращено на Mac",
+            StatTile(value: "\(records.count - onDisks.count)", title: tr("возвращено на Mac"),
                      systemImage: "arrow.uturn.backward", tone: .neutral)
         }
         .fixedSize(horizontal: false, vertical: true)
@@ -172,11 +172,11 @@ struct HistoryGroupRow: View {
                     IconTile(systemImage: group.first.restored ? "arrow.uturn.backward" : "square.stack.3d.up.fill",
                              tone: group.first.restored ? .neutral : .brand, size: 32)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("\((group.originalParent as NSString).lastPathComponent) · \(group.records.count) \(pluralRu(group.records.count, "объект", "объекта", "объектов"))")
+                        Text("\((group.originalParent as NSString).lastPathComponent) · \(group.records.count) \(pluralRu(group.records.count, tr("объект"), tr("объекта"), tr("объектов")))")
                             .fontWeight(.medium)
                         Text(relativeToHome(group.originalParent, home: home)).font(.caption).foregroundStyle(Theme.muted)
                             .lineLimit(1).truncationMode(.middle)
-                        Text("\(group.latest.formatted(date: .abbreviated, time: .shortened)) · \(Format.bytes(group.bytes)) · файлов \(group.files) · \(group.first.location)")
+                        Text(tr("\(group.latest.formatted(date: .abbreviated, time: .shortened)) · \(Format.bytes(group.bytes)) · файлов \(group.files) · \(group.first.location)"))
                             .font(.caption).foregroundStyle(Theme.muted)
                         if let note = group.note, !note.isEmpty {
                             Text(note).font(.caption).foregroundStyle(Theme.warn).fixedSize(horizontal: false, vertical: true)
@@ -184,7 +184,7 @@ struct HistoryGroupRow: View {
                     }
                     Spacer()
                     if group.first.restored {
-                        StatusPill(title: "Возвращено", systemImage: "checkmark", tone: .good)
+                        StatusPill(title: tr("Возвращено"), systemImage: "checkmark", tone: .good)
                     } else if !group.records.contains(where: isAvailable) {
                         StatusPill(title: group.first.unavailableReason, tone: .neutral)
                     }
@@ -225,7 +225,7 @@ struct HistoryRow: View {
                 Text(URL(fileURLWithPath: record.originalPath).lastPathComponent).fontWeight(.medium)
                 Text(relativeToHome(record.originalPath, home: home)).font(.caption).foregroundStyle(Theme.muted)
                     .lineLimit(1).truncationMode(.middle)
-                Text("\(record.date.formatted(date: .abbreviated, time: .shortened)) · \(Format.bytes(record.bytes)) · файлов \(record.files) · \(record.location)")
+                Text(tr("\(record.date.formatted(date: .abbreviated, time: .shortened)) · \(Format.bytes(record.bytes)) · файлов \(record.files) · \(record.location)"))
                     .font(.caption).foregroundStyle(Theme.muted)
                 if let note = record.note, !note.isEmpty {
                     Text(note).font(.caption).foregroundStyle(Theme.warn).fixedSize(horizontal: false, vertical: true)
@@ -236,13 +236,13 @@ struct HistoryRow: View {
                 // Лупа видна под мышью: в каждой строке сразу она только шумела бы.
                 Button { revealInFinder(URL(fileURLWithPath: record.archivedPath)) } label: { Image(systemName: "magnifyingglass") }
                     .buttonStyle(.borderless)
-                    .help("Показать на диске")
+                    .help(tr("Показать на диске"))
                     .opacity(hovering ? 1 : 0)
             }
             if record.restored {
-                StatusPill(title: "Возвращено", systemImage: "checkmark", tone: .good)
+                StatusPill(title: tr("Возвращено"), systemImage: "checkmark", tone: .good)
             } else if available {
-                Button("Вернуть…", action: onRestore)
+                Button(tr("Вернуть…"), action: onRestore)
                     .buttonStyle(PillButtonStyle())
                     .disabled(busy)
             } else {
@@ -254,10 +254,10 @@ struct HistoryRow: View {
         .onHover { hovering = $0 }
         .contextMenu {
             if archiveExists {
-                Button("Показать на диске") { revealInFinder(URL(fileURLWithPath: record.archivedPath)) }
+                Button(tr("Показать на диске")) { revealInFinder(URL(fileURLWithPath: record.archivedPath)) }
             }
             if available, !record.restored {
-                Button("Вернуть…", action: onRestore).disabled(busy)
+                Button(tr("Вернуть…"), action: onRestore).disabled(busy)
             }
         }
     }
@@ -276,29 +276,29 @@ struct ImportSheet: View {
     @State private var busy = false
 
     var body: some View {
-        SheetLayout(systemImage: "plus.rectangle.on.folder", title: "Добавить перенесённое вручную",
-                    subtitle: "Для папок и файлов, которые вы уже перенесли на внешний диск без OffLoadAI. Запись появится в списке, и вернуть их на Mac можно будет как обычно — со сверкой.",
+        SheetLayout(systemImage: "plus.rectangle.on.folder", title: tr("Добавить перенесённое вручную"),
+                    subtitle: tr("Для папок и файлов, которые вы уже перенесли на внешний диск без OffLoadAI. Запись появится в списке, и вернуть их на Mac можно будет как обычно — со сверкой."),
                     width: 580) {
             VStack(spacing: 0) {
-                pickRow("На диске", value: archive.map { relativeToVolume($0) }, action: pickArchive)
+                pickRow(tr("На диске"), value: archive.map { relativeToVolume($0) }, action: pickArchive)
                 RowDivider()
-                pickRow("Было на Mac в папке", value: originalParent.map { relativeToHome($0.path, home: app.rules.home) }, action: pickParent)
+                pickRow(tr("Было на Mac в папке"), value: originalParent.map { relativeToHome($0.path, home: app.rules.home) }, action: pickParent)
                 RowDivider()
-                FormRow(title: "Под именем") {
-                    TextField("имя папки или файла", text: $originalName)
+                FormRow(title: tr("Под именем")) {
+                    TextField(tr("имя папки или файла"), text: $originalName)
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 280)
                 }
             }
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            Toggle("Оригинал уже удалён с Mac", isOn: $originalRemoved)
-            TextField("Заметка, например «упаковано в tar.gz» (необязательно)", text: $note, axis: .vertical)
+            Toggle(tr("Оригинал уже удалён с Mac"), isOn: $originalRemoved)
+            TextField(tr("Заметка, например «упаковано в tar.gz» (необязательно)"), text: $note, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
                 .lineLimit(1...3)
             if let error { Notice(.error, error) }
         } actions: {
-            Button("Отмена") { dismiss() }
-            Button("Добавить") { add() }
+            Button(tr("Отмена")) { dismiss() }
+            Button(tr("Добавить")) { add() }
                 .keyboardShortcut(.defaultAction)
                 .disabled(archive == nil || originalParent == nil || originalName.isEmpty || busy)
         }
@@ -308,17 +308,17 @@ struct ImportSheet: View {
         HStack(spacing: 12) {
             Text(title)
             Spacer(minLength: 12)
-            Text(value ?? "не выбрано")
+            Text(value ?? tr("не выбрано"))
                 .lineLimit(1).truncationMode(.middle)
                 .foregroundStyle(value == nil ? .secondary : .primary)
-            Button("Выбрать…", action: action)
+            Button(tr("Выбрать…"), action: action)
         }
         .rowPadding()
     }
 
     private func relativeToVolume(_ url: URL) -> String {
         guard let root = app.destination?.mountPoint.path, url.path.hasPrefix(root + "/") else { return url.path }
-        return "«\(app.destination?.name ?? "")» / " + url.path.dropFirst(root.count + 1)
+        return tr("«\(app.destination?.name ?? "")» / ") + url.path.dropFirst(root.count + 1)
     }
 
     private func pickArchive() {
@@ -327,8 +327,8 @@ struct ImportSheet: View {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.directoryURL = app.destination?.mountPoint
-        panel.prompt = "Выбрать"
-        panel.message = "Что лежит на внешнем диске"
+        panel.prompt = tr("Выбрать")
+        panel.message = tr("Что лежит на внешнем диске")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         archive = url
         if originalName.isEmpty { originalName = url.lastPathComponent }
@@ -341,8 +341,8 @@ struct ImportSheet: View {
         panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
         panel.directoryURL = app.rules.home
-        panel.prompt = "Выбрать"
-        panel.message = "Папка на Mac, где это лежало"
+        panel.prompt = tr("Выбрать")
+        panel.message = tr("Папка на Mac, где это лежало")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         originalParent = url
     }

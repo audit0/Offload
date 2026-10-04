@@ -77,7 +77,7 @@ final class ProModel {
         do {
             let checked = try LicenseCodec.verify(text)
             guard checked.covers(release: Self.releaseDate) else {
-                keyProblem = "Ключ верный, но его обновления закончились \(Self.day(checked.updatesUntil)), а эта версия вышла позже. Продлите ключ — или поставьте версию, вышедшую до этой даты: с ней ключ работает всегда."
+                keyProblem = tr("Ключ верный, но его обновления закончились \(Self.day(checked.updatesUntil)), а эта версия вышла позже. Продлите ключ — или поставьте версию, вышедшую до этой даты: с ней ключ работает всегда.")
                 return false
             }
             license = checked
@@ -107,15 +107,15 @@ final class ProModel {
     var summary: String {
         switch status {
         case .licensed: return "OffLoadAI Pro"
-        case .early: return "Pro — ранний пользователь"
-        case .trial(let days): return "Pro: пробный, \(days) \(pluralRu(days, "день", "дня", "дней"))"
-        case .expired: return "Pro: продлите ключ"
-        case .free: return "Бесплатная версия"
+        case .early: return tr("Pro — ранний пользователь")
+        case .trial(let days): return tr("Pro: пробный, \(days) \(pluralRu(days, tr("день"), tr("дня"), tr("дней")))")
+        case .expired: return tr("Pro: продлите ключ")
+        case .free: return tr("Бесплатная версия")
         }
     }
 
     static func day(_ date: Date) -> String {
-        date.formatted(.dateTime.day().month(.wide).year().locale(Locale(identifier: "ru_RU")))
+        date.formatted(.dateTime.day().month(.wide).year().locale(AppLanguage.locale))
     }
 
     /// Остались ли следы прежних версий: база решений, журнал переносов или настройки.

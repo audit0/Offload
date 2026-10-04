@@ -10,7 +10,7 @@ public enum Format {
     /// Оперативная память считается двоичными единицами: 18 ГБ, а не 19.3.
     public static func memory(_ count: UInt64) -> String { size(Int64(clamping: count), base: 1024) }
 
-    static let units = ["Б", "КБ", "МБ", "ГБ", "ТБ", "ПБ"]
+    static let units = [tr("Б"), tr("КБ"), tr("МБ"), tr("ГБ"), tr("ТБ"), tr("ПБ")]
 
     static func size(_ count: Int64, base: Double) -> String {
         let sign = count < 0 ? "−" : ""
@@ -37,7 +37,7 @@ public enum Format {
 
     public static func relative(_ date: Date, now: Date = Date()) -> String {
         let formatter = RelativeDateTimeFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.locale = AppLanguage.locale
         formatter.unitsStyle = .full
         // «Сейчас» вместо «через 0 секунд»: у файла, изменённого только что, дата может оказаться
         // на долю секунды впереди часов, и числовой стиль показывал её как будущую.

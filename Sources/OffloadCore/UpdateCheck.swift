@@ -26,11 +26,11 @@ public enum UpdateCheck {
     /// Разбор ответа GitHub. Черновики, предварительные выпуски и непонятные номера не считаются.
     public static func parse(_ data: Data) throws -> Release {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw Failure(message: "GitHub ответил не так, как ожидалось.")
+            throw Failure(message: tr("GitHub ответил не так, как ожидалось."))
         }
         guard object["draft"] as? Bool != true, object["prerelease"] as? Bool != true,
               let tag = object["tag_name"] as? String, let numbers = numbers(tag.hasPrefix("v") ? String(tag.dropFirst()) : tag, strict: true)
-        else { throw Failure(message: "У последнего выпуска на GitHub непонятный номер версии.") }
+        else { throw Failure(message: tr("У последнего выпуска на GitHub непонятный номер версии.")) }
         return Release(version: numbers.map(String.init).joined(separator: "."))
     }
 
@@ -60,10 +60,10 @@ public enum UpdateCheck {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            throw Failure(message: "Нет связи с GitHub: \(error.localizedDescription)")
+            throw Failure(message: tr("Нет связи с GitHub: \(error.localizedDescription)"))
         }
         guard let status = (response as? HTTPURLResponse)?.statusCode, status == 200 else {
-            throw Failure(message: "GitHub не ответил на вопрос о версии (код \((response as? HTTPURLResponse)?.statusCode ?? 0)).")
+            throw Failure(message: tr("GitHub не ответил на вопрос о версии (код \((response as? HTTPURLResponse)?.statusCode ?? 0))."))
         }
         return try parse(data)
     }

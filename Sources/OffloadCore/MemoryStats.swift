@@ -9,10 +9,10 @@ public enum MemoryPressure: Int, Sendable {
 
     public var title: String {
         switch self {
-        case .normal: return "Нормальное"
-        case .warning: return "Повышенное"
-        case .critical: return "Критическое"
-        case .unknown: return "Неизвестно"
+        case .normal: return tr("Нормальное")
+        case .warning: return tr("Повышенное")
+        case .critical: return tr("Критическое")
+        case .unknown: return tr("Неизвестно")
         }
     }
 }
@@ -54,7 +54,7 @@ public struct MemorySnapshot: Sendable {
 }
 
 public enum MemoryStats {
-    public static let virtualMachinesName = "Виртуальные машины (Docker, UTM и др.)"
+    public static let virtualMachinesName = tr("Виртуальные машины (Docker, UTM и др.)")
 
     public static func snapshot(top: Int = 8) -> MemorySnapshot {
         let pageSize = UInt64(vm_kernel_page_size)
@@ -135,16 +135,16 @@ public enum MemoryStats {
         var tips: [String] = []
         let days = Int(snapshot.uptime / 86_400)
         if snapshot.swapUsedBytes > snapshot.physicalBytes / 2, days >= 2 {
-            tips.append("Перезагрузите Mac: в swap \(Format.memory(snapshot.swapUsedBytes)), и сам он не освободится. Mac работает без перезагрузки \(days) дн.")
+            tips.append(tr("Перезагрузите Mac: в swap \(Format.memory(snapshot.swapUsedBytes)), и сам он не освободится. Mac работает без перезагрузки \(days) дн."))
         }
         if snapshot.pressure == .warning || snapshot.pressure == .critical {
-            tips.append("Оперативной памяти не хватает — закройте приложения, которыми сейчас не пользуетесь.")
+            tips.append(tr("Оперативной памяти не хватает — закройте приложения, которыми сейчас не пользуетесь."))
         }
         for app in snapshot.apps {
             if app.name == virtualMachinesName, app.bytes > 2 << 30 {
-                tips.append("Виртуальные машины занимают \(Format.memory(app.bytes)). Закройте Docker Desktop или UTM, если они сейчас не нужны.")
+                tips.append(tr("Виртуальные машины занимают \(Format.memory(app.bytes)). Закройте Docker Desktop или UTM, если они сейчас не нужны."))
             } else if browsers.contains(app.name), app.bytes > 3 << 30 {
-                tips.append("\(app.name) занимает \(Format.memory(app.bytes)) — закройте лишние вкладки.")
+                tips.append(tr("\(app.name) занимает \(Format.memory(app.bytes)) — закройте лишние вкладки."))
             }
         }
         return tips

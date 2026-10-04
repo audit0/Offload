@@ -1,0 +1,6 @@
+/* Запросы доступа macOS — по-английски. */
+"NSDocumentsFolderUsageDescription" = "OffLoadAI shows what takes up space in your Documents folder and moves what you choose to an external drive.";
+"NSDesktopFolderUsageDescription" = "OffLoadAI shows what takes up space on your desktop and moves what you choose to an external drive.";
+"NSDownloadsFolderUsageDescription" = "OffLoadAI shows what takes up space in Downloads and moves what you choose to an external drive.";
+"NSRemovableVolumesUsageDescription" = "OffLoadAI moves data and makes backups to an external drive.";
+"NSNetworkVolumesUsageDescription" = "OffLoadAI can move data to a network drive.";

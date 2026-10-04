@@ -24,35 +24,35 @@ struct SafeView: View {
                 Card(spacing: 16) {
                     statusSection
                 }
-                Text("Сейф — зашифрованный образ (AES-256) на внешнем диске. Пока он закрыт, на диске лежит только шифротекст: потерянный или украденный диск ничего не выдаст. Пароль OffLoadAI не хранит и не записывает — если его забыть, данные не восстановит никто.")
+                Text(tr("Сейф — зашифрованный образ (AES-256) на внешнем диске. Пока он закрыт, на диске лежит только шифротекст: потерянный или украденный диск ничего не выдаст. Пароль OffLoadAI не хранит и не записывает — если его забыть, данные не восстановит никто."))
                     .font(.caption).foregroundStyle(Theme.muted)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 4)
             }
             if safe.state?.isEncrypted == true {
-                CardSection(title: "Автоматическое закрытие",
-                            footer: "Пока сейф открыт, ключ шифрования живёт в памяти Mac, а файлы доступны программам под вашей учётной записью. Поэтому лучше не держать его открытым без нужды. При выходе из OffLoadAI сейф закрывается всегда.") {
+                CardSection(title: tr("Автоматическое закрытие"),
+                            footer: tr("Пока сейф открыт, ключ шифрования живёт в памяти Mac, а файлы доступны программам под вашей учётной записью. Поэтому лучше не держать его открытым без нужды. При выходе из OffLoadAI сейф закрывается всегда.")) {
                     autoCloseSection
                 }
             }
             if app.destination != nil {
-                CardSection(title: "Открытые данные на диске") {
+                CardSection(title: tr("Открытые данные на диске")) {
                     exposureSection
                 }
             }
             if safe.state?.isEncrypted == true {
-                CardSection(title: "Пароль, заголовок, место",
+                CardSection(title: tr("Пароль, заголовок, место"),
                             footer: safe.isOpen
-                                ? "Смена пароля, копия и восстановление заголовка, увеличение и сжатие — на закрытом сейфе."
-                                : "В заголовке лежит ключ данных, зашифрованный паролем: испортится он — пропадёт всё, даже при верном пароле. Храните копию заголовка отдельно от диска. Место, освобождённое внутри сейфа, идёт под новые данные, но сам образ на диске не уменьшается; сжатие возвращает его частично, а на больших сейфах macOS может не вернуть ничего — OffLoadAI покажет, сколько вернулось на самом деле.") {
+                                ? tr("Смена пароля, копия и восстановление заголовка, увеличение и сжатие — на закрытом сейфе.")
+                                : tr("В заголовке лежит ключ данных, зашифрованный паролем: испортится он — пропадёт всё, даже при верном пароле. Храните копию заголовка отдельно от диска. Место, освобождённое внутри сейфа, идёт под новые данные, но сам образ на диске не уменьшается; сжатие возвращает его частично, а на больших сейфах macOS может не вернуть ничего — OffLoadAI покажет, сколько вернулось на самом деле.")) {
                     keySection
                 }
             }
-            CardSection(title: "Что защищено, а что нет") {
+            CardSection(title: tr("Что защищено, а что нет")) {
                 honestySection
             }
         }
-        .navigationTitle("Сейф")
+        .navigationTitle(tr("Сейф"))
         .disabled(safe.activity != nil && safe.migration == nil)
         .overlay(alignment: .top) {
             if let activity = safe.activity {
@@ -86,24 +86,24 @@ struct SafeView: View {
                 if !state.exists || creatingAnother {
                     createForm(host: host, replacing: creatingAnother ? state : nil)
                 } else if !state.isEncrypted {
-                    Notice(.error, "Образ «\(state.imageURL.lastPathComponent)» не зашифрован или шифрование не подтверждается. OffLoadAI не будет класть в него данные.")
+                    Notice(.error, tr("Образ «\(state.imageURL.lastPathComponent)» не зашифрован или шифрование не подтверждается. OffLoadAI не будет класть в него данные."))
                     candidatesPicker(state)
-                    Button("Создать настоящий сейф") { creatingAnother = true }
+                    Button(tr("Создать настоящий сейф")) { creatingAnother = true }
                 } else {
                     openedOrClosed(state: state, host: host)
                 }
             } else {
                 HStack(spacing: 10) {
                     ProgressView().controlSize(.small)
-                    Text("Смотрю, что на диске «\(host.name)»…").foregroundStyle(Theme.muted)
+                    Text(tr("Смотрю, что на диске «\(host.name)»…")).foregroundStyle(Theme.muted)
                 }
             }
         } else {
             HStack(spacing: 14) {
                 IconTile(systemImage: "externaldrive.badge.xmark", tone: .neutral, size: 52)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Нет внешнего диска").font(Theme.display(22))
-                    Text("Подключите внешний диск — сейф живёт на нём.").foregroundStyle(Theme.muted)
+                    Text(tr("Нет внешнего диска")).font(Theme.display(22))
+                    Text(tr("Подключите внешний диск — сейф живёт на нём.")).foregroundStyle(Theme.muted)
                 }
             }
         }
@@ -116,21 +116,21 @@ struct SafeView: View {
         HStack(spacing: 14) {
             IconTile(systemImage: isOpen ? "lock.open.fill" : "lock.shield.fill", tone: isOpen ? .caution : .good, size: 52)
             VStack(alignment: .leading, spacing: 3) {
-                Text(isOpen ? "Сейф открыт" : "Сейф закрыт").font(Theme.display(22))
+                Text(isOpen ? tr("Сейф открыт") : tr("Сейф закрыт")).font(Theme.display(22))
                 Text(isOpen
-                     ? "Перенос, бэкап и ключи сейчас идут сюда. Закройте после работы."
-                     : "На диске только шифротекст. Чтобы класть в сейф или брать из него, откройте его паролем.")
+                     ? tr("Перенос, бэкап и ключи сейчас идут сюда. Закройте после работы.")
+                     : tr("На диске только шифротекст. Чтобы класть в сейф или брать из него, откройте его паролем."))
                     .foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12)
             if let mount = state.mount {
-                Button("Показать в Finder") {
+                Button(tr("Показать в Finder")) {
                     safe.noteUse()
                     // Том сейфа скрыт из боковой панели Finder (-nobrowse), поэтому открываем
                     // саму папку тома, а не выделяем её в /Volumes, где её не видно.
                     NSWorkspace.shared.open(mount)
                 }
-                Button { safe.close(app: app) } label: { Label("Закрыть сейф", systemImage: "lock.fill") }
+                Button { safe.close(app: app) } label: { Label(tr("Закрыть сейф"), systemImage: "lock.fill") }
                     .prominentButton()
                     .keyboardShortcut("l", modifiers: [.command, .shift])
             }
@@ -138,34 +138,34 @@ struct SafeView: View {
         if state.mount == nil {
             SafeUnlockRow().frame(maxWidth: 440)
         } else if let pending = safe.pendingClose {
-            Label("Закроется после копирования (\(pending))", systemImage: "clock")
+            Label(tr("Закроется после копирования (\(pending))"), systemImage: "clock")
                 .font(.callout).foregroundStyle(Theme.muted)
         }
 
         Divider()
         HStack(alignment: .top, spacing: 16) {
-            fact(Format.bytes(state.allocated), "занимает на диске")
+            fact(Format.bytes(state.allocated), tr("занимает на диске"))
             if let limit = state.sizeLimit {
-                fact(Format.bytes(limit), "предел роста")
+                fact(Format.bytes(limit), tr("предел роста"))
             }
             if let volume = app.safeVolume {
-                fact(Format.bytes(volume.availableBytes), "свободно внутри")
-                    .help("Меньшее из свободного внутри образа и на самом диске")
+                fact(Format.bytes(volume.availableBytes), tr("свободно внутри"))
+                    .help(tr("Меньшее из свободного внутри образа и на самом диске"))
             }
         }
         VStack(spacing: 6) {
-            InfoRow(title: "Образ") {
-                Text("«\(state.imageURL.lastPathComponent)» на «\(host.name)»").textSelection(.enabled)
+            InfoRow(title: tr("Образ")) {
+                Text(tr("«\(state.imageURL.lastPathComponent)» на «\(host.name)»")).textSelection(.enabled)
             }
-            InfoRow("Шифрование", value: "AES-256" + (state.info?.version.map { ", формат \($0)" } ?? "") + (state.info.map { " · паролей: \($0.passphraseCount)" } ?? ""))
+            InfoRow(tr("Шифрование"), value: "AES-256" + (state.info?.version.map { tr(", формат \($0)") } ?? "") + (state.info.map { tr(" · паролей: \($0.passphraseCount)") } ?? ""))
         }
         .font(.callout)
         if let limit = state.sizeLimit, limit < 20 << 30 {
-            Notice(.warning, "Этот сейф ограничен \(Format.bytes(limit)): для ключей хватит, а для переноса больших папок — нет. Предел можно увеличить — содержимое останется на месте.")
+            Notice(.warning, tr("Этот сейф ограничен \(Format.bytes(limit)): для ключей хватит, а для переноса больших папок — нет. Предел можно увеличить — содержимое останется на месте."))
             HStack {
-                Button { sheet = .grow } label: { Label("Увеличить предел…", systemImage: "arrow.up.left.and.arrow.down.right") }
+                Button { sheet = .grow } label: { Label(tr("Увеличить предел…"), systemImage: "arrow.up.left.and.arrow.down.right") }
                     .prominentButton()
-                Button("Создать другой сейф…") { creatingAnother = true }
+                Button(tr("Создать другой сейф…")) { creatingAnother = true }
             }
         }
         candidatesPicker(state)
@@ -184,7 +184,7 @@ struct SafeView: View {
     @ViewBuilder
     private func candidatesPicker(_ state: SafeModel.State) -> some View {
         if state.candidates.count > 1 {
-            Picker("Какой образ — сейф", selection: Binding(get: { state.imageURL.standardizedFileURL },
+            Picker(tr("Какой образ — сейф"), selection: Binding(get: { state.imageURL.standardizedFileURL },
                                                           set: { app.safe.choose(image: $0, app: app) })) {
                 ForEach(state.candidates, id: \.self) { url in
                     Text(url.lastPathComponent).tag(url.standardizedFileURL)
@@ -200,32 +200,32 @@ struct SafeView: View {
         HStack(alignment: .top, spacing: 14) {
             IconTile(systemImage: "lock.shield", tone: .brand, size: 52)
             VStack(alignment: .leading, spacing: 4) {
-                Text(replacing == nil ? "На диске «\(host.name)» сейфа пока нет" : "Новый сейф на диске «\(host.name)»")
+                Text(replacing == nil ? tr("На диске «\(host.name)» сейфа пока нет") : tr("Новый сейф на диске «\(host.name)»"))
                     .font(Theme.display(22))
-                Text("Образ разрежённый: места он занимает ровно столько, сколько в нём лежит, а предел лишь не даёт ему вырасти больше. Предел потом можно увеличить. Придумайте пароль, который не используете больше нигде. Надёжнее всего — фраза из 4–6 случайных слов.")
+                Text(tr("Образ разрежённый: места он занимает ровно столько, сколько в нём лежит, а предел лишь не даёт ему вырасти больше. Предел потом можно увеличить. Придумайте пароль, который не используете больше нигде. Надёжнее всего — фраза из 4–6 случайных слов."))
                     .foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             }
         }
         VStack(alignment: .leading, spacing: 4) {
-            Picker("Предел сейфа", selection: $newLimit) {
+            Picker(tr("Предел сейфа"), selection: $newLimit) {
                 ForEach(SafeModel.limitChoices(host: host), id: \.self) { limit in
-                    Text(limit == host.totalBytes ? "весь диск (\(Format.bytes(limit)))" : Format.bytes(limit))
+                    Text(limit == host.totalBytes ? tr("весь диск (\(Format.bytes(limit)))") : Format.bytes(limit))
                         .tag(limit == host.totalBytes ? Int64?.none : Int64?.some(limit))
                 }
             }
             .fixedSize()
-            Text("Остальное место на «\(host.name)» остаётся для обычных файлов, пока сейф до него не дорос.")
+            Text(tr("Остальное место на «\(host.name)» остаётся для обычных файлов, пока сейф до него не дорос."))
                 .font(.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
         }
         fields.frame(maxWidth: 440)
         HStack {
             if replacing != nil {
-                Button("Отмена") {
+                Button(tr("Отмена")) {
                     creatingAnother = false
                     password = ""; confirmation = ""
                 }
             }
-            Button("Создать сейф") {
+            Button(tr("Создать сейф")) {
                 app.safe.create(password: password, limit: newLimit ?? host.totalBytes, app: app)
                 password = ""; confirmation = ""
                 creatingAnother = false
@@ -241,24 +241,24 @@ struct SafeView: View {
     @ViewBuilder
     private var autoCloseSection: some View {
         @Bindable var safe = app.safe
-        ToggleRow(title: "Когда Mac уходит в сон", isOn: $safe.closeOnSleep)
+        ToggleRow(title: tr("Когда Mac уходит в сон"), isOn: $safe.closeOnSleep)
         RowDivider()
-        ToggleRow(title: "Когда экран заблокирован, включилась заставка или сменился пользователь", isOn: $safe.closeOnLock)
+        ToggleRow(title: tr("Когда экран заблокирован, включилась заставка или сменился пользователь"), isOn: $safe.closeOnLock)
         RowDivider()
-        FormRow(title: "Если им не пользоваться") {
-            Picker("Если им не пользоваться", selection: $safe.idleMinutes) {
+        FormRow(title: tr("Если им не пользоваться")) {
+            Picker(tr("Если им не пользоваться"), selection: $safe.idleMinutes) {
                 ForEach(SafeModel.idleChoices, id: \.self) { minutes in
-                    Text(minutes == 0 ? "не закрывать" : "\(minutes) мин").tag(minutes)
+                    Text(minutes == 0 ? tr("не закрывать") : tr("\(minutes) мин")).tag(minutes)
                 }
             }
             .labelsHidden()
             .fixedSize()
         }
         RowDivider()
-        ToggleRow(title: "Прерывать копирование ради закрытия",
+        ToggleRow(title: tr("Прерывать копирование ради закрытия"),
                   detail: safe.interruptOperations
-                      ? "Идущий перенос отменится, оригиналы останутся на месте: они удаляются только после сверки копии."
-                      : "Если в сейф идёт копирование, он закроется сразу после его окончания.",
+                      ? tr("Идущий перенос отменится, оригиналы останутся на месте: они удаляются только после сверки копии.")
+                      : tr("Если в сейф идёт копирование, он закроется сразу после его окончания."),
                   isOn: $safe.interruptOperations)
     }
 
@@ -273,22 +273,22 @@ struct SafeView: View {
         if let migration = safe.migration {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("\(migration.index) из \(migration.count): «\(migration.item)» — \(migration.phase.lowercased())")
+                    Text(tr("\(migration.index) из \(migration.count): «\(migration.item)» — \(migration.phase.lowercased())"))
                         .lineLimit(1).truncationMode(.middle)
                     Spacer()
-                    Text("\(Format.bytes(migration.bytesDone)) из \(Format.bytes(migration.bytesTotal))")
+                    Text(tr("\(Format.bytes(migration.bytesDone)) из \(Format.bytes(migration.bytesTotal))"))
                         .font(.caption).foregroundStyle(Theme.muted).monospacedDigit()
                 }
                 ProgressView(value: migration.bytesTotal > 0 ? Double(migration.bytesDone) / Double(migration.bytesTotal) : 0)
-                Button("Остановить") { safe.cancelMigration() }
+                Button(tr("Остановить")) { safe.cancelMigration() }
             }
             .rowPadding()
         } else if plain.isEmpty {
-            Label("Перенесённого, лежащего на диске открыто, нет.", systemImage: "checkmark.shield.fill")
+            Label(tr("Перенесённого, лежащего на диске открыто, нет."), systemImage: "checkmark.shield.fill")
                 .foregroundStyle(Theme.ok)
                 .rowPadding()
         } else {
-            Notice(.warning, "На диске «\(app.destination?.name ?? "")» открыто лежат перенесённые данные: \(plain.count) \(pluralRu(plain.count, "объект", "объекта", "объектов")), \(Format.bytes(bytes)). Кто получит диск в руки, прочтёт их без пароля.")
+            Notice(.warning, tr("На диске «\(app.destination?.name ?? "")» открыто лежат перенесённые данные: \(plain.count) \(pluralRu(plain.count, tr("объект"), tr("объекта"), tr("объектов"))), \(Format.bytes(bytes)). Кто получит диск в руки, прочтёт их без пароля."))
                 .padding(12)
             ForEach(plain) { record in
                 Toggle(isOn: Binding(get: { !excluded.contains(record.id) },
@@ -305,15 +305,15 @@ struct SafeView: View {
                 RowDivider()
             }
             VStack(alignment: .leading, spacing: 10) {
-                Text("Если какой-то программой вы пользуетесь прямо с диска (например, моделями LM Studio), после переноса в сейф укажите ей новую папку и держите сейф открытым, пока она нужна. Такие пункты можно снять.")
+                Text(tr("Если какой-то программой вы пользуетесь прямо с диска (например, моделями LM Studio), после переноса в сейф укажите ей новую папку и держите сейф открытым, пока она нужна. Такие пункты можно снять."))
                     .font(.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                 if app.safeVolume == nil {
-                    Text(app.targetProblem ?? "Откройте сейф.").font(.callout).foregroundStyle(Theme.muted)
+                    Text(app.targetProblem ?? tr("Откройте сейф.")).font(.callout).foregroundStyle(Theme.muted)
                 } else {
                     Button {
                         safe.encrypt(chosen, app: app)
                     } label: {
-                        Label("Перенести в сейф и удалить открытые копии (\(chosen.count))", systemImage: "lock.doc")
+                        Label(tr("Перенести в сейф и удалить открытые копии (\(chosen.count))"), systemImage: "lock.doc")
                     }
                     .prominentButton()
                     .disabled(chosen.isEmpty || app.isBusy)
@@ -330,12 +330,12 @@ struct SafeView: View {
             RowDivider()
             Group {
                 if state.hostEncrypted {
-                    Label("Сам диск «\(host.name)» зашифрован целиком.", systemImage: "checkmark.shield.fill").foregroundStyle(Theme.ok)
+                    Label(tr("Сам диск «\(host.name)» зашифрован целиком."), systemImage: "checkmark.shield.fill").foregroundStyle(Theme.ok)
                 } else if ["apfs", "hfs"].contains(host.fsType) {
-                    Text("Сам диск «\(host.name)» не зашифрован. Его можно зашифровать целиком, не стирая: правый щелчок по диску в Finder → «Зашифровать». Тогда защищено будет и то, что лежит вне сейфа.")
+                    Text(tr("Сам диск «\(host.name)» не зашифрован. Его можно зашифровать целиком, не стирая: правый щелчок по диску в Finder → «Зашифровать». Тогда защищено будет и то, что лежит вне сейфа."))
                         .font(.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                 } else {
-                    Text("Сам диск «\(host.name)» (\(host.fsDisplayName)) зашифровать нельзя: у этой файловой системы шифрования нет. Удалённые с SSD и флешек файлы физически могут оставаться в памяти, пока контроллер их не перезапишет. Для защиты всего диска, как в VeraCrypt при шифровании раздела: перенесите данные, отформатируйте диск в «APFS (зашифрованный)» в Дисковой утилите и верните их.")
+                    Text(tr("Сам диск «\(host.name)» (\(host.fsDisplayName)) зашифровать нельзя: у этой файловой системы шифрования нет. Удалённые с SSD и флешек файлы физически могут оставаться в памяти, пока контроллер их не перезапишет. Для защиты всего диска, как в VeraCrypt при шифровании раздела: перенесите данные, отформатируйте диск в «APFS (зашифрованный)» в Дисковой утилите и верните их."))
                         .font(.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -349,24 +349,24 @@ struct SafeView: View {
     private var keySection: some View {
         let safe = app.safe
         let closed = !safe.isOpen
-        FormRow(title: "Пароль", detail: "Данные не перешифровываются — меняется только заголовок.") {
-            Button("Сменить…") { sheet = .changePassword }.disabled(!closed)
+        FormRow(title: tr("Пароль"), detail: tr("Данные не перешифровываются — меняется только заголовок.")) {
+            Button(tr("Сменить…")) { sheet = .changePassword }.disabled(!closed)
         }
         RowDivider()
-        FormRow(title: "Копия заголовка", detail: "Храните отдельно от диска: без заголовка сейф не откроется.") {
+        FormRow(title: tr("Копия заголовка"), detail: tr("Храните отдельно от диска: без заголовка сейф не откроется.")) {
             HStack {
-                Button("Сохранить…") { safe.backupHeader(app: app) }.disabled(!closed)
-                Button("Восстановить…") { sheet = .restoreHeader }.disabled(!closed)
+                Button(tr("Сохранить…")) { safe.backupHeader(app: app) }.disabled(!closed)
+                Button(tr("Восстановить…")) { sheet = .restoreHeader }.disabled(!closed)
             }
         }
         RowDivider()
-        FormRow(title: "Предел роста",
-                detail: "Сейчас \(app.safe.state?.sizeLimit.map { Format.bytes($0) } ?? "неизвестно"). Увеличивается без потери содержимого.") {
-            Button("Увеличить…") { sheet = .grow }.disabled(!closed)
+        FormRow(title: tr("Предел роста"),
+                detail: tr("Сейчас \(app.safe.state?.sizeLimit.map { Format.bytes($0) } ?? tr("неизвестно")). Увеличивается без потери содержимого.")) {
+            Button(tr("Увеличить…")) { sheet = .grow }.disabled(!closed)
         }
         RowDivider()
-        FormRow(title: "Место на диске", detail: "Образ сам не уменьшается, когда из сейфа удаляют файлы.") {
-            Button("Вернуть…") { sheet = .compact }.disabled(!closed)
+        FormRow(title: tr("Место на диске"), detail: tr("Образ сам не уменьшается, когда из сейфа удаляют файлы.")) {
+            Button(tr("Вернуть…")) { sheet = .compact }.disabled(!closed)
         }
     }
 
@@ -403,16 +403,16 @@ struct ChangePasswordSheet: View {
 
     var body: some View {
         let fields = NewPasswordFields(password: $new, confirmation: $confirmation)
-        SheetLayout(systemImage: "key.fill", title: "Сменить пароль сейфа",
-                    subtitle: "Данные не перешифровываются — меняется только заголовок, поэтому это быстро.") {
-            SecureField("Текущий пароль", text: $old)
+        SheetLayout(systemImage: "key.fill", title: tr("Сменить пароль сейфа"),
+                    subtitle: tr("Данные не перешифровываются — меняется только заголовок, поэтому это быстро.")) {
+            SecureField(tr("Текущий пароль"), text: $old)
                 .textFieldStyle(.roundedBorder)
             fields
-            Text("Копии заголовка, снятые раньше, откроются старым паролем: после смены снимите новую, а старые удалите.")
+            Text(tr("Копии заголовка, снятые раньше, откроются старым паролем: после смены снимите новую, а старые удалите."))
                 .font(.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
         } actions: {
-            Button("Отмена") { clear(); dismiss() }
-            Button("Сменить") {
+            Button(tr("Отмена")) { clear(); dismiss() }
+            Button(tr("Сменить")) {
                 app.safe.changePassword(old: old, new: new, app: app)
                 clear(); dismiss()
             }
@@ -430,14 +430,14 @@ struct CompactSheet: View {
     @State private var password = ""
 
     var body: some View {
-        SheetLayout(systemImage: "arrow.down.right.and.arrow.up.left", title: "Вернуть место на диск") {
-            Text("Файлы, удалённые или возвращённые из сейфа, продолжают занимать место на диске: образ сам не уменьшается, хотя внутри это место идёт под новые данные. Сжатие отдаёт диску полностью пустые участки образа. На больших сейфах macOS может не найти таких участков — тогда вернётся мало или ничего, и OffLoadAI так и скажет.")
+        SheetLayout(systemImage: "arrow.down.right.and.arrow.up.left", title: tr("Вернуть место на диск")) {
+            Text(tr("Файлы, удалённые или возвращённые из сейфа, продолжают занимать место на диске: образ сам не уменьшается, хотя внутри это место идёт под новые данные. Сжатие отдаёт диску полностью пустые участки образа. На больших сейфах macOS может не найти таких участков — тогда вернётся мало или ничего, и OffLoadAI так и скажет."))
                 .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
-            SecureField("Пароль сейфа", text: $password)
+            SecureField(tr("Пароль сейфа"), text: $password)
                 .textFieldStyle(.roundedBorder)
         } actions: {
-            Button("Отмена") { password = ""; dismiss() }
-            Button("Сжать") {
+            Button(tr("Отмена")) { password = ""; dismiss() }
+            Button(tr("Сжать")) {
                 app.safe.compact(password: password, app: app)
                 password = ""; dismiss()
             }
@@ -462,41 +462,41 @@ struct GrowSafeSheet: View {
         let choices = app.destination.map { SafeModel.limitChoices(host: $0, above: current) } ?? []
         let target = (safe.state?.allocated ?? 0) + needed
         let chosen = limit ?? choices.first { $0 >= target } ?? choices.last
-        SheetLayout(systemImage: "arrow.up.left.and.arrow.down.right", title: "Увеличить предел сейфа",
-                    subtitle: "Сейчас — \(Format.bytes(current))") {
-            Text("Содержимое остаётся на месте, а места на диске образ занимает столько же, сколько занимал: предел лишь разрешает ему расти.")
+        SheetLayout(systemImage: "arrow.up.left.and.arrow.down.right", title: tr("Увеличить предел сейфа"),
+                    subtitle: tr("Сейчас — \(Format.bytes(current))")) {
+            Text(tr("Содержимое остаётся на месте, а места на диске образ занимает столько же, сколько занимал: предел лишь разрешает ему расти."))
                 .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             if choices.isEmpty {
-                Notice(.info, "Сейф уже может занять весь диск — увеличивать некуда.")
+                Notice(.info, tr("Сейф уже может занять весь диск — увеличивать некуда."))
             } else {
-                Picker("Новый предел", selection: Binding(get: { chosen }, set: { limit = $0 })) {
+                Picker(tr("Новый предел"), selection: Binding(get: { chosen }, set: { limit = $0 })) {
                     ForEach(choices, id: \.self) { value in
-                        Text(value == app.destination?.totalBytes ? "весь диск (\(Format.bytes(value)))" : Format.bytes(value))
+                        Text(value == app.destination?.totalBytes ? tr("весь диск (\(Format.bytes(value)))") : Format.bytes(value))
                             .tag(Int64?.some(value))
                     }
                 }
                 .fixedSize()
                 if needed > 0, let chosen, chosen < target {
-                    Text("Выбранное для сейфа (\(Format.bytes(needed))) при таком пределе поместится не целиком.")
+                    Text(tr("Выбранное для сейфа (\(Format.bytes(needed))) при таком пределе поместится не целиком."))
                         .font(.caption).foregroundStyle(Theme.warn)
                 }
                 if safe.isOpen {
                     HStack {
-                        Text("Сейф открыт — увеличить можно только закрытый.")
+                        Text(tr("Сейф открыт — увеличить можно только закрытый."))
                             .font(.callout).foregroundStyle(Theme.muted)
                         Spacer()
-                        Button("Закрыть сейф") { safe.close(app: app) }
+                        Button(tr("Закрыть сейф")) { safe.close(app: app) }
                     }
                 } else {
-                    SecureField("Пароль сейфа", text: $password)
+                    SecureField(tr("Пароль сейфа"), text: $password)
                         .textFieldStyle(.roundedBorder)
                 }
-                Text("На время увеличения сейф ненадолго подключится без открытия: файлы не видны ни Finder, ни программам.")
+                Text(tr("На время увеличения сейф ненадолго подключится без открытия: файлы не видны ни Finder, ни программам."))
                     .font(.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             }
         } actions: {
-            Button("Отмена") { password = ""; dismiss() }
-            Button("Увеличить") {
+            Button(tr("Отмена")) { password = ""; dismiss() }
+            Button(tr("Увеличить")) {
                 if let chosen { safe.grow(to: chosen, password: password, app: app) }
                 password = ""; dismiss()
             }
@@ -513,23 +513,23 @@ struct RestoreHeaderSheet: View {
     @State private var password = ""
 
     var body: some View {
-        SheetLayout(systemImage: "arrow.counterclockwise", tone: .caution, title: "Восстановить заголовок") {
-            Text("Нужно, если сейф перестал открываться верным паролем (испортился заголовок). Сейф откроется паролем, который действовал, когда снималась копия. Если пароль к копии не подойдёт, прежний заголовок вернётся как был.")
+        SheetLayout(systemImage: "arrow.counterclockwise", tone: .caution, title: tr("Восстановить заголовок")) {
+            Text(tr("Нужно, если сейф перестал открываться верным паролем (испортился заголовок). Сейф откроется паролем, который действовал, когда снималась копия. Если пароль к копии не подойдёт, прежний заголовок вернётся как был."))
                 .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             HStack {
                 Image(systemName: "doc").foregroundStyle(Theme.muted)
-                Text(file?.lastPathComponent ?? "Копия не выбрана").lineLimit(1).truncationMode(.middle)
+                Text(file?.lastPathComponent ?? tr("Копия не выбрана")).lineLimit(1).truncationMode(.middle)
                     .foregroundStyle(file == nil ? .secondary : .primary)
                 Spacer()
-                Button("Выбрать…") { choose() }
+                Button(tr("Выбрать…")) { choose() }
             }
             .padding(10)
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            SecureField("Пароль этой копии", text: $password)
+            SecureField(tr("Пароль этой копии"), text: $password)
                 .textFieldStyle(.roundedBorder)
         } actions: {
-            Button("Отмена") { password = ""; dismiss() }
-            Button("Восстановить") {
+            Button(tr("Отмена")) { password = ""; dismiss() }
+            Button(tr("Восстановить")) {
                 if let file { app.safe.restoreHeader(from: file, password: password, app: app) }
                 password = ""; dismiss()
             }
@@ -544,7 +544,7 @@ struct RestoreHeaderSheet: View {
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = []
-        panel.message = "Файл копии заголовка (.offload-header)"
+        panel.message = tr("Файл копии заголовка (.offload-header)")
         if panel.runModal() == .OK { file = panel.url }
     }
 }

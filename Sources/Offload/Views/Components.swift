@@ -4,9 +4,9 @@ import SwiftUI
 extension Verdict {
     var title: String {
         switch self {
-        case .safe: return "Можно перенести"
-        case .caution: return "С оговорками"
-        case .blocked: return "Не трогать"
+        case .safe: return tr("Можно перенести")
+        case .caution: return tr("С оговорками")
+        case .blocked: return tr("Не трогать")
         }
     }
 
@@ -129,13 +129,13 @@ struct FullDiskAccessBanner: View {
             HStack(alignment: .top, spacing: 14) {
                 IconTile(systemImage: "lock.shield", tone: .caution, size: 36)
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Нет полного доступа к диску").font(.headline)
-                    Text("Без него OffLoadAI не видит «Документы», «Рабочий стол», Почту и данные многих приложений, и часть занятого места останется неизвестной. Выдайте доступ в настройках и перезапустите OffLoadAI.")
+                    Text(tr("Нет полного доступа к диску")).font(.headline)
+                    Text(tr("Без него OffLoadAI не видит «Документы», «Рабочий стол», Почту и данные многих приложений, и часть занятого места останется неизвестной. Выдайте доступ в настройках и перезапустите OffLoadAI."))
                         .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     HStack {
-                        Button("Открыть настройки") { FullDiskAccess.openSettings() }
+                        Button(tr("Открыть настройки")) { FullDiskAccess.openSettings() }
                             .prominentButton()
-                        Button("Проверить снова") { app.refreshVolumes() }
+                        Button(tr("Проверить снова")) { app.refreshVolumes() }
                     }
                     .padding(.top, 2)
                 }

@@ -19,28 +19,28 @@ final class AssistantModel {
         var title: String {
             switch self {
             case .claudeCode: return "Claude Code"
-            case .apiKey: return "Ключ API"
-            case .local: return "На этом Mac"
-            case .server: return "Сервер OffLoadAI"
+            case .apiKey: return tr("Ключ API")
+            case .local: return tr("На этом Mac")
+            case .server: return tr("Сервер OffLoadAI")
             }
         }
 
         var detail: String {
             switch self {
-            case .claudeCode: return "Claude Code, установленный на этом Mac, под вашей учётной записью Claude. Ключ не нужен."
-            case .apiKey: return "Ваш ключ Anthropic API: платите по счёту API за каждый вопрос. Ключ хранится в связке ключей macOS."
-            case .local: return "Модель в Ollama на этом Mac: сведения о файлах не покидают его. Медленнее и проще, чем Claude."
-            case .server: return "Сервер OffLoadAI передаёт вопрос Claude и ничего не хранит. Входит в OffLoadAI Pro — ни Claude Code, ни ключа не нужно."
+            case .claudeCode: return tr("Claude Code, установленный на этом Mac, под вашей учётной записью Claude. Ключ не нужен.")
+            case .apiKey: return tr("Ваш ключ Anthropic API: платите по счёту API за каждый вопрос. Ключ хранится в связке ключей macOS.")
+            case .local: return tr("Модель в Ollama на этом Mac: сведения о файлах не покидают его. Медленнее и проще, чем Claude.")
+            case .server: return tr("Сервер OffLoadAI передаёт вопрос Claude и ничего не хранит. Входит в OffLoadAI Pro — ни Claude Code, ни ключа не нужно.")
             }
         }
 
         /// Куда уходят сведения о файлах — для согласия: у каждого варианта своё.
         var destination: String {
             switch self {
-            case .claudeCode: return "в Anthropic (Claude) — через Claude Code на этом Mac, под вашей учётной записью Claude."
-            case .apiKey: return "в Anthropic (Claude) — по вашему ключу API."
-            case .local: return "никуда: их читает модель в Ollama на этом Mac, в интернет они не уходят."
-            case .server: return "на сервер OffLoadAI, а он передаёт их Claude (Anthropic). Вместе с ними уходит ваш ключ OffLoadAI Pro — в нём номер ключа и имя, которое вы назвали при покупке."
+            case .claudeCode: return tr("в Anthropic (Claude) — через Claude Code на этом Mac, под вашей учётной записью Claude.")
+            case .apiKey: return tr("в Anthropic (Claude) — по вашему ключу API.")
+            case .local: return tr("никуда: их читает модель в Ollama на этом Mac, в интернет они не уходят.")
+            case .server: return tr("на сервер OffLoadAI, а он передаёт их Claude (Anthropic). Вместе с ними уходит ваш ключ OffLoadAI Pro — в нём номер ключа и имя, которое вы назвали при покупке.")
             }
         }
     }
@@ -116,7 +116,7 @@ final class AssistantModel {
     func saveApiKey(_ key: String?) {
         guard !Demo.isOn else { return }
         if !AssistantKeychain.save(key) {
-            error = "Не удалось сохранить ключ в связке ключей macOS."
+            error = tr("Не удалось сохранить ключ в связке ключей macOS.")
         } else {
             error = nil
         }
@@ -166,7 +166,7 @@ final class AssistantModel {
         done = [:]
         trashed = [:]
         stage = .scanning
-        status = "Считаю, что лежит в папке…"
+        status = tr("Считаю, что лежит в папке…")
         let rules = app.rules
         let asked = provider(app: app)
         let previews = sendsPreviews
@@ -185,14 +185,14 @@ final class AssistantModel {
                         let count = found.all.count
                         Task { @MainActor in
                             guard self.stage == .scanning else { return }
-                            self.status = "Считаю, что лежит в папке… \(count) из \(total)"
+                            self.status = tr("Считаю, что лежит в папке… \(count) из \(total)")
                         }
                     }
                     measured = found.all
                 }
                 try Task.checkCancellation()
                 guard !measured.isEmpty else {
-                    fail("Папка пуста — разбирать нечего.")
+                    fail(tr("Папка пуста — разбирать нечего."))
                     return
                 }
                 let picked = AssistantFacts.pick(measured)
@@ -206,7 +206,7 @@ final class AssistantModel {
                 }.value
                 try Task.checkCancellation()
                 stage = .thinking
-                status = "Помощник смотрит \(facts.count) \(pluralRu(facts.count, "объект", "объекта", "объектов"))…"
+                status = tr("Помощник смотрит \(facts.count) \(pluralRu(facts.count, tr("объект"), tr("объекта"), tr("объектов")))…")
                 let trimmed = question.trimmingCharacters(in: .whitespacesAndNewlines)
                 answer = Demo.isOn ? Self.demoAnswer(facts) : try await asked.ask(facts, question: trimmed.isEmpty ? nil : trimmed)
                 stage = .done
@@ -231,14 +231,14 @@ final class AssistantModel {
     /// В Корзину — вернуть можно здесь же или из Корзины, пока её не очистили. Правила OffLoadAI проверяются ещё раз:
     /// помощник мог ошибиться, а объект — измениться с тех пор. Ответ — что помешало (nil — получилось).
     func trash(_ id: String, app: AppModel) async -> String? {
-        guard let item = item(id) else { return "Объект не найден." }
+        guard let item = item(id) else { return tr("Объект не найден.") }
         if Demo.isOn {
-            markDone(id, "в Корзине")
+            markDone(id, tr("в Корзине"))
             return nil
         }
         let verdict = app.rules.pathVerdict(for: item.url)
         guard verdict == .safe else {
-            return "Правила OffLoadAI не дают отправить это в Корзину: " + verdict.notes.joined(separator: " ")
+            return tr("Правила OffLoadAI не дают отправить это в Корзину: ") + verdict.notes.joined(separator: " ")
         }
         let url = item.url
         let home = app.rules.home
@@ -248,19 +248,19 @@ final class AssistantModel {
         let current = SpaceItem(url: url, bytes: item.bytes, modified: modified, isDirectory: item.isDirectory,
                                 accessDenied: item.accessDenied, verdict: verdict, isMeasured: item.isMeasured)
         guard await Task.detached(priority: .userInitiated, operation: { AssistantTrash.current(home: home).allows(current) }).value else {
-            return "Удалять OffLoadAI разрешает только то, что создаётся заново, и старые установщики. Это можно убрать в сейф."
+            return tr("Удалять OffLoadAI разрешает только то, что создаётся заново, и старые установщики. Это можно убрать в сейф.")
         }
         // Как и в «Разобрать»: то, что сейчас открыто в программе, на ходу не удаляем.
         if let holders = await Task.detached(priority: .userInitiated, operation: { SafeMover.openFiles(in: url) }).value,
            !holders.isEmpty {
-            return "«\(url.lastPathComponent)» сейчас использует \(holders.prefix(3).joined(separator: ", ")). Закройте программу и повторите."
+            return tr("«\(url.lastPathComponent)» сейчас использует \(holders.prefix(3).joined(separator: ", ")). Закройте программу и повторите.")
         }
         do {
             let trashedAt = try await Task.detached(priority: .userInitiated) { try CleanupModel.trash(url) }.value
             if let trashedAt {
                 trashed[id] = CleanupModel.TrashedItem(original: url, inTrash: trashedAt.url, bytes: item.bytes, identity: trashedAt.identity)
             }
-            markDone(id, "в Корзине")
+            markDone(id, tr("в Корзине"))
             app.space.invalidateAll()
             return nil
         } catch {
@@ -270,9 +270,9 @@ final class AssistantModel {
 
     /// Вернуть из Корзины на прежнее место то, что туда отправил совет. Ответ — что помешало (nil — получилось).
     func putBack(_ id: String, app: AppModel) async -> String? {
-        guard let item = trashed[id] else { return "В Корзине его уже нет." }
+        guard let item = trashed[id] else { return tr("В Корзине его уже нет.") }
         let (back, problems) = await CleanupModel.putBack([item])
-        guard !back.isEmpty else { return problems.first ?? "Вернуть не получилось." }
+        guard !back.isEmpty else { return problems.first ?? tr("Вернуть не получилось.") }
         trashed[id] = nil
         done[id] = nil
         app.space.invalidateAll()
@@ -290,10 +290,10 @@ final class AssistantModel {
                       verdict: .safe, isMeasured: true)
         }
         return [
-            item("Отпуск 2023 (1).mp4", 4.1, daysAgo: 380), item("Фото с дачи.zip", 2.3, daysAgo: 410), item("Xcode_16.4.xip", 5.8, daysAgo: 290),
+            item(tr("Отпуск 2023 (1).mp4"), 4.1, daysAgo: 380), item(tr("Фото с дачи.zip"), 2.3, daysAgo: 410), item("Xcode_16.4.xip", 5.8, daysAgo: 290),
             item("temp-export", 0.8, daysAgo: 200, isFolder: true), item("node-v22.11.0.pkg", 0.03, daysAgo: 320),
-            item("googlechrome.dmg", 0.23, daysAgo: 500), item("Договор аренды 2026.pdf", 0.002, daysAgo: 40),
-            item("Выписка ЕГРН.pdf", 0.001, daysAgo: 95),
+            item("googlechrome.dmg", 0.23, daysAgo: 500), item(tr("Договор аренды 2026.pdf"), 0.002, daysAgo: 40),
+            item(tr("Выписка ЕГРН.pdf"), 0.001, daysAgo: 95),
         ]
     }
 
@@ -301,21 +301,21 @@ final class AssistantModel {
     static func demoAnswer(_ facts: [FileFact]) -> AssistantAnswer {
         let advice = facts.map { fact -> Advice in
             switch (fact.path as NSString).lastPathComponent {
-            case "Отпуск 2023 (1).mp4":
-                return Advice(id: fact.id, importance: .minor, action: .safe, reason: "Видео из отпуска с «(1)» в имени — похоже на повторную загрузку; сохранить стоит, но не на диске Mac.")
-            case "Фото с дачи.zip":
-                return Advice(id: fact.id, importance: .minor, action: .safe, reason: "Архив с личными фото: нужен, но редко — место ему в сейфе.")
+            case tr("Отпуск 2023 (1).mp4"):
+                return Advice(id: fact.id, importance: .minor, action: .safe, reason: tr("Видео из отпуска с «(1)» в имени — похоже на повторную загрузку; сохранить стоит, но не на диске Mac."))
+            case tr("Фото с дачи.zip"):
+                return Advice(id: fact.id, importance: .minor, action: .safe, reason: tr("Архив с личными фото: нужен, но редко — место ему в сейфе."))
             case "Xcode_16.4.xip":
-                return Advice(id: fact.id, importance: .junk, action: .trash, reason: "Архив установки Xcode: скачивается заново с сайта Apple.")
+                return Advice(id: fact.id, importance: .junk, action: .trash, reason: tr("Архив установки Xcode: скачивается заново с сайта Apple."))
             case "temp-export":
-                return Advice(id: fact.id, importance: .minor, action: .safe, reason: "Временная выгрузка, которую давно не открывали: в сейфе она не мешает, а понадобится — вернёте.")
+                return Advice(id: fact.id, importance: .minor, action: .safe, reason: tr("Временная выгрузка, которую давно не открывали: в сейфе она не мешает, а понадобится — вернёте."))
             case "node-v22.11.0.pkg", "googlechrome.dmg":
-                return Advice(id: fact.id, importance: .junk, action: .trash, reason: "Установщик уже поставленной программы.")
+                return Advice(id: fact.id, importance: .junk, action: .trash, reason: tr("Установщик уже поставленной программы."))
             default:
-                return Advice(id: fact.id, importance: .important, action: .keep, reason: "Личный документ — оставить на месте.")
+                return Advice(id: fact.id, importance: .important, action: .keep, reason: tr("Личный документ — оставить на месте."))
             }
         }
-        return AssistantAnswer(summary: "В «Загрузках» около 6 ГБ мусора — архив Xcode и установщики. Видео, архив с фото и старую выгрузку лучше убрать в сейф, документы оставить.",
-                               items: advice, provider: "Демонстрация")
+        return AssistantAnswer(summary: tr("В «Загрузках» около 6 ГБ мусора — архив Xcode и установщики. Видео, архив с фото и старую выгрузку лучше убрать в сейф, документы оставить."),
+                               items: advice, provider: tr("Демонстрация"))
     }
 }

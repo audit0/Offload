@@ -46,6 +46,9 @@ swift build --package-path "$ROOT" -c release --product Offload "${ARCH_FLAGS[@]
 BIN_DIR="$(swift build --package-path "$ROOT" -c release "${ARCH_FLAGS[@]}" --show-bin-path)"
 # Цель SwiftPM по-прежнему зовётся Offload; в пакете исполняемый файл называется, как программа.
 cp "$BIN_DIR/Offload" "$APP/Contents/MacOS/OffLoadAI"
+# Переводы интерфейса: русский — язык, на котором программа написана (ru.lproj почти пуст), английский — в en.lproj.
+# macOS выбирает язык из настроек человека; для всех, кроме русского, — английский.
+cp -R "$ROOT/Localization/"*.lproj "$APP/Contents/Resources/"
 
 echo "→ рисую иконку"
 swiftc -O -o "$ASSETS/make-icon" "$HERE/icon.swift"
@@ -72,7 +75,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$VERSION</string>
   <key>OffloadReleaseDate</key><string>$RELEASE_DATE</string>
-  <key>CFBundleDevelopmentRegion</key><string>ru</string>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleLocalizations</key><array><string>en</string><string>ru</string></array>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
   <key>NSHighResolutionCapable</key><true/>

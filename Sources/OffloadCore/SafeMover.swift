@@ -69,11 +69,11 @@ public enum MoveError: LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .blocked(let reason): return reason
-        case .needsConfirmation(let notes): return "Нужно подтверждение: " + notes.joined(separator: " ")
+        case .needsConfirmation(let notes): return tr("Нужно подтверждение: ") + notes.joined(separator: " ")
         case .destination(let blockers): return blockers.joined(separator: " ")
-        case .unsafeRecord(let reason): return "Запись журнала выглядит небезопасной: \(reason)"
-        case .alreadyExists(let path): return "«\(path)» уже существует — перезаписывать не буду."
-        case .contentMismatch(let detail): return "Содержимое не совпало с проверкой, ничего не удалено: \(detail). Проверьте ещё раз."
+        case .unsafeRecord(let reason): return tr("Запись журнала выглядит небезопасной: \(reason)")
+        case .alreadyExists(let path): return tr("«\(path)» уже существует — перезаписывать не буду.")
+        case .contentMismatch(let detail): return tr("Содержимое не совпало с проверкой, ничего не удалено: \(detail). Проверьте ещё раз.")
         }
     }
 }
@@ -127,7 +127,7 @@ public struct SafeMover: Sendable {
         var verdict = rules.verdict(for: source, content: content, openBy: openBy ?? [])
         if openBy == nil {
             // Проверить не удалось — не делаем вид, что всё чисто.
-            let note = "Не удалось проверить, открыты ли файлы в других приложениях. Закройте приложения, которые могут с ними работать."
+            let note = tr("Не удалось проверить, открыты ли файлы в других приложениях. Закройте приложения, которые могут с ними работать.")
             switch verdict {
             case .safe: verdict = .caution([note])
             case .caution(let notes): verdict = .caution(notes + [note])
@@ -282,15 +282,15 @@ public struct SafeMover: Sendable {
     /// зашифрованный целиком.
     public func relocate(_ record: MoveRecord, into safe: VolumeInfo, isCancelled: () -> Bool = { false },
                          progress: (MoveProgress) -> Void = { _ in }) throws -> MoveRecord {
-        guard safe.isEncryptedImage else { throw MoveError.unsafeRecord("сейф не открыт") }
+        guard safe.isEncryptedImage else { throw MoveError.unsafeRecord(tr("сейф не открыт")) }
         let (archived, _) = try validate(record)
         guard Self.exists(archived) else {
-            throw MoveError.unsafeRecord("архив не найден — подключите диск «\(record.volumeName)»")
+            throw MoveError.unsafeRecord(tr("архив не найден — подключите диск «\(record.volumeName)»"))
         }
         let safeRoot = safe.mountPoint.standardizedFileURL.path
         guard let host = Volumes.info(for: archived), host.mountPoint.standardizedFileURL.path != safeRoot,
               !archived.path.hasPrefix(safeRoot + "/") else {
-            throw MoveError.unsafeRecord("архив уже в сейфе")
+            throw MoveError.unsafeRecord(tr("архив уже в сейфе"))
         }
         // Внутри сейфа путь повторяет путь на диске, чтобы по архиву было видно, откуда он.
         let hostRoot = host.mountPoint.standardizedFileURL.path
@@ -315,7 +315,7 @@ public struct SafeMover: Sendable {
         try Self.assertMatches(entries, Inspector.inspect(archived, isCancelled: isCancelled), skippedFiles: all.count - entries.count)
         let total = entries.reduce(Int64(0)) { $0 + $1.size }
         guard total + (64 << 20) <= safe.availableBytes else {
-            throw MoveError.destination(["В сейфе не хватает места: нужно \(Format.bytes(total)), свободно \(Format.bytes(safe.availableBytes)). Освободите место на диске «\(host.name)»."])
+            throw MoveError.destination([tr("В сейфе не хватает места: нужно \(Format.bytes(total)), свободно \(Format.bytes(safe.availableBytes)). Освободите место на диске «\(host.name)».")])
         }
 
         let parent = target.deletingLastPathComponent()
@@ -387,9 +387,9 @@ public struct SafeMover: Sendable {
         var record = MoveRecord(originalPath: original.standardizedFileURL.path, archivedPath: archived.standardizedFileURL.path,
                                 volumeName: "", files: 0, bytes: 0, originalRemoved: originalRemoved, note: note)
         let (archivedURL, _) = try validate(record)
-        guard Self.exists(archivedURL) else { throw MoveError.unsafeRecord("на диске нет «\(archivedURL.path)»") }
+        guard Self.exists(archivedURL) else { throw MoveError.unsafeRecord(tr("на диске нет «\(archivedURL.path)»")) }
         guard let volume = Volumes.info(for: archivedURL), volume.mountPoint.path.hasPrefix("/Volumes/") else {
-            throw MoveError.unsafeRecord("«\(archivedURL.path)» лежит не на внешнем диске")
+            throw MoveError.unsafeRecord(tr("«\(archivedURL.path)» лежит не на внешнем диске"))
         }
         let content = Inspector.inspect(archivedURL)
         record.volumeName = volume.name
@@ -408,15 +408,15 @@ public struct SafeMover: Sendable {
         let original = URL(fileURLWithPath: record.originalPath).standardizedFileURL
         guard record.archivedPath.hasPrefix("/"), record.originalPath.hasPrefix("/"),
               archived.path == record.archivedPath, original.path == record.originalPath else {
-            throw MoveError.unsafeRecord("пути должны быть абсолютными и без «..»")
+            throw MoveError.unsafeRecord(tr("пути должны быть абсолютными и без «..»"))
         }
         // Не только папка Offload: переносы, сделанные вручную, лежат где угодно на внешнем диске.
         let components = archived.pathComponents
         guard components.count >= 4, components[1] == "Volumes" else {
-            throw MoveError.unsafeRecord("архив должен лежать на внешнем диске, в /Volumes")
+            throw MoveError.unsafeRecord(tr("архив должен лежать на внешнем диске, в /Volumes"))
         }
         guard archived.resolvingSymlinksInPath().path == archived.path else {
-            throw MoveError.unsafeRecord("путь к архиву проходит через символическую ссылку")
+            throw MoveError.unsafeRecord(tr("путь к архиву проходит через символическую ссылку"))
         }
         // pathVerdict разворачивает ссылки и в пути, которого ещё нет: без этого подложенная
         // в журнал запись вида «Documents/Фото/old/LaunchAgents/…», где old — ссылка на
@@ -557,14 +557,14 @@ public struct SafeMover: Sendable {
         // Приложение могло оставить на старом месте пустую папку (так делает LM Studio с папкой моделей) — её можно заменить.
         if Self.exists(original), !Self.isEmptyDirectory(original) { throw MoveError.alreadyExists(original.path) }
         guard let volume = Volumes.info(for: archived), Self.exists(archived) else {
-            throw MoveError.unsafeRecord("архив не найден — подключите диск «\(record.volumeName)»")
+            throw MoveError.unsafeRecord(tr("архив не найден — подключите диск «\(record.volumeName)»"))
         }
         // Место с оговорками (скрытые папки программ и т. п.) — туда кладут то, что программа потом
         // читает и исполняет. Такой возврат принимаем, только если перенос сделан на этом Mac:
         // локальный журнал в ~/Library подложить с внешнего диска нельзя.
         if case .caution = rules.pathVerdict(for: original),
            !Journal.localRecords().contains(where: { $0.id == record.id && $0.originalPath == record.originalPath }) {
-            throw MoveError.unsafeRecord("«\(original.path)» — место, откуда программы читают настройки и код, а запись об этом переносе есть только в журнале на диске, не на этом Mac. Если архив ваш, скопируйте его вручную.")
+            throw MoveError.unsafeRecord(tr("«\(original.path)» — место, откуда программы читают настройки и код, а запись об этом переносе есть только в журнале на диске, не на этом Mac. Если архив ваш, скопируйте его вручную."))
         }
         let fm = FileManager.default
         // Служебные ._-двойники, которые macOS сама наплодила рядом с файлами на внешнем диске,
@@ -617,7 +617,7 @@ public struct SafeMover: Sendable {
                 // Настоящих прав взять неоткуда. Ставим самые узкие, при которых всё работает:
                 // приватные ключи, .env и базы паролей не должны вернуться читаемыми всем на машине.
                 Self.normalizeModes(entries, at: partial)
-                notes.append("Диск «\(volume.name)» (\(volume.fsDisplayName)) не хранит права доступа, а списка прав рядом с архивом нет. Права выставлены только для вас: папки 700, файлы 600, исполняемые 700.")
+                notes.append(tr("Диск «\(volume.name)» (\(volume.fsDisplayName)) не хранит права доступа, а списка прав рядом с архивом нет. Права выставлены только для вас: папки 700, файлы 600, исполняемые 700."))
                 needsAttention = true
             }
             marker.remove(restoring: entries.first)
@@ -641,14 +641,14 @@ public struct SafeMover: Sendable {
                 do {
                     try VerifiedCopy.assertUnchanged(all, at: archived)
                 } catch {
-                    throw MoveError.blocked("пока шёл возврат, в архиве что-то изменилось, и вернулось не всё новое.")
+                    throw MoveError.blocked(tr("пока шёл возврат, в архиве что-то изменилось, и вернулось не всё новое."))
                 }
                 try Self.assertNotOpen(archived, strict: true)
                 try fm.removeItem(at: archived)
                 try? fm.removeItem(at: Self.checksumURL(for: archived))
                 try? fm.removeItem(at: Self.modesURL(for: archived))
             } catch {
-                notes.append("Данные вернулись на Mac и сверены, а архив удалить не удалось: \(error.localizedDescription) Он остался в «\(archived.path)» — удалите его сами, когда будет удобно.")
+                notes.append(tr("Данные вернулись на Mac и сверены, а архив удалить не удалось: \(error.localizedDescription) Он остался в «\(archived.path)» — удалите его сами, когда будет удобно."))
                 needsAttention = true
             }
         }
@@ -678,10 +678,10 @@ public struct SafeMover: Sendable {
         let stored: [String: String]
         switch list {
         case .missing:
-            return StoredChecksumReport(notes: ["Рядом с архивом нет списка контрольных сумм, записанного при переносе, — сверить архив с его прежним состоянием не с чем. Все \(present.count) файлов сверены с тем, что лежит на диске сейчас, и вернулись такими."],
+            return StoredChecksumReport(notes: [tr("Рядом с архивом нет списка контрольных сумм, записанного при переносе, — сверить архив с его прежним состоянием не с чем. Все \(present.count) файлов сверены с тем, что лежит на диске сейчас, и вернулись такими.")],
                                         hasDifferences: true)
         case .unreadable:
-            return StoredChecksumReport(notes: ["Список контрольных сумм рядом с архивом не читается — сверить архив с его прежним состоянием не с чем. Все \(present.count) файлов сверены с тем, что лежит на диске сейчас, и вернулись такими."],
+            return StoredChecksumReport(notes: [tr("Список контрольных сумм рядом с архивом не читается — сверить архив с его прежним состоянием не с чем. Все \(present.count) файлов сверены с тем, что лежит на диске сейчас, и вернулись такими.")],
                                         hasDifferences: true)
         case .list(let hashes):
             stored = hashes
@@ -695,15 +695,15 @@ public struct SafeMover: Sendable {
         var report = StoredChecksumReport()
         // Первым делом — главное: сверено со списком переноса столько-то из стольких-то.
         // Иначе интерфейс скажет «каждый файл сверен» и про изменившиеся файлы там, где это неправда.
-        report.notes.append("Со списком, записанным при переносе, сверено \(common.count - changed.count) файлов из \(present.count) в архиве.")
+        report.notes.append(tr("Со списком, записанным при переносе, сверено \(common.count - changed.count) файлов из \(present.count) в архиве."))
         if !changed.isEmpty {
-            report.notes.append("С момента переноса на диске изменилось файлов: \(changed.count) (\(listing(changed, 5))). Вернулось то, что лежит в архиве сейчас, — оно сверено побайтово.")
+            report.notes.append(tr("С момента переноса на диске изменилось файлов: \(changed.count) (\(listing(changed, 5))). Вернулось то, что лежит в архиве сейчас, — оно сверено побайтово."))
         }
         if !extra.isEmpty {
-            report.notes.append("В архиве появилось \(extra.count) файлов, которых при переносе не было (\(listing(extra, 5))). Они тоже вернулись, но сверить их не с чем — откуда они, программа не знает.")
+            report.notes.append(tr("В архиве появилось \(extra.count) файлов, которых при переносе не было (\(listing(extra, 5))). Они тоже вернулись, но сверить их не с чем — откуда они, программа не знает."))
         }
         if !missing.isEmpty {
-            report.notes.append("В архиве не хватает \(missing.count) файлов из списка, записанного при переносе (\(listing(missing, 3))). Остальное сверено и возвращено.")
+            report.notes.append(tr("В архиве не хватает \(missing.count) файлов из списка, записанного при переносе (\(listing(missing, 3))). Остальное сверено и возвращено."))
         }
         report.hasDifferences = !changed.isEmpty || !extra.isEmpty || !missing.isEmpty
         return report
@@ -759,7 +759,7 @@ public struct SafeMover: Sendable {
         let directories = entries.filter(\.isDirectory).count
         let symlinks = entries.filter { if case .symlink = $0.kind { return true } else { return false } }.count
         guard files == expectedFiles, directories == content.directories, symlinks == content.symlinkCount else {
-            throw MoveError.contentMismatch("проверка насчитала файлов \(expectedFiles), папок \(content.directories), ссылок \(content.symlinkCount), а обход — \(files), \(directories) и \(symlinks)")
+            throw MoveError.contentMismatch(tr("проверка насчитала файлов \(expectedFiles), папок \(content.directories), ссылок \(content.symlinkCount), а обход — \(files), \(directories) и \(symlinks)"))
         }
     }
 
@@ -774,10 +774,10 @@ public struct SafeMover: Sendable {
     static func undeletableReason(_ content: ContentReport, source: URL) -> String? {
         let parent = source.deletingLastPathComponent()
         if access(parent.path, W_OK | X_OK) != 0 {
-            return "Оригинал не удалить: нет права записи в «\(parent.lastPathComponent)». Копия на диске цела, оригинал не тронут."
+            return tr("Оригинал не удалить: нет права записи в «\(parent.lastPathComponent)». Копия на диске цела, оригинал не тронут.")
         }
         guard content.undeletable > 0 else { return nil }
-        return "Оригинал не удалить целиком: внутри папки только для чтения или защищённые файлы (\(content.undeletableExamples.prefix(3).joined(separator: ", "))). Ничего не удалено; перенесите без удаления оригинала или снимите защиту."
+        return tr("Оригинал не удалить целиком: внутри папки только для чтения или защищённые файлы (\(content.undeletableExamples.prefix(3).joined(separator: ", "))). Ничего не удалено; перенесите без удаления оригинала или снимите защиту.")
     }
 
     /// Предел для служебных файлов рядом с архивом: они лежат на недоверенном диске.
@@ -831,11 +831,11 @@ public struct SafeMover: Sendable {
     ///   проверка пропускается: о ней уже предупредили в плане, и человек подтвердил.
     static func assertNotOpen(_ url: URL, strict: Bool = false) throws {
         guard let holders = openFiles(in: url) else {
-            if strict { throw MoveError.blocked("Не удалось проверить, открыты ли файлы «\(url.lastPathComponent)» в других программах. Повторите чуть позже.") }
+            if strict { throw MoveError.blocked(tr("Не удалось проверить, открыты ли файлы «\(url.lastPathComponent)» в других программах. Повторите чуть позже.")) }
             return
         }
         guard holders.isEmpty else {
-            throw MoveError.blocked("Файлы сейчас открыты: \(holders.prefix(3).joined(separator: ", ")). Закройте приложение и повторите.")
+            throw MoveError.blocked(tr("Файлы сейчас открыты: \(holders.prefix(3).joined(separator: ", ")). Закройте приложение и повторите."))
         }
     }
 

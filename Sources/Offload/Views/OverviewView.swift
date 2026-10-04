@@ -23,7 +23,7 @@ struct OverviewView: View {
             ScenarioCard(macDisk: model.disk)
             if !model.advice.isEmpty {
                 Card {
-                    CardTitle("Что стоит сделать", systemImage: "lightbulb")
+                    CardTitle(tr("Что стоит сделать"), systemImage: "lightbulb")
                     ForEach(model.advice, id: \.self) { tip in
                         Label {
                             Text(tip).fixedSize(horizontal: false, vertical: true)
@@ -35,12 +35,12 @@ struct OverviewView: View {
             }
             if let memory = model.memory, !memory.apps.isEmpty {
                 Card {
-                    CardTitle("Память по приложениям", systemImage: "square.stack.3d.up")
+                    CardTitle(tr("Память по приложениям"), systemImage: "square.stack.3d.up")
                     AppMemoryList(apps: memory.apps, physical: memory.physicalBytes)
                 }
             }
         }
-        .navigationTitle("Обзор")
+        .navigationTitle(tr("Обзор"))
         .task { await model.poll() }
     }
 }
@@ -50,7 +50,7 @@ struct DiskCard: View {
 
     var body: some View {
         Card(spacing: 14, fillsHeight: true) {
-            CardTitle("Диск Mac", systemImage: "internaldrive")
+            CardTitle(tr("Диск Mac"), systemImage: "internaldrive")
             if let volume, volume.totalBytes > 0 {
                 let used = Double(volume.totalBytes - volume.availableBytes) / Double(volume.totalBytes)
                 // Те же пороги, что у шага «Освободите место» и у совета: меньше 15% свободно — мало.
@@ -67,12 +67,12 @@ struct DiskCard: View {
                         Text(Format.bytes(volume.availableBytes))
                             .font(Theme.display(26))
                             .monospacedDigit()
-                        Text("свободно из \(Format.bytes(volume.totalBytes))")
+                        Text(tr("свободно из \(Format.bytes(volume.totalBytes))"))
                             .font(.caption).foregroundStyle(Theme.muted)
                     }
                 }
                 Spacer(minLength: 0)
-                Label(low ? "Мало места" : "Места достаточно",
+                Label(low ? tr("Мало места") : tr("Места достаточно"),
                       systemImage: low ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                     .font(.callout.weight(.medium))
                     .foregroundStyle(low ? tint : Color.green)
@@ -89,7 +89,7 @@ struct ExternalDiskCard: View {
 
     var body: some View {
         Card(spacing: 14, fillsHeight: true) {
-            CardTitle("Внешний диск", systemImage: "externaldrive")
+            CardTitle(tr("Внешний диск"), systemImage: "externaldrive")
             if let disk = app.destination {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(disk.name)
@@ -98,7 +98,7 @@ struct ExternalDiskCard: View {
                     if disk.totalBytes > 0 {
                         CapacityBar(fraction: Double(disk.totalBytes - disk.availableBytes) / Double(disk.totalBytes))
                     }
-                    Text("\(disk.fsDisplayName) · свободно \(Format.bytes(disk.availableBytes)) из \(Format.bytes(disk.totalBytes))")
+                    Text(tr("\(disk.fsDisplayName) · свободно \(Format.bytes(disk.availableBytes)) из \(Format.bytes(disk.totalBytes))"))
                         .font(.caption).foregroundStyle(Theme.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -109,10 +109,10 @@ struct ExternalDiskCard: View {
                     .foregroundStyle(summary.tone.color)
             } else {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Не подключён")
+                    Text(tr("Не подключён"))
                         .font(Theme.display(19))
                         .foregroundStyle(Theme.muted)
-                    Text("На него OffLoadAI переносит то, что не нужно держать на Mac, и там же живёт сейф.")
+                    Text(tr("На него OffLoadAI переносит то, что не нужно держать на Mac, и там же живёт сейф."))
                         .font(.caption).foregroundStyle(Theme.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -127,7 +127,7 @@ struct MemoryCard: View {
 
     var body: some View {
         Card(spacing: 14, fillsHeight: true) {
-            CardTitle(title: "Память", systemImage: "memorychip") {
+            CardTitle(title: tr("Память"), systemImage: "memorychip") {
                 if let snapshot {
                     Text(Format.memory(snapshot.physicalBytes)).font(.callout).foregroundStyle(Theme.muted)
                 }
@@ -138,13 +138,13 @@ struct MemoryCard: View {
                         Circle().fill(color(snapshot.pressure)).frame(width: 10, height: 10)
                         Text(snapshot.pressure.title).font(Theme.display(19))
                     }
-                    Text("давление памяти").font(.caption).foregroundStyle(Theme.muted)
+                    Text(tr("давление памяти")).font(.caption).foregroundStyle(Theme.muted)
                 }
                 VStack(spacing: 5) {
-                    InfoRow("Swap", value: "\(Format.memory(snapshot.swapUsedBytes)) из \(Format.memory(snapshot.swapTotalBytes))")
-                    InfoRow("Сжато", value: Format.memory(snapshot.compressedBytes))
-                    InfoRow("Свободно", value: Format.memory(snapshot.freeBytes))
-                    InfoRow("Без перезагрузки", value: uptime(snapshot.uptime))
+                    InfoRow("Swap", value: tr("\(Format.memory(snapshot.swapUsedBytes)) из \(Format.memory(snapshot.swapTotalBytes))"))
+                    InfoRow(tr("Сжато"), value: Format.memory(snapshot.compressedBytes))
+                    InfoRow(tr("Свободно"), value: Format.memory(snapshot.freeBytes))
+                    InfoRow(tr("Без перезагрузки"), value: uptime(snapshot.uptime))
                 }
                 .font(.caption)
                 .monospacedDigit()
@@ -166,7 +166,7 @@ struct MemoryCard: View {
     private func uptime(_ interval: TimeInterval) -> String {
         let days = Int(interval / 86_400)
         let hours = Int(interval.truncatingRemainder(dividingBy: 86_400) / 3_600)
-        return days > 0 ? "\(days) дн. \(hours) ч." : "\(hours) ч."
+        return days > 0 ? tr("\(days) дн. \(hours) ч.") : tr("\(hours) ч.")
     }
 }
 
@@ -209,8 +209,8 @@ struct ScenarioCard: View {
         let next = list.first { $0.state != .done }?.id
         Card(padding: 0, spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
-                CardTitle(title: "Порядок работы", systemImage: "list.number") {
-                    Text("готово \(done) из \(list.count)")
+                CardTitle(title: tr("Порядок работы"), systemImage: "list.number") {
+                    Text(tr("готово \(done) из \(list.count)"))
                         .font(.callout).foregroundStyle(Theme.muted).monospacedDigit()
                 }
                 CapacityBar(fraction: Double(done) / Double(max(1, list.count)), tint: Theme.ok, height: 4)
@@ -228,55 +228,55 @@ struct ScenarioCard: View {
         var steps: [Step] = []
         let host = app.destination
         steps.append(host.map {
-            Step(id: 1, state: .done, title: "Внешний диск «\($0.name)»",
-                 detail: "\($0.fsDisplayName) · свободно \(Format.bytes($0.availableBytes))" + (app.safe.state?.hostEncrypted == true ? " · зашифрован целиком" : ""))
-        } ?? Step(id: 1, state: .todo, title: "Подключите внешний диск",
-                  detail: "На него OffLoadAI переносит то, что не нужно держать на Mac, и там же живёт сейф."))
+            Step(id: 1, state: .done, title: tr("Внешний диск «\($0.name)»"),
+                 detail: tr("\($0.fsDisplayName) · свободно \(Format.bytes($0.availableBytes))") + (app.safe.state?.hostEncrypted == true ? tr(" · зашифрован целиком") : ""))
+        } ?? Step(id: 1, state: .todo, title: tr("Подключите внешний диск"),
+                  detail: tr("На него OffLoadAI переносит то, что не нужно держать на Mac, и там же живёт сейф.")))
 
         let safe = app.safe
         if host != nil {
             if let state = safe.state, state.exists, state.isEncrypted, let limit = state.sizeLimit, limit < 20 << 30 {
-                steps.append(Step(id: 2, state: .warning, title: "Сейф мал для переноса",
-                                  detail: "«\(state.displayName)» ограничен \(Format.bytes(limit)): для ключей хватит, для больших папок — нет. Предел можно увеличить без потери содержимого.",
-                                  action: ("Сейф", .safe)))
+                steps.append(Step(id: 2, state: .warning, title: tr("Сейф мал для переноса"),
+                                  detail: tr("«\(state.displayName)» ограничен \(Format.bytes(limit)): для ключей хватит, для больших папок — нет. Предел можно увеличить без потери содержимого."),
+                                  action: (tr("Сейф"), .safe)))
             } else if let state = safe.state, state.exists, state.isEncrypted {
                 steps.append(Step(id: 2, state: .done,
-                                  title: safe.isOpen ? "Сейф открыт" : "Сейф закрыт",
+                                  title: safe.isOpen ? tr("Сейф открыт") : tr("Сейф закрыт"),
                                   detail: safe.isOpen
-                                      ? "Перенос, бэкап и ключи идут в него. Закройте, когда закончите."
-                                      : "На диске только шифротекст. Откройте, чтобы класть в сейф или брать из него.",
-                                  action: ("Сейф", .safe)))
+                                      ? tr("Перенос, бэкап и ключи идут в него. Закройте, когда закончите.")
+                                      : tr("На диске только шифротекст. Откройте, чтобы класть в сейф или брать из него."),
+                                  action: (tr("Сейф"), .safe)))
             } else {
-                steps.append(Step(id: 2, state: .todo, title: "Заведите сейф",
-                                  detail: "Зашифрованный образ на внешнем диске: без пароля его содержимое не прочтёт никто.",
-                                  action: ("Создать", .safe)))
+                steps.append(Step(id: 2, state: .todo, title: tr("Заведите сейф"),
+                                  detail: tr("Зашифрованный образ на внешнем диске: без пароля его содержимое не прочтёт никто."),
+                                  action: (tr("Создать"), .safe)))
             }
         }
 
         if let macDisk, macDisk.totalBytes > 0 {
             let free = Double(macDisk.availableBytes) / Double(macDisk.totalBytes)
             steps.append(Step(id: 3, state: free < 0.15 ? .warning : .done,
-                              title: free < 0.15 ? "Освободите место на Mac" : "Места на Mac достаточно",
-                              detail: "Свободно \(Format.bytes(macDisk.availableBytes)) из \(Format.bytes(macDisk.totalBytes))."
-                                  + (free < 0.15 ? " Перенесите большое и редко нужное в сейф — вернуть можно в любой момент." : ""),
-                              action: ("Освободить место", .space)))
+                              title: free < 0.15 ? tr("Освободите место на Mac") : tr("Места на Mac достаточно"),
+                              detail: tr("Свободно \(Format.bytes(macDisk.availableBytes)) из \(Format.bytes(macDisk.totalBytes)).")
+                                  + (free < 0.15 ? tr(" Перенесите большое и редко нужное в сейф — вернуть можно в любой момент.") : ""),
+                              action: (tr("Освободить место"), .space)))
         }
 
         if host != nil {
             let plain = app.plainRecords
             if !plain.isEmpty {
                 let bytes = plain.reduce(Int64(0)) { $0 + $1.bytes }
-                steps.append(Step(id: 4, state: .warning, title: "Зашифруйте то, что уже лежит на диске открыто",
-                                  detail: "\(plain.count) \(pluralRu(plain.count, "объект", "объекта", "объектов")), \(Format.bytes(bytes)) — прочтёт любой, у кого окажется диск.",
-                                  action: ("Зашифровать", .safe)))
+                steps.append(Step(id: 4, state: .warning, title: tr("Зашифруйте то, что уже лежит на диске открыто"),
+                                  detail: tr("\(plain.count) \(pluralRu(plain.count, tr("объект"), tr("объекта"), tr("объектов"))), \(Format.bytes(bytes)) — прочтёт любой, у кого окажется диск."),
+                                  action: (tr("Зашифровать"), .safe)))
             }
         }
 
         let sources = app.backup.sources.count
         steps.append(Step(id: 5, state: sources == 0 ? .todo : .done,
-                          title: sources == 0 ? "Настройте бэкап проектов и ключей" : "Бэкап: папок \(sources)",
-                          detail: "Обновляемая копия проектов и ключи с токенами — в сейф.",
-                          action: ("Бэкап", .backup)))
+                          title: sources == 0 ? tr("Настройте бэкап проектов и ключей") : tr("Бэкап: папок \(sources)"),
+                          detail: tr("Обновляемая копия проектов и ключи с токенами — в сейф."),
+                          action: (tr("Бэкап"), .backup)))
         return steps
     }
 }
@@ -344,17 +344,17 @@ struct ConnectedPrompt: View {
             HStack(alignment: .top, spacing: 14) {
                 IconTile(systemImage: "externaldrive.fill.badge.plus", size: 40)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Подключён «\(disk)»").font(.headline)
-                    Text("Разобрать Mac: найду, что занимает место зря, и спрошу про каждое — удалить, убрать в сейф или добавить в бэкап. Без вашего «да» ничего не трогаю.")
+                    Text(tr("Подключён «\(disk)»")).font(.headline)
+                    Text(tr("Разобрать Mac: найду, что занимает место зря, и спрошу про каждое — удалить, убрать в сейф или добавить в бэкап. Без вашего «да» ничего не трогаю."))
                         .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     HStack {
                         Button {
                             app.connectedPrompt = nil
                             app.section = .cleanup
                             app.cleanup.scan(app: app)
-                        } label: { Label("Разобрать", systemImage: "wand.and.stars") }
+                        } label: { Label(tr("Разобрать"), systemImage: "wand.and.stars") }
                             .prominentButton()
-                        Button("Не сейчас") { app.connectedPrompt = nil }
+                        Button(tr("Не сейчас")) { app.connectedPrompt = nil }
                     }
                     .padding(.top, 2)
                 }

@@ -8,7 +8,7 @@ public struct OllamaAssistant: AssistantProvider {
     static let preferred = ["qwen3", "qwen2.5", "gemma3", "llama3.1", "llama3.2", "mistral"]
 
     let preferredModel: @Sendable () -> String?
-    public var title: String { "Локальная модель (Ollama)" }
+    public var title: String { tr("Локальная модель (Ollama)") }
 
     public init(preferredModel: @escaping @Sendable () -> String?) {
         self.preferredModel = preferredModel
@@ -16,10 +16,10 @@ public struct OllamaAssistant: AssistantProvider {
 
     public func problem() async -> String? {
         guard let models = await Self.installed() else {
-            return "Ollama не запущена. Установите её (ollama.com), запустите и скачайте модель: ollama pull qwen2.5:7b — затем «Проверить снова»."
+            return tr("Ollama не запущена. Установите её (ollama.com), запустите и скачайте модель: ollama pull qwen2.5:7b — затем «Проверить снова».")
         }
         if models.isEmpty {
-            return "В Ollama нет ни одной модели. Скачайте, например: ollama pull qwen2.5:7b — затем «Проверить снова»."
+            return tr("В Ollama нет ни одной модели. Скачайте, например: ollama pull qwen2.5:7b — затем «Проверить снова».")
         }
         return nil
     }
@@ -71,14 +71,14 @@ public struct OllamaAssistant: AssistantProvider {
         } catch let error as URLError where error.code == .cancelled {
             throw CancellationError()
         } catch let error as URLError where error.code == .timedOut {
-            throw AssistantError(.timedOut, "Локальная модель не ответила за десять минут — попробуйте модель поменьше или папку поменьше.")
+            throw AssistantError(.timedOut, tr("Локальная модель не ответила за десять минут — попробуйте модель поменьше или папку поменьше."))
         } catch let error as URLError {
             throw AssistantError(.failed, "Ollama: " + error.localizedDescription)
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard status == 200 else {
             let said = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-            throw AssistantError(.failed, "Ollama ответила ошибкой \(status): \(said)")
+            throw AssistantError(.failed, tr("Ollama ответила ошибкой \(status): \(said)"))
         }
         let reply = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         let content = (reply?["message"] as? [String: Any])?["content"] as? String ?? ""

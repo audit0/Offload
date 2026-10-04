@@ -13,7 +13,7 @@ public struct BotAssistant: AssistantProvider {
     let license: @Sendable () -> String?
     let endpointText: @Sendable () -> String?
     let client: String
-    public var title: String { "Сервер OffLoadAI" }
+    public var title: String { tr("Сервер OffLoadAI") }
 
     public init(client: String, license: @escaping @Sendable () -> String?, endpoint: @escaping @Sendable () -> String?) {
         self.client = client
@@ -23,10 +23,10 @@ public struct BotAssistant: AssistantProvider {
 
     public func problem() async -> String? {
         if endpoint == nil {
-            return "Помощник через сервер OffLoadAI ещё не запущен — он появится в одном из обновлений. Пока выберите другой вариант."
+            return tr("Помощник через сервер OffLoadAI ещё не запущен — он появится в одном из обновлений. Пока выберите другой вариант.")
         }
         if license()?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
-            return "Помощник через сервер OffLoadAI входит в OffLoadAI Pro: введите ключ в окне «OffLoadAI Pro»."
+            return tr("Помощник через сервер OffLoadAI входит в OffLoadAI Pro: введите ключ в окне «OffLoadAI Pro».")
         }
         return nil
     }
@@ -56,9 +56,9 @@ public struct BotAssistant: AssistantProvider {
         } catch let error as URLError where error.code == .cancelled {
             throw CancellationError()
         } catch let error as URLError where error.code == .timedOut {
-            throw AssistantError(.timedOut, "Сервер OffLoadAI не ответил за четыре минуты — попробуйте позже.")
+            throw AssistantError(.timedOut, tr("Сервер OffLoadAI не ответил за четыре минуты — попробуйте позже."))
         } catch is URLError {
-            throw AssistantError(.failed, "Нет связи с сервером OffLoadAI — проверьте интернет.")
+            throw AssistantError(.failed, tr("Нет связи с сервером OffLoadAI — проверьте интернет."))
         }
         return try read(data: data, status: (response as? HTTPURLResponse)?.statusCode ?? 0, facts: facts)
     }
@@ -68,10 +68,10 @@ public struct BotAssistant: AssistantProvider {
         let said = body?["error"] as? String
         switch status {
         case 200: break
-        case 401: throw AssistantError(.notSignedIn, said ?? "Сервер не принял ключ OffLoadAI Pro.")
-        case 402: throw AssistantError(.notSignedIn, said ?? "Нужен OffLoadAI Pro, или вопросы на этот месяц закончились.")
-        case 429: throw AssistantError(.failed, said ?? "Слишком много вопросов подряд — подождите минуту.")
-        default: throw AssistantError(.failed, said ?? "Сервер OffLoadAI ответил ошибкой \(status).")
+        case 401: throw AssistantError(.notSignedIn, said ?? tr("Сервер не принял ключ OffLoadAI Pro."))
+        case 402: throw AssistantError(.notSignedIn, said ?? tr("Нужен OffLoadAI Pro, или вопросы на этот месяц закончились."))
+        case 429: throw AssistantError(.failed, said ?? tr("Слишком много вопросов подряд — подождите минуту."))
+        default: throw AssistantError(.failed, said ?? tr("Сервер OffLoadAI ответил ошибкой \(status)."))
         }
         return try AssistantPrompt.parse(body?["answer"], facts: facts, provider: title, cost: nil)
     }

@@ -9,7 +9,7 @@ public struct ApiKeyAssistant: AssistantProvider {
     let key: @Sendable () -> String?
     let hasKey: @Sendable () -> Bool
     public let model: String
-    public var title: String { "Claude по ключу API" }
+    public var title: String { tr("Claude по ключу API") }
 
     /// `hasKey` — есть ли ключ, не читая его: чтение из связки ключей может спросить разрешение, а проверка — нет.
     public init(model: String = "claude-opus-5", key: @escaping @Sendable () -> String?, hasKey: (@Sendable () -> Bool)? = nil) {
@@ -20,7 +20,7 @@ public struct ApiKeyAssistant: AssistantProvider {
 
     public func problem() async -> String? {
         hasKey() ? nil
-            : "Вставьте ключ Anthropic API (console.anthropic.com → API Keys) — он хранится в связке ключей и только на этом Mac."
+            : tr("Вставьте ключ Anthropic API (console.anthropic.com → API Keys) — он хранится в связке ключей и только на этом Mac.")
     }
 
     /// Тело запроса: инструкции — системой, схема — структурированным выводом.
@@ -52,9 +52,9 @@ public struct ApiKeyAssistant: AssistantProvider {
         } catch let error as URLError where error.code == .cancelled {
             throw CancellationError()
         } catch let error as URLError where error.code == .timedOut {
-            throw AssistantError(.timedOut, "Claude не ответил за десять минут — попробуйте позже или папку поменьше.")
+            throw AssistantError(.timedOut, tr("Claude не ответил за десять минут — попробуйте позже или папку поменьше."))
         } catch is URLError {
-            throw AssistantError(.failed, "Нет связи с Anthropic — проверьте интернет.")
+            throw AssistantError(.failed, tr("Нет связи с Anthropic — проверьте интернет."))
         }
         return try read(data: data, status: (response as? HTTPURLResponse)?.statusCode ?? 0, facts: facts)
     }
@@ -65,13 +65,13 @@ public struct ApiKeyAssistant: AssistantProvider {
         let said = (root?["error"] as? [String: Any])?["message"] as? String
         switch status {
         case 200: break
-        case 401, 403: throw AssistantError(.notSignedIn, "Ключ API не подошёл — проверьте, что он скопирован целиком и не отозван.")
-        case 429: throw AssistantError(.failed, "Слишком много запросов к Claude — подождите минуту и повторите.")
-        case 500...: throw AssistantError(.failed, "Anthropic сейчас не отвечает (ошибка \(status)) — попробуйте через минуту.")
-        default: throw AssistantError(.failed, "Claude: " + (said ?? "ошибка \(status)."))
+        case 401, 403: throw AssistantError(.notSignedIn, tr("Ключ API не подошёл — проверьте, что он скопирован целиком и не отозван."))
+        case 429: throw AssistantError(.failed, tr("Слишком много запросов к Claude — подождите минуту и повторите."))
+        case 500...: throw AssistantError(.failed, tr("Anthropic сейчас не отвечает (ошибка \(status)) — попробуйте через минуту."))
+        default: throw AssistantError(.failed, "Claude: " + (said ?? tr("ошибка \(status).")))
         }
         if root?["stop_reason"] as? String == "refusal" {
-            throw AssistantError(.badAnswer, "Claude отказался разбирать этот список. Попробуйте другую папку.")
+            throw AssistantError(.badAnswer, tr("Claude отказался разбирать этот список. Попробуйте другую папку."))
         }
         let blocks = root?["content"] as? [[String: Any]] ?? []
         let text = blocks.filter { $0["type"] as? String == "text" }.compactMap { $0["text"] as? String }.joined()

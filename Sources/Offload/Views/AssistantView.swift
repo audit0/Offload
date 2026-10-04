@@ -5,9 +5,9 @@ import SwiftUI
 extension Importance {
     var groupTitle: String {
         switch self {
-        case .junk: return "Мусор"
-        case .minor: return "Менее важно"
-        case .important: return "Важно"
+        case .junk: return tr("Мусор")
+        case .minor: return tr("Менее важно")
+        case .important: return tr("Важно")
         }
     }
 
@@ -41,8 +41,8 @@ struct AssistantView: View {
         let model = app.assistant
         PageScroll {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Помощник").font(Theme.display(30))
-                Text("Смотрит на папку и говорит, что в ней важно, что менее важно, а что мусор. Сам ничего не удаляет и не переносит — только советует, а решаете вы.")
+                Text(tr("Помощник")).font(Theme.display(30))
+                Text(tr("Смотрит на папку и говорит, что в ней важно, что менее важно, а что мусор. Сам ничего не удаляет и не переносит — только советует, а решаете вы."))
                     .foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             }
             // Сначала — где думает помощник: от этого зависит, куда уйдут сведения, и согласие даётся на него.
@@ -55,7 +55,7 @@ struct AssistantView: View {
                 if let answer = model.answer { answerSection(answer) }
             }
         }
-        .navigationTitle("Помощник")
+        .navigationTitle(tr("Помощник"))
         .task(id: model.kind) { await model.check(app: app) }
         .task {
             // Снимки для README показывают ответ: в демонстрации он вымышленный и без сети.
@@ -72,21 +72,21 @@ struct AssistantView: View {
         }) { target in
             MoveSheet(source: target.item.url, onMoved: {
                 moved = true
-                app.assistant.markDone(target.id, "в сейфе")
+                app.assistant.markDone(target.id, tr("в сейфе"))
             })
         }
-        .confirmationDialog(trashing.map { "Отправить «\($0.item.url.lastPathComponent)» в Корзину?" } ?? "",
+        .confirmationDialog(trashing.map { tr("Отправить «\($0.item.url.lastPathComponent)» в Корзину?") } ?? "",
                             isPresented: Binding(get: { trashing != nil }, set: { if !$0 { trashing = nil } }),
                             presenting: trashing) { target in
-            Button("В Корзину", role: .destructive) {
+            Button(tr("В Корзину"), role: .destructive) {
                 Task { trashProblem = await app.assistant.trash(target.id, app: app) }
             }
-            Button("Отмена", role: .cancel) {}
+            Button(tr("Отмена"), role: .cancel) {}
         } message: { target in
-            Text("\(Format.bytes(target.item.bytes)). Вернуть можно здесь же или из Корзины, пока её не очистили.")
+            Text(tr("\(Format.bytes(target.item.bytes)). Вернуть можно здесь же или из Корзины, пока её не очистили."))
         }
-        .alert("Не получилось", isPresented: Binding(get: { trashProblem != nil }, set: { if !$0 { trashProblem = nil } })) {
-            Button("Понятно", role: .cancel) {}
+        .alert(tr("Не получилось"), isPresented: Binding(get: { trashProblem != nil }, set: { if !$0 { trashProblem = nil } })) {
+            Button(tr("Понятно"), role: .cancel) {}
         } message: {
             Text(trashProblem ?? "")
         }
@@ -97,14 +97,14 @@ struct AssistantView: View {
     private var consentCard: some View {
         let model = app.assistant
         return Card(spacing: 12) {
-            CardTitle("Что уходит помощнику", systemImage: "hand.raised")
-            Text("Имена и пути файлов и папок от домашней папки, их размеры и даты, пометки правил OffLoadAI и несколько имён внутри папок. Содержимое файлов — нет: начало небольших текстовых файлов уходит, только если вы сами это включите, и никогда — таблицы (.csv), файлы с ключами и те, где видны пароль, токен, номер карты или фраза восстановления. Файлы, которые лежат только в iCloud, не скачиваются. Фото, видео и документы никуда не уходят.")
+            CardTitle(tr("Что уходит помощнику"), systemImage: "hand.raised")
+            Text(tr("Имена и пути файлов и папок от домашней папки, их размеры и даты, пометки правил OffLoadAI и несколько имён внутри папок. Содержимое файлов — нет: начало небольших текстовых файлов уходит, только если вы сами это включите, и никогда — таблицы (.csv), файлы с ключами и те, где видны пароль, токен, номер карты или фраза восстановления. Файлы, которые лежат только в iCloud, не скачиваются. Фото, видео и документы никуда не уходят."))
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Куда: \(model.kind.destination)")
+            Text(tr("Куда: \(model.kind.destination)"))
                 .fontWeight(.medium).fixedSize(horizontal: false, vertical: true)
-            Text("Остальной OffLoadAI работает без сети — кроме сообщений о новых версиях, если вы их включили. Согласие — отдельно для каждого варианта; отозвать его можно в любой момент.")
+            Text(tr("Остальной OffLoadAI работает без сети — кроме сообщений о новых версиях, если вы их включили. Согласие — отдельно для каждого варианта; отозвать его можно в любой момент."))
                 .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
-            Button("Согласен — включить «\(model.kind.title)»") { model.setConsent(true) }
+            Button(tr("Согласен — включить «\(model.kind.title)»")) { model.setConsent(true) }
                 .prominentButton()
                 .padding(.top, 4)
         }
@@ -116,7 +116,7 @@ struct AssistantView: View {
         let model = app.assistant
         @Bindable var bindable = model
         return Card(spacing: 12) {
-            CardTitle("Где думает помощник", systemImage: "cpu")
+            CardTitle(tr("Где думает помощник"), systemImage: "cpu")
             FlowLayout(spacing: 8, lineSpacing: 8) {
                 ForEach(AssistantModel.Kind.allCases) { kind in
                     if kind == model.kind {
@@ -132,9 +132,9 @@ struct AssistantView: View {
             if model.kind == .apiKey, !Demo.isOn {
                 if model.hasApiKey {
                     HStack(spacing: 10) {
-                        Label("Ключ сохранён в связке ключей.", systemImage: "key.fill").font(.callout)
+                        Label(tr("Ключ сохранён в связке ключей."), systemImage: "key.fill").font(.callout)
                         Spacer(minLength: 8)
-                        Button("Убрать ключ") {
+                        Button(tr("Убрать ключ")) {
                             model.saveApiKey(nil)
                             Task { await model.check(app: app) }
                         }
@@ -143,7 +143,7 @@ struct AssistantView: View {
                     HStack(spacing: 8) {
                         SecureField("sk-ant-…", text: $apiKey)
                             .textFieldStyle(.roundedBorder)
-                        Button("Сохранить ключ") {
+                        Button(tr("Сохранить ключ")) {
                             model.saveApiKey(apiKey)
                             apiKey = ""
                             Task { await model.check(app: app) }
@@ -153,7 +153,7 @@ struct AssistantView: View {
                 }
             }
             if model.kind == .local, !model.localModels.isEmpty {
-                Picker("Модель", selection: Binding(get: { OllamaAssistant.choose(from: model.localModels, preferred: model.localModel) ?? "" },
+                Picker(tr("Модель"), selection: Binding(get: { OllamaAssistant.choose(from: model.localModels, preferred: model.localModel) ?? "" },
                                                     set: { bindable.localModel = $0 })) {
                     ForEach(model.localModels, id: \.self) { Text($0).tag($0) }
                 }
@@ -162,14 +162,14 @@ struct AssistantView: View {
             }
             if let problem = model.problem, !Demo.isOn {
                 Notice(.warning, problem)
-                Button("Проверить снова") { Task { await model.check(app: app) } }
+                Button(tr("Проверить снова")) { Task { await model.check(app: app) } }
                     .disabled(model.isChecking)
             }
             if model.consent, !Demo.isOn {
-                Button("Отозвать согласие на «\(model.kind.title)»") { model.setConsent(false) }
+                Button(tr("Отозвать согласие на «\(model.kind.title)»")) { model.setConsent(false) }
                     .buttonStyle(.link)
                     .font(.callout)
-                    .help("Сведения о файлах больше не уйдут сюда, пока вы снова не согласитесь")
+                    .help(tr("Сведения о файлах больше не уйдут сюда, пока вы снова не согласитесь"))
             }
         }
     }
@@ -178,29 +178,29 @@ struct AssistantView: View {
 
     private var places: [(title: String, url: URL)] {
         let home = app.rules.home
-        return [("Загрузки", "Downloads"), ("Рабочий стол", "Desktop"), ("Документы", "Documents"), ("Фильмы", "Movies")]
-            .map { ($0.0, home.appendingPathComponent($0.1, isDirectory: true)) } + [("Домашняя папка", home)]
+        return [(tr("Загрузки"), "Downloads"), (tr("Рабочий стол"), "Desktop"), (tr("Документы"), "Documents"), (tr("Фильмы"), "Movies")]
+            .map { ($0.0, home.appendingPathComponent($0.1, isDirectory: true)) } + [(tr("Домашняя папка"), home)]
     }
 
     private var askCard: some View {
         let model = app.assistant
         @Bindable var bindable = model
         return Card(spacing: 12) {
-            CardTitle("Какую папку разобрать", systemImage: "folder")
+            CardTitle(tr("Какую папку разобрать"), systemImage: "folder")
             FlowLayout(spacing: 8, lineSpacing: 8) {
                 ForEach(places, id: \.title) { place in
                     Button(place.title) { model.run(place.url, question: question, app: app) }
                 }
-                Button("Другая папка…", action: chooseFolder)
+                Button(tr("Другая папка…"), action: chooseFolder)
             }
             .disabled(model.isBusy)
-            TextField("Вопрос помощнику (необязательно): например, «что из этого можно удалить?»", text: $question)
+            TextField(tr("Вопрос помощнику (необязательно): например, «что из этого можно удалить?»"), text: $question)
                 .textFieldStyle(.roundedBorder)
                 .disabled(model.isBusy)
             VStack(alignment: .leading, spacing: 3) {
-                Toggle("Показывать помощнику начало небольших текстовых файлов", isOn: $bindable.sendsPreviews)
+                Toggle(tr("Показывать помощнику начало небольших текстовых файлов"), isOn: $bindable.sendsPreviews)
                     .disabled(model.isBusy)
-                Text("До 20 строк — так понятнее, что это за файл. Таблицы (.csv), файлы с ключами и те, где видны пароль, токен, номер карты или фраза восстановления, не уходят никогда.")
+                Text(tr("До 20 строк — так понятнее, что это за файл. Таблицы (.csv), файлы с ключами и те, где видны пароль, токен, номер карты или фраза восстановления, не уходят никогда."))
                     .font(.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             }
             if model.isBusy {
@@ -208,10 +208,10 @@ struct AssistantView: View {
                     ProgressView().controlSize(.small)
                     Text(model.status ?? "").font(.callout).foregroundStyle(Theme.muted).lineLimit(1)
                     Spacer(minLength: 8)
-                    Button("Отменить") { model.cancel() }
+                    Button(tr("Отменить")) { model.cancel() }
                 }
             } else if let folder = model.folder, model.answer != nil {
-                Button("Спросить ещё раз про «\(title(of: folder))»") { model.run(folder, question: question, app: app) }
+                Button(tr("Спросить ещё раз про «\(title(of: folder))»")) { model.run(folder, question: question, app: app) }
             }
         }
     }
@@ -227,8 +227,8 @@ struct AssistantView: View {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.directoryURL = app.rules.home
-        panel.message = "Какую папку разобрать с помощником"
-        panel.prompt = "Разобрать"
+        panel.message = tr("Какую папку разобрать с помощником")
+        panel.prompt = tr("Разобрать")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         app.assistant.run(url, question: question, app: app)
     }
@@ -244,7 +244,7 @@ struct AssistantView: View {
                     IconTile(systemImage: "lightbulb.fill", size: 32)
                     Text(answer.summary).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                 }
-                Text("Ответил: \(answer.provider)\(answer.costUSD.map { String(format: " · $%.2f", $0) } ?? ""). Помощник может ошибаться — решение за вами.")
+                Text(tr("Ответил: \(answer.provider)\(answer.costUSD.map { String(format: " · $%.2f", $0) } ?? ""). Помощник может ошибаться — решение за вами."))
                     .font(.caption).foregroundStyle(Theme.muted)
                     .padding(.leading, 44)
             }
@@ -288,7 +288,7 @@ struct AssistantView: View {
         }
         .rowPadding()
         .contextMenu {
-            if let item { Button("Показать в Finder") { revealInFinder(item.url) } }
+            if let item { Button(tr("Показать в Finder")) { revealInFinder(item.url) } }
         }
     }
 
@@ -299,25 +299,25 @@ struct AssistantView: View {
             VStack(alignment: .trailing, spacing: 4) {
                 Label(outcome, systemImage: "checkmark").font(.callout).foregroundStyle(Theme.ok)
                 if model.canPutBack(advice.id) {
-                    Button("Вернуть") { Task { trashProblem = await model.putBack(advice.id, app: app) } }
+                    Button(tr("Вернуть")) { Task { trashProblem = await model.putBack(advice.id, app: app) } }
                         .controlSize(.small)
-                        .help("Вернуть из Корзины на прежнее место")
+                        .help(tr("Вернуть из Корзины на прежнее место"))
                 }
             }
         } else if let item, advice.action != .keep {
             if advice.action == .safe {
-                Button("В сейф…") {
-                    if Demo.isOn { model.markDone(advice.id, "в сейфе") } else { moving = Target(id: advice.id, item: item) }
+                Button(tr("В сейф…")) {
+                    if Demo.isOn { model.markDone(advice.id, tr("в сейфе")) } else { moving = Target(id: advice.id, item: item) }
                 }
                 .controlSize(.small)
-                .help("Перенос со сверкой каждого файла; вернуть можно в «Перенесённом»")
+                .help(tr("Перенос со сверкой каждого файла; вернуть можно в «Перенесённом»"))
             } else {
-                Button("В Корзину") { trashing = Target(id: advice.id, item: item) }
+                Button(tr("В Корзину")) { trashing = Target(id: advice.id, item: item) }
                     .controlSize(.small)
-                    .help("Вернуть можно здесь же или из Корзины, пока её не очистили")
+                    .help(tr("Вернуть можно здесь же или из Корзины, пока её не очистили"))
             }
         } else {
-            Text("оставить").font(.caption).foregroundStyle(Theme.faint).padding(.top, 3)
+            Text(tr("оставить")).font(.caption).foregroundStyle(Theme.faint).padding(.top, 3)
         }
     }
 }

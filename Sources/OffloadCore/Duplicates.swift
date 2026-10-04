@@ -323,7 +323,7 @@ public struct DuplicateFinder: Sendable {
 
         public var errorDescription: String? {
             switch self {
-            case .notRegularFile(let name): return "«\(name)» — уже не обычный файл."
+            case .notRegularFile(let name): return tr("«\(name)» — уже не обычный файл.")
             }
         }
     }

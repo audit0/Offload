@@ -11,13 +11,13 @@ struct UpdateQuestionCard: View {
             HStack(alignment: .top, spacing: 14) {
                 IconTile(systemImage: "arrow.down.circle", tone: .brand, size: 36)
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Сообщать о новых версиях?").font(.headline)
-                    Text("Раз в сутки OffLoadAI спросит у GitHub номер последней версии и скажет, если вышла новая: в новых версиях бывают исправления безопасности. В запросе нет ничего о компьютере и файлах — GitHub видит только адрес сети, как при открытии любой страницы. Обновление ставите вы сами. Передумать можно в меню OffLoadAI.")
+                    Text(tr("Сообщать о новых версиях?")).font(.headline)
+                    Text(tr("Раз в сутки OffLoadAI спросит у GitHub номер последней версии и скажет, если вышла новая: в новых версиях бывают исправления безопасности. В запросе нет ничего о компьютере и файлах — GitHub видит только адрес сети, как при открытии любой страницы. Обновление ставите вы сами. Передумать можно в меню OffLoadAI."))
                         .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     HStack {
-                        Button("Сообщать") { app.updates.setEnabled(true) }
+                        Button(tr("Сообщать")) { app.updates.setEnabled(true) }
                             .prominentButton()
-                        Button("Не надо") { app.updates.setEnabled(false) }
+                        Button(tr("Не надо")) { app.updates.setEnabled(false) }
                     }
                     .padding(.top, 2)
                 }
@@ -38,7 +38,7 @@ struct UpdateSidebarRow: View {
                 Image(systemName: "arrow.down.circle.fill")
                     .foregroundStyle(Theme.ink)
                     .frame(width: 20)
-                Text("Вышла версия \(release.version)").font(.callout).fontWeight(.medium).foregroundStyle(Theme.ink).lineLimit(1)
+                Text(tr("Вышла версия \(release.version)")).font(.callout).fontWeight(.medium).foregroundStyle(Theme.ink).lineLimit(1)
                 Spacer(minLength: 4)
             }
             .padding(.horizontal, 10)
@@ -48,7 +48,7 @@ struct UpdateSidebarRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help("Что нового и как обновиться")
+        .help(tr("Что нового и как обновиться"))
     }
 }
 
@@ -60,9 +60,9 @@ struct UpdateSheet: View {
 
     var body: some View {
         let updates = app.updates
-        SheetLayout(systemImage: "arrow.down.circle", title: "Вышла версия \(updates.available?.version ?? "")",
-                    subtitle: UpdatesModel.currentVersion.map { "У вас — \($0)" }, width: 540) {
-            Text("Чтобы обновиться, вставьте эту команду в Терминал. Она скачает новую версию, сверит её и поставит на место этой. Если идёт копирование, OffLoadAI сначала спросит, прервать ли его. Настройки, ключ Pro, журнал и сейф останутся как были.")
+        SheetLayout(systemImage: "arrow.down.circle", title: tr("Вышла версия \(updates.available?.version ?? "")"),
+                    subtitle: UpdatesModel.currentVersion.map { tr("У вас — \($0)") }, width: 540) {
+            Text(tr("Чтобы обновиться, вставьте эту команду в Терминал. Она скачает новую версию, сверит её и поставит на место этой. Если идёт копирование, OffLoadAI сначала спросит, прервать ли его. Настройки, ключ Pro, журнал и сейф останутся как были."))
                 .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             HStack(alignment: .top, spacing: 10) {
                 Text(UpdatesModel.installCommand)
@@ -70,7 +70,7 @@ struct UpdateSheet: View {
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Button(copied ? "Скопировано" : "Скопировать") {
+                Button(copied ? tr("Скопировано") : tr("Скопировать")) {
                     updates.copyCommand()
                     copied = true
                 }
@@ -79,13 +79,13 @@ struct UpdateSheet: View {
             .background(Theme.soft, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         } actions: {
             if let page = updates.available?.page {
-                Button("Что нового") { NSWorkspace.shared.open(page) }
+                Button(tr("Что нового")) { NSWorkspace.shared.open(page) }
             }
-            Button("Не напоминать об этой") {
+            Button(tr("Не напоминать об этой")) {
                 updates.postpone()
                 dismiss()
             }
-            Button("Готово") { dismiss() }
+            Button(tr("Готово")) { dismiss() }
                 .prominentButton()
                 .keyboardShortcut(.defaultAction)
         }

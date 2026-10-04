@@ -25,7 +25,7 @@ struct SpaceView: View {
                                  onFree: { free(item) })
                     }
                     if model.hiddenSmallCount > 0, !model.isScanning {
-                        Text("И ещё \(model.hiddenSmallCount) объектов меньше 1 МБ")
+                        Text(tr("И ещё \(model.hiddenSmallCount) объектов меньше 1 МБ"))
                             .font(.caption).foregroundStyle(Theme.muted)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 10)
@@ -36,10 +36,10 @@ struct SpaceView: View {
                 .padding(.vertical, 8)
             }
             .overlay {
-                if model.items.isEmpty, model.isScanning { ProgressView("Считаю размеры…") }
+                if model.items.isEmpty, model.isScanning { ProgressView(tr("Считаю размеры…")) }
             }
         }
-        .navigationTitle("Освободить место")
+        .navigationTitle(tr("Освободить место"))
         .task {
             if model.items.isEmpty, !model.isScanning { model.open(model.location, rules: app.rules) }
         }
@@ -80,20 +80,20 @@ struct SpaceView: View {
             HStack(spacing: 10) {
                 Button { model.goUp(rules: app.rules) } label: { Image(systemName: "chevron.left") }
                     .disabled(model.location == nil)
-                    .help("Наверх")
+                    .help(tr("Наверх"))
                 VStack(alignment: .leading, spacing: 1) {
                     Text(model.title(home: app.rules.home))
                         .font(Theme.display(19))
                         .lineLimit(1).truncationMode(.middle)
-                    Text(!model.isScanning ? "\(Format.bytes(total)) · \(model.items.count) \(pluralRu(model.items.count, "объект", "объекта", "объектов"))"
-                         : model.items.isEmpty ? "Считаю…" : "Считаю: \(measured.count) из \(model.items.count)")
+                    Text(!model.isScanning ? "\(Format.bytes(total)) · \(model.items.count) \(pluralRu(model.items.count, tr("объект"), tr("объекта"), tr("объектов")))"
+                         : model.items.isEmpty ? tr("Считаю…") : tr("Считаю: \(measured.count) из \(model.items.count)"))
                         .font(.caption).foregroundStyle(Theme.muted).monospacedDigit()
                 }
                 Spacer()
                 if model.isScanning {
                     ProgressView().controlSize(.small)
                 }
-                Button { model.rescan(rules: app.rules) } label: { Label("Пересчитать", systemImage: "arrow.clockwise") }
+                Button { model.rescan(rules: app.rules) } label: { Label(tr("Пересчитать"), systemImage: "arrow.clockwise") }
             }
             if total > 0 {
                 VStack(alignment: .leading, spacing: 8) {
@@ -103,9 +103,9 @@ struct SpaceView: View {
                         StackedBar.Part(fraction: Double(blocked) / Double(total), color: Theme.line),
                     ])
                     HStack(spacing: 18) {
-                        legend("Можно перенести", bytes: movable, color: Theme.ink)
-                        legend("С оговорками", bytes: caution, color: Theme.faint)
-                        legend("Не трогать", bytes: blocked, color: Theme.line)
+                        legend(tr("Можно перенести"), bytes: movable, color: Theme.ink)
+                        legend(tr("С оговорками"), bytes: caution, color: Theme.faint)
+                        legend(tr("Не трогать"), bytes: blocked, color: Theme.line)
                         Spacer(minLength: 0)
                     }
                 }
@@ -150,7 +150,7 @@ struct SpaceRow: View {
                 HStack(spacing: 6) {
                     Text(item.url.lastPathComponent).fontWeight(.medium).lineLimit(1).truncationMode(.middle)
                     if item.accessDenied {
-                        StatusPill(title: item.bytes > 0 ? "не всё доступно" : "нет доступа", tone: .caution)
+                        StatusPill(title: item.bytes > 0 ? tr("не всё доступно") : tr("нет доступа"), tone: .caution)
                     }
                 }
                 CapacityBar(fraction: Double(item.bytes) / Double(largest), height: 5).frame(maxWidth: 320)
@@ -175,23 +175,23 @@ struct SpaceRow: View {
                 // Лупа видна под мышью: в каждой строке сразу она только шумела бы.
                 Button { revealInFinder(item.url) } label: { Image(systemName: "magnifyingglass") }
                     .buttonStyle(.borderless)
-                    .help("Показать в Finder")
+                    .help(tr("Показать в Finder"))
                     .opacity(hovering ? 1 : 0)
                 if let appData {
-                    Button("Как освободить…", action: onFree)
+                    Button(tr("Как освободить…"), action: onFree)
                         .buttonStyle(PillButtonStyle())
                         .controlSize(.small)
                         .help(appData == .docker
-                              ? "Открыть раздел «Docker»: очистка образов и кеша сборки, архивация томов"
-                              : "Сколько занимает каждая машина и как освободить место через UTM")
+                              ? tr("Открыть раздел «Docker»: очистка образов и кеша сборки, архивация томов")
+                              : tr("Сколько занимает каждая машина и как освободить место через UTM"))
                 } else if !item.verdict.isBlocked {
-                    Button("Перенести…", action: onMove)
+                    Button(tr("Перенести…"), action: onMove)
                         .buttonStyle(PillButtonStyle())
                         .controlSize(.small)
                 }
                 Button(action: onOpen) { Image(systemName: "chevron.right") }
                     .buttonStyle(.borderless)
-                    .help("Открыть")
+                    .help(tr("Открыть"))
                     .opacity(item.isDirectory ? 1 : 0)
                     .disabled(!item.isDirectory)
             }
@@ -205,14 +205,14 @@ struct SpaceRow: View {
         .onHover { hovering = $0 }
         .onTapGesture(count: 2) { if item.isDirectory { onOpen() } }
         .contextMenu {
-            if item.isDirectory { Button("Открыть", action: onOpen) }
-            Button("Показать в Finder") { revealInFinder(item.url) }
+            if item.isDirectory { Button(tr("Открыть"), action: onOpen) }
+            Button(tr("Показать в Finder")) { revealInFinder(item.url) }
             if appData != nil {
                 Divider()
-                Button("Как освободить…", action: onFree)
+                Button(tr("Как освободить…"), action: onFree)
             } else if !item.verdict.isBlocked {
                 Divider()
-                Button("Перенести…", action: onMove)
+                Button(tr("Перенести…"), action: onMove)
             }
         }
     }
@@ -227,7 +227,7 @@ struct MoveSheet: View {
 
     var body: some View {
         SheetLayout(systemImage: "externaldrive.badge.plus",
-                    title: "Перенести «\(source.lastPathComponent)»",
+                    title: tr("Перенести «\(source.lastPathComponent)»"),
                     subtitle: relativeToHome(source.path, home: app.rules.home),
                     width: 600) {
             // Когда класть некуда, эта же строка и объясняет почему.
@@ -237,20 +237,20 @@ struct MoveSheet: View {
             } else if app.destination != nil, app.storeMode == .safe, app.safe.state?.isEncrypted == true {
                 // Сейф закрыт — открываем прямо здесь, не уходя из окна переноса.
                 SafeUnlockRow()
-                Button("Всё-таки положить открыто на диск «\(app.destination?.name ?? "")»") { app.storeMode = .open }
+                Button(tr("Всё-таки положить открыто на диск «\(app.destination?.name ?? "")»")) { app.storeMode = .open }
                     .buttonStyle(InkLinkStyle()).font(.caption)
             }
         } actions: {
             switch model.stage {
             case .inspecting, .running:
-                Button("Отменить") { model.cancel() }
+                Button(tr("Отменить")) { model.cancel() }
             case .ready(let plan):
-                Button("Закрыть") { dismiss() }
-                Button("Перенести") { model.run(plan, app: app) }
+                Button(tr("Закрыть")) { dismiss() }
+                Button(tr("Перенести")) { model.run(plan, app: app) }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!model.canRun(plan))
             default:
-                Button("Готово") { dismiss() }.keyboardShortcut(.defaultAction)
+                Button(tr("Готово")) { dismiss() }.keyboardShortcut(.defaultAction)
             }
         }
         // Esc запрещаем только во время самого копирования; на этапе проверки закрывать окно можно.
@@ -272,13 +272,13 @@ struct MoveSheet: View {
         case .idle, .inspecting:
             HStack(spacing: 10) {
                 ProgressView().controlSize(.small)
-                Text("Проверяю содержимое, открытые файлы и диск «\(volume.name)»…").foregroundStyle(Theme.muted)
+                Text(tr("Проверяю содержимое, открытые файлы и диск «\(volume.name)»…")).foregroundStyle(Theme.muted)
             }
         case .ready(let plan):
             VStack(alignment: .leading, spacing: 12) {
                 VStack(spacing: 8) {
-                    InfoRow("Размер", value: "\(Format.bytes(plan.content.logicalBytes)) · файлов \(plan.content.files) · папок \(max(0, plan.content.directories - 1))")
-                    InfoRow(title: "Куда") {
+                    InfoRow(tr("Размер"), value: tr("\(Format.bytes(plan.content.logicalBytes)) · файлов \(plan.content.files) · папок \(max(0, plan.content.directories - 1))"))
+                    InfoRow(title: tr("Куда")) {
                         Text(plan.target.path).lineLimit(1).truncationMode(.head).textSelection(.enabled)
                     }
                 }
@@ -286,24 +286,24 @@ struct MoveSheet: View {
                 .padding(12)
                 .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 if !plan.volume.isEncryptedImage {
-                    Notice(.warning, "Копия ляжет на диск открыто: кто получит диск, прочтёт её без пароля. Чтобы зашифровать, выберите внизу боковой панели «В сейф».")
+                    Notice(.warning, tr("Копия ляжет на диск открыто: кто получит диск, прочтёт её без пароля. Чтобы зашифровать, выберите внизу боковой панели «В сейф»."))
                 }
                 switch plan.verdict {
                 case .blocked(let reason):
                     Notice(.error, reason)
                 case .caution(let notes):
                     ForEach(notes, id: \.self) { Notice(.warning, $0) }
-                    Toggle("Понимаю, переносить всё равно", isOn: bindable.acceptCautions)
+                    Toggle(tr("Понимаю, переносить всё равно"), isOn: bindable.acceptCautions)
                 case .safe:
                     EmptyView()
                 }
                 ForEach(plan.check.blockers, id: \.self) { Notice(.error, $0) }
                 ForEach(plan.check.notes, id: \.self) { Notice(.info, $0) }
                 VStack(alignment: .leading, spacing: 4) {
-                    Toggle("Удалить оригинал после сверки", isOn: bindable.deleteOriginal)
+                    Toggle(tr("Удалить оригинал после сверки"), isOn: bindable.deleteOriginal)
                     Text(model.deleteOriginal
-                         ? "Оригинал удаляется только после того, как каждый файл копии перечитан с диска и сверен по SHA-256."
-                         : "Останется копия на диске, место на Mac не освободится.")
+                         ? tr("Оригинал удаляется только после того, как каждый файл копии перечитан с диска и сверен по SHA-256.")
+                         : tr("Останется копия на диске, место на Mac не освободится."))
                         .font(.caption).foregroundStyle(Theme.muted)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.leading, 20)
@@ -312,9 +312,9 @@ struct MoveSheet: View {
         case .running(let progress):
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(progress.phase.rawValue).fontWeight(.medium)
+                    Text(trDynamic(progress.phase.rawValue)).fontWeight(.medium)
                     Spacer()
-                    Text("\(Format.bytes(progress.bytesDone)) из \(Format.bytes(progress.bytesTotal))")
+                    Text(tr("\(Format.bytes(progress.bytesDone)) из \(Format.bytes(progress.bytesTotal))"))
                         .font(.callout).foregroundStyle(Theme.muted).monospacedDigit()
                 }
                 ProgressView(value: progress.fraction)
@@ -323,14 +323,14 @@ struct MoveSheet: View {
         case .done(let record):
             VStack(alignment: .leading, spacing: 10) {
                 Notice(.success, record.originalRemoved
-                       ? "Перенесено и сверено: \(record.files) файлов, \(Format.bytes(record.bytes)). Оригинал удалён, место на Mac освободилось."
-                       : "Скопировано и сверено: \(record.files) файлов, \(Format.bytes(record.bytes)). Оригинал на месте.")
+                       ? tr("Перенесено и сверено: \(record.files) файлов, \(Format.bytes(record.bytes)). Оригинал удалён, место на Mac освободилось.")
+                       : tr("Скопировано и сверено: \(record.files) файлов, \(Format.bytes(record.bytes)). Оригинал на месте."))
                 if record.isEncrypted {
-                    Label("Лежит в сейфе — зашифровано.", systemImage: "lock.fill").foregroundStyle(Theme.ok).font(.callout)
+                    Label(tr("Лежит в сейфе — зашифровано."), systemImage: "lock.fill").foregroundStyle(Theme.ok).font(.callout)
                 }
                 HStack {
-                    Button("Показать на диске") { revealInFinder(URL(fileURLWithPath: record.archivedPath)) }
-                    Text("Вернуть обратно можно в разделе «Перенесённое».").font(.caption).foregroundStyle(Theme.muted)
+                    Button(tr("Показать на диске")) { revealInFinder(URL(fileURLWithPath: record.archivedPath)) }
+                    Text(tr("Вернуть обратно можно в разделе «Перенесённое».")).font(.caption).foregroundStyle(Theme.muted)
                 }
             }
         case .failed(let message):

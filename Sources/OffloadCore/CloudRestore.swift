@@ -88,13 +88,13 @@ public enum CloudRestore {
         public var errorDescription: String? {
             switch self {
             case .resticMissing:
-                return "Для восстановления нужна программа restic. Установите её: brew install restic — и нажмите «Проверить снова»."
+                return tr("Для восстановления нужна программа restic. Установите её: brew install restic — и нажмите «Проверить снова».")
             case .wrongPassword:
-                return "Пароль не подходит к этому хранилищу."
+                return tr("Пароль не подходит к этому хранилищу.")
             case .notARepository(let path):
-                return "В папке «\(path)» нет хранилища restic."
+                return tr("В папке «\(path)» нет хранилища restic.")
             case .notEnoughSpace(let needed, let available):
-                return "Не хватает места: нужно \(Format.bytes(needed)), свободно \(Format.bytes(available))."
+                return tr("Не хватает места: нужно \(Format.bytes(needed)), свободно \(Format.bytes(available)).")
             case .failed(let message):
                 return message
             }
@@ -163,7 +163,7 @@ public enum CloudRestore {
         default:
             let message = readable(stderr).suffix(3).joined(separator: " ")
             if message.localizedCaseInsensitiveContains("wrong password") { return .wrongPassword }
-            return .failed("restic завершился с кодом \(status)" + (message.isEmpty ? "." : ": \(message)"))
+            return .failed(tr("restic завершился с кодом \(status)") + (message.isEmpty ? "." : ": \(message)"))
         }
     }
 
@@ -275,7 +275,7 @@ public enum CloudRestore {
             for path in broken.all { removeBroken(path, in: target) }
         }
         guard fm.fileExists(atPath: item.path) else {
-            throw fail(result.succeeded ? RestoreError.failed("restic ничего не восстановил: «\(entry.path)» нет в снимке.")
+            throw fail(result.succeeded ? RestoreError.failed(tr("restic ничего не восстановил: «\(entry.path)» нет в снимке."))
                 : Self.error(status: result.status, stderr: result.stderr, repository: repository))
         }
         let counted = count(item)
@@ -349,13 +349,13 @@ public enum CloudRestore {
     public static func failedItem(_ line: String) -> (item: String, message: String)? {
         if let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] {
             guard object["message_type"] as? String == "error" else { return nil }
-            let message = (object["error"] as? [String: Any])?["message"] as? String ?? "ошибка"
+            let message = (object["error"] as? [String: Any])?["message"] as? String ?? tr("ошибка")
             return (object["item"] as? String ?? "", message)
         }
         let prefix = "ignoring error for "
         guard line.hasPrefix(prefix) else { return nil }
         let rest = line.dropFirst(prefix.count)
-        guard let colon = rest.range(of: ": ") else { return (String(rest), "ошибка") }
+        guard let colon = rest.range(of: ": ") else { return (String(rest), tr("ошибка")) }
         return (String(rest[..<colon.lowerBound]), String(rest[colon.upperBound...]))
     }
 
@@ -424,9 +424,9 @@ public enum CloudRestore {
     /// «Из бэкапа 26.09.2026 20-23», при совпадении — с номером.
     static func uniqueFolder(in folder: URL, snapshot: Snapshot) -> URL {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.locale = AppLanguage.locale
         formatter.dateFormat = "dd.MM.yyyy HH-mm"
-        let base = "Из бэкапа \(formatter.string(from: snapshot.time))"
+        let base = tr("Из бэкапа \(formatter.string(from: snapshot.time))")
         var candidate = folder.appendingPathComponent(base, isDirectory: true)
         var number = 2
         while FileManager.default.fileExists(atPath: candidate.path) {
