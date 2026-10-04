@@ -252,6 +252,8 @@ powershell -ExecutionPolicy Bypass -File windows\scripts\install-local.ps1
 
 ## English
 
+Website: [audit0.github.io/Offload/en](https://audit0.github.io/Offload/en/)
+
 OffLoadAI frees up space on a Mac without risking data loss. It shows what takes up disk space, moves selected items to an external drive, keeps an incremental backup of projects, stores keys and tokens in an encrypted container and restores files from restic backups in iCloud Drive. The original is deleted only after the copy has been re-read from disk and matched byte for byte (SHA-256).
 
 Everything needed to free up space and keep data safe is free forever; OffLoadAI Pro (a one-time $19 with a year of updates, 14-day trial, free for users of earlier versions) adds duplicate removal, learned habits, project backup and Docker volume archiving. The license key is verified offline with an Ed25519 signature — checking it needs no network. Only two optional parts go online, each only with your consent: a daily check for a new version (one GitHub API request for the latest release number, nothing about your computer or files; you update yourself with the install command), and the AI assistant (consent given per backend and revocable) when you ask it: it sends file paths relative to your home folder, sizes, dates and rule marks — file contents only if you turn that on, and never spreadsheets, key files or text that looks like a password, token, card number or recovery phrase. It can only suggest deleting what the cleanup rules already allow (regenerable caches and old installers); anything personal goes to the vault.
