@@ -5,10 +5,10 @@ import SwiftUI
 extension CleanupAction {
     var title: String {
         switch self {
-        case .trash: return "В Корзину"
-        case .safe: return "В сейф"
-        case .backup: return "В бэкап"
-        case .keep: return "Оставить"
+        case .trash: return tr("В Корзину")
+        case .safe: return tr("В сейф")
+        case .backup: return tr("В бэкап")
+        case .keep: return tr("Оставить")
         }
     }
 
@@ -34,11 +34,11 @@ extension CleanupAction {
 extension CleanupModule {
     var title: String {
         switch self {
-        case .junk: return "Мусор"
-        case .safe: return "Крупное и старое"
-        case .duplicates: return "Лишние копии"
-        case .installers: return "Установщики"
-        case .projects: return "Проекты без бэкапа"
+        case .junk: return tr("Мусор")
+        case .safe: return tr("Крупное и старое")
+        case .duplicates: return tr("Лишние копии")
+        case .installers: return tr("Установщики")
+        case .projects: return tr("Проекты без бэкапа")
         }
     }
 
@@ -81,12 +81,12 @@ extension CleanupQuestion {
 
     var title: String {
         switch kind {
-        case .module(.junk): return "Удалить мусор?"
-        case .module(.duplicates): return "Удалить лишние копии?"
-        case .module(.installers): return "Удалить старые установщики?"
-        case .module(.safe): return "Убрать в сейф крупное и старое?"
-        case .module(.projects): return "Добавить проекты в бэкап?"
-        case .docker: return "Очистить Docker?"
+        case .module(.junk): return tr("Удалить мусор?")
+        case .module(.duplicates): return tr("Удалить лишние копии?")
+        case .module(.installers): return tr("Удалить старые установщики?")
+        case .module(.safe): return tr("Убрать в сейф крупное и старое?")
+        case .module(.projects): return tr("Добавить проекты в бэкап?")
+        case .docker: return tr("Очистить Docker?")
         }
     }
 
@@ -94,52 +94,52 @@ extension CleanupQuestion {
     var text: String {
         switch kind {
         case .module(.junk):
-            return "\(Self.list(labels, quoted: false)) — программы создадут это заново."
+            return tr("\(Self.list(labels, quoted: false)) — программы создадут это заново.")
         case .module(.duplicates):
             let groups = Set(items.compactMap(\.duplicateGroup)).count
-            return "\(items.count) \(pluralRu(items.count, "лишняя копия", "лишние копии", "лишних копий")) одинаковых файлов (\(groups) \(pluralRu(groups, "группа", "группы", "групп"))): \(Self.list(labels, quoted: true)). У каждого файла останется одна копия — та, что лежит на своём месте, — и каждая лишняя перед удалением сверяется с ней байт в байт."
+            return tr("\(items.count) \(pluralRu(items.count, tr("лишняя копия"), tr("лишние копии"), tr("лишних копий"))) одинаковых файлов (\(groups) \(pluralRu(groups, tr("группа"), tr("группы"), tr("групп")))): \(Self.list(labels, quoted: true)). У каждого файла останется одна копия — та, что лежит на своём месте, — и каждая лишняя перед удалением сверяется с ней байт в байт.")
         case .module(.installers):
-            return "\(Self.list(labels, quoted: true)) — .dmg, .pkg и .xip старше недели. Если программа понадобится снова, установщик можно скачать. Посмотрите список ниже: «Разрешить всё» установщики не удаляет, только ответ здесь."
+            return tr("\(Self.list(labels, quoted: true)) — .dmg, .pkg и .xip старше недели. Если программа понадобится снова, установщик можно скачать. Посмотрите список ниже: «Разрешить всё» установщики не удаляет, только ответ здесь.")
         case .module(.safe):
-            return "\(Self.list(labels, quoted: true)) — не менялось больше трёх месяцев. Перенесу в сейф со сверкой каждого файла и уберу с Mac; вернуть можно в «Перенесённом»."
+            return tr("\(Self.list(labels, quoted: true)) — не менялось больше трёх месяцев. Перенесу в сейф со сверкой каждого файла и уберу с Mac; вернуть можно в «Перенесённом».")
         case .module(.projects):
-            return "\(Self.list(labels, quoted: true)) — папки с git, которых нет в бэкапе. Ничего не удаляется: они только добавятся в список папок бэкапа."
+            return tr("\(Self.list(labels, quoted: true)) — папки с git, которых нет в бэкапе. Ничего не удаляется: они только добавятся в список папок бэкапа.")
         case .docker:
             var parts: [String] = []
-            if let cache = docker[.buildCache] { parts.append("кеш сборки (\(Format.bytes(cache)))") }
-            if docker[.danglingImages] != nil { parts.append("образы без имени — остатки пересборок") }
-            let what = parts.joined(separator: " и ")
-            return "\(what.prefix(1).uppercased() + what.dropFirst()). Кеш наберётся при следующей сборке. Образы с именем, тома с данными и контейнеры не трогаю; все неиспользуемые образы можно убрать в разделе «Docker»."
+            if let cache = docker[.buildCache] { parts.append(tr("кеш сборки (\(Format.bytes(cache)))")) }
+            if docker[.danglingImages] != nil { parts.append(tr("образы без имени — остатки пересборок")) }
+            let what = parts.joined(separator: tr(" и "))
+            return tr("\(what.prefix(1).uppercased() + what.dropFirst()). Кеш наберётся при следующей сборке. Образы с именем, тома с данными и контейнеры не трогаю; все неиспользуемые образы можно убрать в разделе «Docker».")
         }
     }
 
     var yesTitle: String {
         switch kind {
-        case .module(.duplicates): return "Удалить копии"
-        case .module(.safe): return "Убрать в сейф"
-        case .module(.projects): return "Добавить"
-        case .docker: return "Очистить"
-        case .module: return "Удалить"
+        case .module(.duplicates): return tr("Удалить копии")
+        case .module(.safe): return tr("Убрать в сейф")
+        case .module(.projects): return tr("Добавить")
+        case .docker: return tr("Очистить")
+        case .module: return tr("Удалить")
         }
     }
 
-    var noTitle: String { "Не сейчас" }
+    var noTitle: String { tr("Не сейчас") }
 
     /// Размер справа: сколько освободится, у проектов — сколько папок.
     var amount: String {
-        if kind == .module(.projects) { return "\(items.count) \(pluralRu(items.count, "папка", "папки", "папок"))" }
+        if kind == .module(.projects) { return "\(items.count) \(pluralRu(items.count, tr("папка"), tr("папки"), tr("папок")))" }
         return Format.bytes(bytes)
     }
 
     /// «Кеш npm, кеш Chrome и ещё 3» или «Датасеты», «Съёмки 2023» и ещё 2».
     static func list(_ labels: [String], quoted: Bool) -> String {
         let shown = labels.prefix(3).enumerated().map { index, label -> String in
-            if quoted { return "«\(label)»" }
+            if quoted { return tr("«\(label)»") }
             return index == 0 ? label : label.prefix(1).lowercased() + label.dropFirst()
         }
         let rest = labels.count - shown.count
         let head = shown.joined(separator: ", ")
-        return rest > 0 ? "\(head) и ещё \(rest)" : head
+        return rest > 0 ? tr("\(head) и ещё \(rest)") : head
     }
 }
 
@@ -158,7 +158,7 @@ struct CleanupView: View {
         let model = app.cleanup
         PageScroll {
             if let problem = model.storeProblem {
-                Notice(.warning, "Решения не запоминаются: \(problem)")
+                Notice(.warning, tr("Решения не запоминаются: \(problem)"))
             }
             switch model.stage {
             case .idle:
@@ -169,7 +169,7 @@ struct CleanupView: View {
                 review
             }
         }
-        .navigationTitle("Разобрать")
+        .navigationTitle(tr("Разобрать"))
         .task {
             model.loadHabits(home: app.rules.home)
             // В демонстрации сразу показываем вопросы — снимку экрана нечего ждать.
@@ -180,15 +180,15 @@ struct CleanupView: View {
                 model.answer(.module(.safe), yes: true, app: app)
             }
         }
-        .confirmationDialog("Закончить разбор?", isPresented: Binding(get: { leaving != nil }, set: { if !$0 { leaving = nil } })) {
-            Button("Закончить") {
+        .confirmationDialog(tr("Закончить разбор?"), isPresented: Binding(get: { leaving != nil }, set: { if !$0 { leaving = nil } })) {
+            Button(tr("Закончить")) {
                 let scan = leaving == true
                 leaving = nil
                 finishLeaving(thenScan: scan)
             }
-            Button("Остаться", role: .cancel) { leaving = nil }
+            Button(tr("Остаться"), role: .cancel) { leaving = nil }
         } message: {
-            Text("В Корзине лежит \(model.trashedItems.count) объектов, отправленных этим разбором. Кнопки «Вернуть» у вопросов после этого не будет: вернуть их можно будет только вручную из Корзины.")
+            Text(tr("В Корзине лежит \(model.trashedItems.count) объектов, отправленных этим разбором. Кнопки «Вернуть» у вопросов после этого не будет: вернуть их можно будет только вручную из Корзины."))
         }
     }
 
@@ -231,19 +231,19 @@ struct CleanupView: View {
 
     /// Где разбор ищет — чтобы было видно, что личное в ~/Library он не трогает.
     private static let places: [(symbol: String, title: String)] = [
-        ("arrow.down.circle", "Загрузки"), ("menubar.dock.rectangle", "Рабочий стол"), ("doc", "Документы"),
-        ("film", "Фильмы"), ("music.note", "Музыка"), ("photo", "Изображения"),
-        ("folder", "Свои папки в домашней"), ("hammer", "Кеши программ"), ("shippingbox", "Docker"),
+        ("arrow.down.circle", tr("Загрузки")), ("menubar.dock.rectangle", tr("Рабочий стол")), ("doc", tr("Документы")),
+        ("film", tr("Фильмы")), ("music.note", tr("Музыка")), ("photo", tr("Изображения")),
+        ("folder", tr("Свои папки в домашней")), ("hammer", tr("Кеши программ")), ("shippingbox", "Docker"),
     ]
 
     /// О чём спрошу и что будет по «да».
     private static let kinds: [(symbol: String, tone: Tone, title: String, detail: String, outcome: String)] = [
-        ("trash.fill", .brand, "Мусор", "Кеши и скачанные пакеты — программы создадут их заново.", "в Корзину"),
-        ("shippingbox.fill", .info, "Docker", "Кеш сборки и образы без имени. Образы с именем и тома с данными не трогаю.", "удалит Docker"),
-        ("doc.on.doc.fill", .caution, "Лишние копии", "Одинаковые файлы — одна копия каждого остаётся всегда.", "в Корзину"),
-        ("arrow.down.app.fill", .info, "Установщики", ".dmg, .pkg и .xip старше недели — только отдельным «да».", "в Корзину"),
-        ("lock.shield.fill", .good, "Крупное и старое", "Не менялось больше трёх месяцев — со сверкой каждого файла.", "в сейф"),
-        ("externaldrive.badge.checkmark", .brand, "Проекты без бэкапа", "Папки с git — ничего не удаляется.", "в бэкап"),
+        ("trash.fill", .brand, tr("Мусор"), tr("Кеши и скачанные пакеты — программы создадут их заново."), tr("в Корзину")),
+        ("shippingbox.fill", .info, "Docker", tr("Кеш сборки и образы без имени. Образы с именем и тома с данными не трогаю."), tr("удалит Docker")),
+        ("doc.on.doc.fill", .caution, tr("Лишние копии"), tr("Одинаковые файлы — одна копия каждого остаётся всегда."), tr("в Корзину")),
+        ("arrow.down.app.fill", .info, tr("Установщики"), tr(".dmg, .pkg и .xip старше недели — только отдельным «да»."), tr("в Корзину")),
+        ("lock.shield.fill", .good, tr("Крупное и старое"), tr("Не менялось больше трёх месяцев — со сверкой каждого файла."), tr("в сейф")),
+        ("externaldrive.badge.checkmark", .brand, tr("Проекты без бэкапа"), tr("Папки с git — ничего не удаляется."), tr("в бэкап")),
     ]
 
     private var start: some View {
@@ -252,8 +252,8 @@ struct CleanupView: View {
         return VStack(alignment: .leading, spacing: Theme.sectionSpacing) {
             HStack(alignment: .center, spacing: 24) {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Разобрать Mac").font(Theme.display(30))
-                    Text("Найду, что занимает место зря, и спрошу про каждое: удалить или нет. Выбирать файлы и ходить по папкам не нужно — только отвечать «да» или «не сейчас». Без вашего «да» ничего не трогаю.")
+                    Text(tr("Разобрать Mac")).font(Theme.display(30))
+                    Text(tr("Найду, что занимает место зря, и спрошу про каждое: удалить или нет. Выбирать файлы и ходить по папкам не нужно — только отвечать «да» или «не сейчас». Без вашего «да» ничего не трогаю."))
                         .foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     FlowLayout(spacing: 6) {
                         ForEach(Self.places, id: \.title) { place in
@@ -266,7 +266,7 @@ struct CleanupView: View {
                     }
                 }
                 Spacer(minLength: 0)
-                ScanButton(title: "Начать", action: beginScan)
+                ScanButton(title: tr("Начать"), action: beginScan)
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -275,11 +275,11 @@ struct CleanupView: View {
             .overlay { shape.strokeBorder(Theme.brand.opacity(0.25)) }
 
             if let run = model.lastRun {
-                CardSection(title: "Прошлый разбор — \(run.date.formatted(date: .abbreviated, time: .shortened))") {
+                CardSection(title: tr("Прошлый разбор — \(run.date.formatted(date: .abbreviated, time: .shortened))")) {
                     HStack(alignment: .top, spacing: 16) {
-                        result(Format.bytes(run.trashedBytes), "удалено")
-                        result(Format.bytes(run.movedBytes), "убрано в сейф")
-                        result("\(run.addedToBackup)", "добавлено в бэкап")
+                        result(Format.bytes(run.trashedBytes), tr("удалено"))
+                        result(Format.bytes(run.movedBytes), tr("убрано в сейф"))
+                        result("\(run.addedToBackup)", tr("добавлено в бэкап"))
                     }
                     .padding(Theme.cardPadding)
                 }
@@ -295,8 +295,8 @@ struct CleanupView: View {
     }
 
     private var legend: some View {
-        CardSection(title: "О чём спрошу",
-                    footer: "Удаляемое уходит в Корзину — вернуть можно одной кнопкой у своего вопроса, а в конце можно удалить это из Корзины насовсем. Образы Docker удаляет сам Docker, он скачает их снова. В сейф — со сверкой каждого файла; вернуть можно в «Перенесённом».") {
+        CardSection(title: tr("О чём спрошу"),
+                    footer: tr("Удаляемое уходит в Корзину — вернуть можно одной кнопкой у своего вопроса, а в конце можно удалить это из Корзины насовсем. Образы Docker удаляет сам Docker, он скачает их снова. В сейф — со сверкой каждого файла; вернуть можно в «Перенесённом».")) {
             ForEach(Self.kinds, id: \.title) { kind in
                 HStack(spacing: 12) {
                     IconTile(systemImage: kind.symbol, tone: kind.tone)
@@ -317,15 +317,15 @@ struct CleanupView: View {
     /// Чему OffLoadAI научился на решениях человека — и кнопка, чтобы всё это забыть.
     private var learned: some View {
         let model = app.cleanup
-        return CardSection(title: "Чему научился",
-                           footer: "Учусь только на этом Mac и только на ваших ответах. Что вы вернули из Корзины, больше не предлагаю; похожее на то, что вы обычно убираете в сейф, добавляю в вопрос о сейфе. Сам ничего не делаю — только спрашиваю.") {
+        return CardSection(title: tr("Чему научился"),
+                           footer: tr("Учусь только на этом Mac и только на ваших ответах. Что вы вернули из Корзины, больше не предлагаю; похожее на то, что вы обычно убираете в сейф, добавляю в вопрос о сейфе. Сам ничего не делаю — только спрашиваю.")) {
             if !app.pro.allows(.habits) {
                 HStack(spacing: 12) {
                     IconTile(systemImage: "sparkles", tone: .neutral)
-                    Text("Привычки действуют в OffLoadAI Pro. Ваши ответы запоминаются и сейчас — с Pro похожее сразу начнёт попадать в нужный вопрос.")
+                    Text(tr("Привычки действуют в OffLoadAI Pro. Ваши ответы запоминаются и сейчас — с Pro похожее сразу начнёт попадать в нужный вопрос."))
                         .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 12)
-                    Button("Подробнее…") { app.pro.offer(.habits) }
+                    Button(tr("Подробнее…")) { app.pro.offer(.habits) }
                 }
                 .rowPadding()
                 RowDivider(inset: 54)
@@ -333,7 +333,7 @@ struct CleanupView: View {
             if model.habits.isEmpty {
                 HStack(alignment: .top, spacing: 12) {
                     IconTile(systemImage: "sparkles", tone: .neutral)
-                    Text("Пока привычек нет. Привычка появляется, когда вы хотя бы трижды одинаково решаете похожее — например, убираете в сейф старые съёмки из «Фильмов». Тогда похожие папки сами попадут в вопрос о сейфе.")
+                    Text(tr("Пока привычек нет. Привычка появляется, когда вы хотя бы трижды одинаково решаете похожее — например, убираете в сейф старые съёмки из «Фильмов». Тогда похожие папки сами попадут в вопрос о сейфе."))
                         .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                 }
                 .rowPadding()
@@ -343,11 +343,11 @@ struct CleanupView: View {
                     IconTile(systemImage: habit.action.symbol, tone: habit.action.tone)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(habit.scope.prefix(1).uppercased() + habit.scope.dropFirst()).fontWeight(.medium)
-                        Text("обычно \(HabitModel.Prediction.verb(habit.action))").font(.callout).foregroundStyle(Theme.muted)
+                        Text(tr("обычно \(HabitModel.Prediction.verb(habit.action))")).font(.callout).foregroundStyle(Theme.muted)
                     }
                     Spacer(minLength: 12)
-                    Text("\(habit.agreeing) из \(habit.total)").font(.callout).foregroundStyle(Theme.muted).monospacedDigit()
-                        .help("Столько похожих решений за это действие из всех похожих")
+                    Text(tr("\(habit.agreeing) из \(habit.total)")).font(.callout).foregroundStyle(Theme.muted).monospacedDigit()
+                        .help(tr("Столько похожих решений за это действие из всех похожих"))
                 }
                 .rowPadding()
                 if habit != model.habits.last || model.remembered > 0 { RowDivider(inset: 54) }
@@ -355,42 +355,42 @@ struct CleanupView: View {
             if model.remembered > 0 {
                 if model.habits.isEmpty { RowDivider(inset: 54) }
                 HStack(spacing: 12) {
-                    Text("Помню ваши ответы для \(model.remembered) \(pluralRu(model.remembered, "объекта", "объектов", "объектов"))")
+                    Text(tr("Помню ваши ответы для \(model.remembered) \(pluralRu(model.remembered, tr("объекта"), tr("объектов"), tr("объектов")))"))
                         .font(.callout).foregroundStyle(Theme.muted)
                     Spacer(minLength: 12)
-                    Button("Забыть мои решения…") { forgetting = true }
+                    Button(tr("Забыть мои решения…")) { forgetting = true }
                 }
                 .rowPadding()
             }
             if let problem = model.forgetProblem {
-                Notice(.warning, "Забыть не получилось: \(problem)").padding(Theme.cardPadding)
+                Notice(.warning, tr("Забыть не получилось: \(problem)")).padding(Theme.cardPadding)
             }
         }
-        .confirmationDialog("Забыть ваши решения?", isPresented: $forgetting) {
-            Button("Забыть", role: .destructive) { model.forgetDecisions(home: app.rules.home) }
-            Button("Отмена", role: .cancel) {}
+        .confirmationDialog(tr("Забыть ваши решения?"), isPresented: $forgetting) {
+            Button(tr("Забыть"), role: .destructive) { model.forgetDecisions(home: app.rules.home) }
+            Button(tr("Отмена"), role: .cancel) {}
         } message: {
-            Text("OffLoadAI забудет ваши ответы по каждой папке и файлу и привычки, выученные на них. Итоги прошлых разборов и то, что вы просили не предлагать, останутся.")
+            Text(tr("OffLoadAI забудет ваши ответы по каждой папке и файлу и привычки, выученные на них. Итоги прошлых разборов и то, что вы просили не предлагать, останутся."))
         }
     }
 
     /// То, что человек просил больше не предлагать, — с возможностью вернуть.
     private var ignoredSection: some View {
         let model = app.cleanup
-        return CardSection(title: "Не предлагаю — \(model.ignored.count)",
-                           footer: "Сюда попадает то, что вы попросили больше не предлагать: «Что именно» у вопроса → правый щелчок по строке → «Не предлагать больше». Папка — вместе со всем, что внутри.") {
+        return CardSection(title: tr("Не предлагаю — \(model.ignored.count)"),
+                           footer: tr("Сюда попадает то, что вы попросили больше не предлагать: «Что именно» у вопроса → правый щелчок по строке → «Не предлагать больше». Папка — вместе со всем, что внутри.")) {
             ForEach(model.ignored, id: \.self) { path in
                 HStack(spacing: 12) {
                     IconTile(systemImage: "eye.slash", tone: .neutral)
                     Text(relativeToHome(path, home: app.rules.home)).lineLimit(1).truncationMode(.middle)
                     Spacer(minLength: 12)
-                    Button("Снова предлагать") { model.unignore(path) }
+                    Button(tr("Снова предлагать")) { model.unignore(path) }
                 }
                 .rowPadding()
                 if path != model.ignored.last { RowDivider(inset: 54) }
             }
             if let problem = model.ignoreProblem {
-                Notice(.warning, "Не получилось: \(problem)").padding(Theme.cardPadding)
+                Notice(.warning, tr("Не получилось: \(problem)")).padding(Theme.cardPadding)
             }
         }
     }
@@ -408,8 +408,8 @@ struct CleanupView: View {
                         .frame(width: 56, height: 56)
                         .background(Theme.brand.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(progress.duplicates ? "Ищу одинаковые файлы"
-                             : progress.total == 0 ? "Собираю, что посмотреть…" : "Смотрю, что занимает место")
+                        Text(progress.duplicates ? tr("Ищу одинаковые файлы")
+                             : progress.total == 0 ? tr("Собираю, что посмотреть…") : tr("Смотрю, что занимает место"))
                             .font(Theme.display(19))
                         Text(progress.current.isEmpty ? " " : progress.current)
                             .font(.callout).foregroundStyle(Theme.muted)
@@ -417,13 +417,13 @@ struct CleanupView: View {
                     }
                     Spacer(minLength: 12)
                     if progress.duplicates {
-                        Text("\(progress.files) \(pluralRu(progress.files, "файл", "файла", "файлов"))")
+                        Text("\(progress.files) \(pluralRu(progress.files, tr("файл"), tr("файла"), tr("файлов")))")
                             .font(.callout).foregroundStyle(Theme.muted).monospacedDigit()
                     } else if progress.total > 0 {
-                        Text("\(progress.done) из \(progress.total)")
+                        Text(tr("\(progress.done) из \(progress.total)"))
                             .font(.callout).foregroundStyle(Theme.muted).monospacedDigit()
                     }
-                    Button("Отменить") { app.cleanup.cancel() }
+                    Button(tr("Отменить")) { app.cleanup.cancel() }
                 }
                 if progress.duplicates {
                     // Сколько файлов впереди, заранее неизвестно — полоса без конца.
@@ -453,7 +453,7 @@ struct CleanupView: View {
         let found = progress.found[module] ?? 0
         let value: String
         if module == .duplicates {
-            value = progress.duplicates ? "ищу…" : "после замера"
+            value = progress.duplicates ? tr("ищу…") : tr("после замера")
         } else if module == .projects {
             value = "\(found)"
         } else {
@@ -480,10 +480,10 @@ struct CleanupView: View {
         let model = app.cleanup
         if model.questions.isEmpty {
             Card(spacing: 12) {
-                Label("Спрашивать не о чем: мусора и лишнего нет, а всё крупное либо используется, либо уже на своём месте.",
+                Label(tr("Спрашивать не о чем: мусора и лишнего нет, а всё крупное либо используется, либо уже на своём месте."),
                       systemImage: "checkmark.seal.fill")
                     .foregroundStyle(Theme.ok)
-                Button("Готово") { leave() }
+                Button(tr("Готово")) { leave() }
             }
             dockerIdleCard
         } else {
@@ -499,13 +499,13 @@ struct CleanupView: View {
                              ignore: { model.ignore($0) })
             }
             if let problem = model.ignoreProblem {
-                Notice(.warning, "Не получилось запомнить «не предлагать»: \(problem)")
+                Notice(.warning, tr("Не получилось запомнить «не предлагать»: \(problem)"))
             }
             trashCard
             if model.isSettled {
                 HStack {
-                    Button("Готово") { leave() }
-                    Button("Разобрать ещё раз") { leave(thenScan: true) }
+                    Button(tr("Готово")) { leave() }
+                    Button(tr("Разобрать ещё раз")) { leave(thenScan: true) }
                 }
                 .disabled(model.isBusy)
             }
@@ -524,15 +524,15 @@ struct CleanupView: View {
             HStack(alignment: .center, spacing: 20) {
                 VStack(alignment: .leading, spacing: 4) {
                     if !open.isEmpty {
-                        Text("Можно освободить").font(.callout).foregroundStyle(Theme.muted)
+                        Text(tr("Можно освободить")).font(.callout).foregroundStyle(Theme.muted)
                         Text(Format.bytes(model.pendingBytes))
                             .font(Theme.display(44)).monospacedDigit()
                             .contentTransition(.numericText())
-                        Text("\(open.count) \(pluralRu(open.count, "вопрос", "вопроса", "вопросов")) — на каждый ответьте «да» или «не сейчас». Удаляемое сначала уходит в Корзину.")
+                        Text(tr("\(open.count) \(pluralRu(open.count, tr("вопрос"), tr("вопроса"), tr("вопросов"))) — на каждый ответьте «да» или «не сейчас». Удаляемое сначала уходит в Корзину."))
                             .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     } else {
-                        Text(model.isSettled ? "Готово" : "Делаю…").font(.callout).foregroundStyle(Theme.muted)
-                        Text(freed >= 100_000_000 ? "Освободилось \(Format.bytes(freed))" : "Ответили на всё")
+                        Text(model.isSettled ? tr("Готово") : tr("Делаю…")).font(.callout).foregroundStyle(Theme.muted)
+                        Text(freed >= 100_000_000 ? tr("Освободилось \(Format.bytes(freed))") : tr("Ответили на всё"))
                             .font(Theme.display(34)).monospacedDigit()
                         Text(settledLine)
                             .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
@@ -543,7 +543,7 @@ struct CleanupView: View {
                 VStack(alignment: .trailing, spacing: 8) {
                     if !together.isEmpty {
                         Button(action: allowAll) {
-                            Label(togetherBytes > 0 ? "Разрешить всё · \(Format.bytes(togetherBytes))" : "Разрешить всё",
+                            Label(togetherBytes > 0 ? tr("Разрешить всё · \(Format.bytes(togetherBytes))") : tr("Разрешить всё"),
                                   systemImage: "checkmark.circle.fill")
                                 .frame(minWidth: 150)
                         }
@@ -552,11 +552,11 @@ struct CleanupView: View {
                         // Без Return: одно нажатие отвечало «да» на все вопросы сразу, включая безвозвратную
                         // очистку Docker, — хотя человек мог нажать Return, ещё не прочитав их.
                         .help(open.count > together.count
-                              ? "Ответить «да» на все вопросы, кроме установщиков (их удаляю только по отдельному ответу) и вопросов из OffLoadAI Pro"
-                              : "Ответить «да» на все вопросы")
+                              ? tr("Ответить «да» на все вопросы, кроме установщиков (их удаляю только по отдельному ответу) и вопросов из OffLoadAI Pro")
+                              : tr("Ответить «да» на все вопросы"))
                     }
                     if !model.isSettled {
-                        Button("Отмена") { leave() }
+                        Button(tr("Отмена")) { leave() }
                             .buttonStyle(InkLinkStyle())
                             .disabled(model.isBusy)
                     }
@@ -568,10 +568,10 @@ struct CleanupView: View {
     private var settledLine: String {
         let model = app.cleanup
         if !model.trashedItems.isEmpty {
-            return "Удалённое лежит в Корзине и занимает место, пока её не очистят, — ниже можно удалить это насовсем."
+            return tr("Удалённое лежит в Корзине и занимает место, пока её не очистят, — ниже можно удалить это насовсем.")
         }
-        if let now = model.freeNow { return "Свободно на Mac \(Format.bytes(now))." }
-        return "Ответы запомнены: что вы вернули из Корзины, больше не предложу."
+        if let now = model.freeNow { return tr("Свободно на Mac \(Format.bytes(now)).") }
+        return tr("Ответы запомнены: что вы вернули из Корзины, больше не предложу.")
     }
 
     /// Docker стоит, но не запущен: что в нём можно убрать, узнать нельзя — сказать, как это исправить.
@@ -582,13 +582,13 @@ struct CleanupView: View {
                 HStack(alignment: .top, spacing: 14) {
                     IconTile(systemImage: "shippingbox.fill", tone: .neutral, size: 40)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Docker не запущен").font(.headline)
-                        Text("Его диск занимает \(Format.bytes(idle)). Запустите Docker Desktop и разберите ещё раз — спрошу, что из него можно удалить.")
+                        Text(tr("Docker не запущен")).font(.headline)
+                        Text(tr("Его диск занимает \(Format.bytes(idle)). Запустите Docker Desktop и разберите ещё раз — спрошу, что из него можно удалить."))
                             .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 12)
                     if let docker = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.docker.docker") {
-                        Button("Запустить Docker") { NSWorkspace.shared.open(docker) }
+                        Button(tr("Запустить Docker")) { NSWorkspace.shared.open(docker) }
                     }
                 }
             }
@@ -606,8 +606,8 @@ struct CleanupView: View {
                 HStack(alignment: .top, spacing: 14) {
                     IconTile(systemImage: "xmark.bin.fill", tone: .danger, size: 40)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Удалить из Корзины насовсем?").font(.headline)
-                        Text("В Корзине \(Format.bytes(inTrash)) из этого разбора: место на Mac освободится, только когда их удалят оттуда. Остальное в Корзине не трогаю. Вернуть удалённое насовсем будет нельзя.")
+                        Text(tr("Удалить из Корзины насовсем?")).font(.headline)
+                        Text(tr("В Корзине \(Format.bytes(inTrash)) из этого разбора: место на Mac освободится, только когда их удалят оттуда. Остальное в Корзине не трогаю. Вернуть удалённое насовсем будет нельзя."))
                             .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 12)
@@ -619,22 +619,22 @@ struct CleanupView: View {
                         Text(finishing).font(.callout).foregroundStyle(Theme.muted)
                     }
                     Spacer()
-                    Button(role: .destructive) { erasing = true } label: { Label("Удалить насовсем…", systemImage: "xmark.bin") }
+                    Button(role: .destructive) { erasing = true } label: { Label(tr("Удалить насовсем…"), systemImage: "xmark.bin") }
                         .disabled(model.isBusy)
                 }
             }
-            .confirmationDialog("Удалить насовсем \(Format.bytes(inTrash))?", isPresented: $erasing) {
-                Button("Удалить насовсем", role: .destructive) { model.eraseTrashed(app: app) }
-                Button("Отмена", role: .cancel) {}
+            .confirmationDialog(tr("Удалить насовсем \(Format.bytes(inTrash))?"), isPresented: $erasing) {
+                Button(tr("Удалить насовсем"), role: .destructive) { model.eraseTrashed(app: app) }
+                Button(tr("Отмена"), role: .cancel) {}
             } message: {
-                Text("Из Корзины удалится только то, что туда отправил этот разбор. Вернуть это будет нельзя.")
+                Text(tr("Из Корзины удалится только то, что туда отправил этот разбор. Вернуть это будет нельзя."))
             }
         }
         if model.erased > 0 {
-            Notice(.success, "Удалено из Корзины насовсем: \(model.erased), \(Format.bytes(model.erasedBytes)).")
+            Notice(.success, tr("Удалено из Корзины насовсем: \(model.erased), \(Format.bytes(model.erasedBytes))."))
         }
         if !model.trashProblems.isEmpty {
-            Notice(.warning, "Не всё получилось:", details: model.trashProblems)
+            Notice(.warning, tr("Не всё получилось:"), details: model.trashProblems)
         }
     }
 
@@ -714,25 +714,25 @@ struct QuestionCard: View {
                 }
                 .prominentButton()
                 .controlSize(.large)
-                .help(app.cleanup.isLocked(question.kind, app: app) ? "Нужен OffLoadAI Pro — откроется окно с ценой и ключом" : "")
+                .help(app.cleanup.isLocked(question.kind, app: app) ? tr("Нужен OffLoadAI Pro — откроется окно с ценой и ключом") : "")
             }
         case .queued:
             HStack(spacing: 10) {
                 ProgressView().controlSize(.small)
-                Text("В очереди — начну, как только закончу предыдущее").font(.callout).foregroundStyle(Theme.muted)
+                Text(tr("В очереди — начну, как только закончу предыдущее")).font(.callout).foregroundStyle(Theme.muted)
                 Spacer(minLength: 12)
-                Button("Отменить", action: reconsider)
+                Button(tr("Отменить"), action: reconsider)
             }
         case .running(let progress):
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 10) {
                     if progress.count > 1 {
-                        Text("\(max(progress.index, 1)) из \(progress.count)").monospacedDigit()
+                        Text(tr("\(max(progress.index, 1)) из \(progress.count)")).monospacedDigit()
                     }
-                    Text(progress.item.isEmpty ? " " : "«\(progress.item)»").lineLimit(1).truncationMode(.middle)
+                    Text(progress.item.isEmpty ? " " : tr("«\(progress.item)»")).lineLimit(1).truncationMode(.middle)
                     Spacer(minLength: 12)
                     Text(progress.phase).foregroundStyle(Theme.muted)
-                    Button("Остановить", action: stop)
+                    Button(tr("Остановить"), action: stop)
                 }
                 .font(.callout)
                 ProgressView(value: min(Double(progress.count), Double(max(progress.index, 1) - 1) + progress.fraction),
@@ -746,24 +746,24 @@ struct QuestionCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 12)
                     if !outcome.trashedItems.isEmpty {
-                        Button { restore() } label: { Label("Вернуть", systemImage: "arrow.uturn.backward") }
+                        Button { restore() } label: { Label(tr("Вернуть"), systemImage: "arrow.uturn.backward") }
                             .disabled(app.cleanup.finishing != nil)
-                            .help("Вернуть из Корзины на прежние места — и больше не предлагать")
+                            .help(tr("Вернуть из Корзины на прежние места — и больше не предлагать"))
                     }
                     if question.kind == .module(.projects), outcome.done > 0 {
-                        Button("Открыть «Бэкап»") { app.section = .backup }
+                        Button(tr("Открыть «Бэкап»")) { app.section = .backup }
                     }
                 }
                 if !outcome.problems.isEmpty {
-                    Notice(.warning, "Не всё получилось:", details: outcome.problems)
+                    Notice(.warning, tr("Не всё получилось:"), details: outcome.problems)
                 }
             }
         case .declined:
             HStack(spacing: 10) {
-                Text("Не трогаю. Спрошу в следующий раз.")
+                Text(tr("Не трогаю. Спрошу в следующий раз."))
                     .font(.callout).foregroundStyle(Theme.muted)
                 Spacer(minLength: 12)
-                Button("Передумал", action: reconsider).buttonStyle(InkLinkStyle())
+                Button(tr("Передумал"), action: reconsider).buttonStyle(InkLinkStyle())
             }
         }
     }
@@ -771,21 +771,21 @@ struct QuestionCard: View {
     private func doneLine(_ outcome: CleanupModel.Outcome) -> String {
         var parts: [String] = []
         if outcome.done == 0 {
-            parts.append(outcome.cancelled ? "Остановлено, ничего не сделано" : "Не получилось")
+            parts.append(outcome.cancelled ? tr("Остановлено, ничего не сделано") : tr("Не получилось"))
         } else {
             switch question.kind {
             case .module(.projects):
-                parts.append("Добавлено в бэкап: \(outcome.done). Обновите бэкап, чтобы они в него попали")
+                parts.append(tr("Добавлено в бэкап: \(outcome.done). Обновите бэкап, чтобы они в него попали"))
             case .module(.safe):
-                parts.append("Убрано в сейф: \(Format.bytes(outcome.bytes)), \(outcome.done) из \(question.items.count)")
+                parts.append(tr("Убрано в сейф: \(Format.bytes(outcome.bytes)), \(outcome.done) из \(question.items.count)"))
             case .docker:
-                parts.append(outcome.bytes > 0 ? "Docker удалил \(Format.bytes(outcome.bytes))" : "Docker очищен")
+                parts.append(outcome.bytes > 0 ? tr("Docker удалил \(Format.bytes(outcome.bytes))") : tr("Docker очищен"))
             case .module:
-                parts.append("В Корзине: \(Format.bytes(outcome.bytes)), \(outcome.done) из \(question.items.count)")
+                parts.append(tr("В Корзине: \(Format.bytes(outcome.bytes)), \(outcome.done) из \(question.items.count)"))
             }
-            if outcome.cancelled { parts.append("остальное остановлено") }
+            if outcome.cancelled { parts.append(tr("остальное остановлено")) }
         }
-        if outcome.restored > 0 { parts.append("возвращено на место: \(outcome.restored)") }
+        if outcome.restored > 0 { parts.append(tr("возвращено на место: \(outcome.restored)")) }
         return parts.joined(separator: " · ")
     }
 
@@ -793,7 +793,7 @@ struct QuestionCard: View {
     private var details: some View {
         let items = question.items
         let shown = Array(items.prefix(Self.visibleItems))
-        return DisclosureGroup("Что именно — \(items.count)") {
+        return DisclosureGroup(tr("Что именно — \(items.count)")) {
             VStack(spacing: 0) {
                 ForEach(shown) { item in
                     FoundRow(item: item, home: app.rules.home,
@@ -802,7 +802,7 @@ struct QuestionCard: View {
                     if item.id != shown.last?.id { RowDivider(inset: 44) }
                 }
                 if items.count > shown.count {
-                    Text("и ещё \(items.count - shown.count)").font(.caption).foregroundStyle(Theme.muted)
+                    Text(tr("и ещё \(items.count - shown.count)")).font(.caption).foregroundStyle(Theme.muted)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 6)
                 }
@@ -830,15 +830,15 @@ struct FoundRow: View {
                 HStack(spacing: 6) {
                     Text(item.url.lastPathComponent).fontWeight(.medium).lineLimit(1).truncationMode(.middle)
                     if item.learned {
-                        StatusPill(title: "как в прошлый раз", systemImage: "clock.arrow.circlepath", tone: .brand)
+                        StatusPill(title: tr("как в прошлый раз"), systemImage: "clock.arrow.circlepath", tone: .brand)
                     } else if item.habit {
-                        StatusPill(title: "как вы обычно", systemImage: "sparkles", tone: .brand)
+                        StatusPill(title: tr("как вы обычно"), systemImage: "sparkles", tone: .brand)
                     }
                 }
                 Text(relativeToHome(item.url.path, home: home)).font(.caption).foregroundStyle(Theme.muted)
                     .lineLimit(1).truncationMode(.middle)
                 if let keeper {
-                    Text("Такая же остаётся: \(relativeToHome(keeper.url.path, home: home))")
+                    Text(tr("Такая же остаётся: \(relativeToHome(keeper.url.path, home: home))"))
                         .font(.caption).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.middle)
                 } else {
                     Text(item.reason).font(.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
@@ -858,8 +858,8 @@ struct FoundRow: View {
         }
         .padding(.vertical, 6)
         .contextMenu {
-            Button("Показать в Finder") { revealInFinder(item.url) }
-            if let ignore { Button("Не предлагать больше", action: ignore) }
+            Button(tr("Показать в Finder")) { revealInFinder(item.url) }
+            if let ignore { Button(tr("Не предлагать больше"), action: ignore) }
         }
     }
 }
@@ -874,26 +874,26 @@ struct SafeStatusLine: View {
         let safe = app.safe
         Group {
             if Demo.isOn {
-                Label("Сейф открыт", systemImage: "lock.open.fill").foregroundStyle(Theme.muted)
+                Label(tr("Сейф открыт"), systemImage: "lock.open.fill").foregroundStyle(Theme.muted)
             } else if app.destination == nil {
-                Label("Подключите внешний диск с сейфом", systemImage: "externaldrive.badge.xmark").foregroundStyle(Theme.warn)
+                Label(tr("Подключите внешний диск с сейфом"), systemImage: "externaldrive.badge.xmark").foregroundStyle(Theme.warn)
             } else if !safe.exists {
                 HStack(spacing: 6) {
-                    Label("Сейфа на диске нет", systemImage: "lock.slash").foregroundStyle(Theme.warn)
-                    Button("Создать…") { app.section = .safe }.buttonStyle(InkLinkStyle())
+                    Label(tr("Сейфа на диске нет"), systemImage: "lock.slash").foregroundStyle(Theme.warn)
+                    Button(tr("Создать…")) { app.section = .safe }.buttonStyle(InkLinkStyle())
                 }
             } else if safe.state?.isEncrypted != true {
-                Label("Шифрование образа не подтверждается", systemImage: "exclamationmark.octagon").foregroundStyle(Theme.bad)
+                Label(tr("Шифрование образа не подтверждается"), systemImage: "exclamationmark.octagon").foregroundStyle(Theme.bad)
             } else if let room = safe.roomLeft(host: app.destination, volume: app.safeVolume), needed > room {
                 HStack(spacing: 6) {
-                    Label("Поместится около \(Format.bytes(room))", systemImage: "exclamationmark.triangle.fill").foregroundStyle(Theme.warn)
-                    Button("Увеличить…") { growing = true }.buttonStyle(InkLinkStyle())
+                    Label(tr("Поместится около \(Format.bytes(room))"), systemImage: "exclamationmark.triangle.fill").foregroundStyle(Theme.warn)
+                    Button(tr("Увеличить…")) { growing = true }.buttonStyle(InkLinkStyle())
                 }
             } else if let volume = app.safeVolume {
-                Label("Сейф открыт · свободно \(Format.bytes(volume.availableBytes))", systemImage: "lock.open.fill")
+                Label(tr("Сейф открыт · свободно \(Format.bytes(volume.availableBytes))"), systemImage: "lock.open.fill")
                     .foregroundStyle(Theme.muted)
             } else {
-                Label("Сейф закрыт — пароль спрошу, когда ответите «да»", systemImage: "lock.fill").foregroundStyle(Theme.muted)
+                Label(tr("Сейф закрыт — пароль спрошу, когда ответите «да»"), systemImage: "lock.fill").foregroundStyle(Theme.muted)
             }
         }
         .font(.caption)
@@ -938,26 +938,26 @@ struct SafeBeforeRunSheet: View {
 
     var body: some View {
         let safe = app.safe
-        SheetLayout(systemImage: "lock.fill", tone: .good, title: "Откройте сейф",
-                    subtitle: "Убрать в сейф \(Format.bytes(bytes))") {
+        SheetLayout(systemImage: "lock.fill", tone: .good, title: tr("Откройте сейф"),
+                    subtitle: tr("Убрать в сейф \(Format.bytes(bytes))")) {
             if app.destination == nil {
-                Text("Подключите внешний диск, на котором лежит сейф, и ответьте ещё раз. Остальные вопросы от этого не зависят.")
+                Text(tr("Подключите внешний диск, на котором лежит сейф, и ответьте ещё раз. Остальные вопросы от этого не зависят."))
                     .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             } else if !safe.exists {
-                Text("На диске «\(app.destination?.name ?? "")» сейфа нет. Создайте его в разделе «Сейф» и ответьте ещё раз.")
+                Text(tr("На диске «\(app.destination?.name ?? "")» сейфа нет. Создайте его в разделе «Сейф» и ответьте ещё раз."))
                     .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             } else if safe.state?.isEncrypted != true {
-                Text("Шифрование образа на диске не подтверждается — класть в него нельзя. Разберитесь в разделе «Сейф».")
+                Text(tr("Шифрование образа на диске не подтверждается — класть в него нельзя. Разберитесь в разделе «Сейф»."))
                     .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("Пароль нужен, чтобы убрать это в сейф. Он уходит в macOS и нигде не сохраняется. Как только сейф откроется, начну.")
+                Text(tr("Пароль нужен, чтобы убрать это в сейф. Он уходит в macOS и нигде не сохраняется. Как только сейф откроется, начну."))
                     .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                 SafeUnlockRow()
             }
         } actions: {
-            Button("Отмена") { dismiss() }
+            Button(tr("Отмена")) { dismiss() }
             if app.destination != nil, !safe.exists {
-                Button("Открыть «Сейф»") {
+                Button(tr("Открыть «Сейф»")) {
                     dismiss()
                     app.section = .safe
                 }

@@ -8,14 +8,14 @@ struct ProSheet: View {
     @State private var key = ""
 
     /// Цена — одной строкой здесь и в README («OffLoadAI Pro»).
-    static let price = "1 490 ₽ или $19 — один раз"
-    static let terms = "Ключ работает всегда. Новые версии — год, дальше продление за полцены; не продлили — остаётся последняя версия того года."
+    static let price = tr("1 490 ₽ или $19 — один раз")
+    static let terms = tr("Ключ работает всегда. Новые версии — год, дальше продление за полцены; не продлили — остаётся последняя версия того года.")
 
     var body: some View {
         let pro = app.pro
         SheetLayout(systemImage: "sparkles", title: "OffLoadAI Pro", subtitle: subtitle, width: 540) {
             if let reason = pro.reason, !pro.status.isPro {
-                Notice(.info, "«\(reason.title)» — в OffLoadAI Pro. \(reasonTail)")
+                Notice(.info, tr("«\(reason.title)» — в OffLoadAI Pro. \(reasonTail)"))
             }
             VStack(spacing: 0) {
                 ForEach(ProFeature.allCases, id: \.self) { feature in
@@ -28,28 +28,28 @@ struct ProSheet: View {
                         }
                         Spacer(minLength: 8)
                         if pro.status.isPro {
-                            Image(systemName: "checkmark").foregroundStyle(Theme.ok).accessibilityLabel("Открыто")
+                            Image(systemName: "checkmark").foregroundStyle(Theme.ok).accessibilityLabel(tr("Открыто"))
                         }
                     }
                     .padding(.vertical, 8)
                     if feature != ProFeature.allCases.last { RowDivider(inset: 40) }
                 }
             }
-            Text("Бесплатно всегда: сейф, перенос со сверкой, возврат перенесённого, очистка мусора и Docker, старые установщики, ключи и токены в сейф, восстановление из iCloud. Вернуть своё OffLoadAI не мешает никогда — ни без ключа, ни после пробы.")
+            Text(tr("Бесплатно всегда: сейф, перенос со сверкой, возврат перенесённого, очистка мусора и Docker, старые установщики, ключи и токены в сейф, восстановление из iCloud. Вернуть своё OffLoadAI не мешает никогда — ни без ключа, ни после пробы."))
                 .font(.callout).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             licenseBlock
         } actions: {
             if pro.status.isPro {
                 if case .licensed = pro.status {} else {
-                    Button("Купить…") { NSWorkspace.shared.open(ProModel.purchaseURL) }
+                    Button(tr("Купить…")) { NSWorkspace.shared.open(ProModel.purchaseURL) }
                 }
-                Button("Готово") { dismiss() }
+                Button(tr("Готово")) { dismiss() }
                     .prominentButton()
                     .keyboardShortcut(.defaultAction)
             } else {
-                Button("Закрыть") { dismiss() }
+                Button(tr("Закрыть")) { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button("Купить…") { NSWorkspace.shared.open(ProModel.purchaseURL) }
+                Button(tr("Купить…")) { NSWorkspace.shared.open(ProModel.purchaseURL) }
                     .prominentButton()
             }
         }
@@ -58,18 +58,18 @@ struct ProSheet: View {
 
     private var subtitle: String {
         switch app.pro.status {
-        case .licensed(let license): return "Ключ на имя «\(license.name)»"
-        case .early: return "Вы пользовались OffLoadAI до Pro — всё открыто навсегда"
-        case .trial(let days): return "Пробный период: осталось \(days) \(pluralRu(days, "день", "дня", "дней"))"
-        case .expired: return "Обновления по ключу закончились"
+        case .licensed(let license): return tr("Ключ на имя «\(license.name)»")
+        case .early: return tr("Вы пользовались OffLoadAI до Pro — всё открыто навсегда")
+        case .trial(let days): return tr("Пробный период: осталось \(days) \(pluralRu(days, tr("день"), tr("дня"), tr("дней")))")
+        case .expired: return tr("Обновления по ключу закончились")
         case .free: return Self.price
         }
     }
 
     private var reasonTail: String {
         switch app.pro.status {
-        case .expired: return "Ключ не открывает эту версию — продлите его."
-        default: return "Пробные две недели закончились; всё найденное по-прежнему видно, а «не сейчас» работает как всегда."
+        case .expired: return tr("Ключ не открывает эту версию — продлите его.")
+        default: return tr("Пробные две недели закончились; всё найденное по-прежнему видно, а «не сейчас» работает как всегда.")
         }
     }
 
@@ -79,12 +79,12 @@ struct ProSheet: View {
         switch pro.status {
         case .licensed(let license):
             HStack(alignment: .firstTextBaseline) {
-                Text("Ключ №\(license.id). Обновления до \(ProModel.day(license.updatesUntil)).")
+                Text(tr("Ключ №\(license.id). Обновления до \(ProModel.day(license.updatesUntil))."))
                     .font(.callout).foregroundStyle(Theme.muted)
                 Spacer(minLength: 8)
-                Button("Убрать ключ с этого Mac") { pro.removeLicense() }
+                Button(tr("Убрать ключ с этого Mac")) { pro.removeLicense() }
                     .buttonStyle(InkLinkStyle())
-                    .help("Например, перед продажей Mac. Ключ остаётся вашим — введите его на новом Mac.")
+                    .help(tr("Например, перед продажей Mac. Ключ остаётся вашим — введите его на новом Mac."))
             }
         default:
             VStack(alignment: .leading, spacing: 8) {
@@ -95,10 +95,10 @@ struct ProSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 HStack(spacing: 8) {
-                    TextField("Ключ: OFFLOAD-…", text: $key)
+                    TextField(tr("Ключ: OFFLOAD-…"), text: $key)
                         .textFieldStyle(.roundedBorder)
                         .onSubmit(activate)
-                    Button("Ввести ключ", action: activate)
+                    Button(tr("Ввести ключ"), action: activate)
                         .disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
                 if let problem = pro.keyProblem {
@@ -140,7 +140,7 @@ struct ProSidebarRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help("OffLoadAI Pro: что в нём и ключ")
+        .help(tr("OffLoadAI Pro: что в нём и ключ"))
     }
 }
 
@@ -150,6 +150,6 @@ struct ProTag: View {
         Text("Pro").font(.system(size: 10, weight: .bold))
             .padding(.horizontal, 5).padding(.vertical, 1)
             .overlay(Capsule().strokeBorder(lineWidth: 1).opacity(0.6))
-            .accessibilityLabel("Нужен OffLoadAI Pro")
+            .accessibilityLabel(tr("Нужен OffLoadAI Pro"))
     }
 }

@@ -57,7 +57,7 @@ final class SafeModel {
     /// Раньше такое событие терялось — сейф был «ещё закрыт», — и после ввода пароля
     /// оставался открытым при заблокированном экране.
     private var closeAfterOpening: String?
-    static let openingTitle = "Открываю сейф…"
+    static let openingTitle = tr("Открываю сейф…")
 
     var closeOnSleep: Bool { didSet { persist() } }
     var closeOnLock: Bool { didSet { persist() } }
@@ -206,9 +206,9 @@ final class SafeModel {
         guard let host = app.destination else { return }
         let vault = SecretsVault(imageURL: host.mountPoint.appendingPathComponent(SecretsVault.safeImageName, isDirectory: true))
         let limit = min(max(limit, 1 << 30), host.totalBytes)
-        perform("Создаю сейф…", app: app, {
+        perform(tr("Создаю сейф…"), app: app, {
             try vault.create(password: password, maxBytes: limit, volumeName: SecretsVault.safeVolumeName)
-            return Notice.Message(.success, "Сейф создан: AES-256, пароль знаете только вы. Если его забыть, данные не восстановит никто — даже OffLoadAI.")
+            return Notice.Message(.success, tr("Сейф создан: AES-256, пароль знаете только вы. Если его забыть, данные не восстановит никто — даже OffLoadAI."))
         }, after: { [weak self] in
             self?.preferredImages[host.id] = vault.imageURL.path
         })
@@ -218,9 +218,9 @@ final class SafeModel {
     func grow(to limit: Int64, password: String, app: AppModel) {
         guard let state, state.exists, state.mount == nil else { return }
         let vault = SecretsVault(imageURL: state.imageURL)
-        perform("Увеличиваю сейф…", app: app) {
+        perform(tr("Увеличиваю сейф…"), app: app) {
             try vault.grow(to: limit, password: password)
-            return Notice.Message(.success, "Предел сейфа — \(Format.bytes(vault.sizeLimit ?? limit)). Содержимое на месте, а места на диске образ занимает столько же, сколько занимал.")
+            return Notice.Message(.success, tr("Предел сейфа — \(Format.bytes(vault.sizeLimit ?? limit)). Содержимое на месте, а места на диске образ занимает столько же, сколько занимал."))
         }
     }
 
@@ -270,15 +270,15 @@ final class SafeModel {
     func close(app: AppModel, force: Bool = false, reason: String? = nil) {
         guard let mount = state?.mount else { return }
         if app.isBusy, !force {
-            pendingClose = reason ?? "по вашей команде"
-            message = Notice.Message(.info, "Идёт копирование — сейф закроется, как только оно закончится.")
+            pendingClose = reason ?? tr("по вашей команде")
+            message = Notice.Message(.info, tr("Идёт копирование — сейф закроется, как только оно закончится."))
             return
         }
         pendingClose = nil
         closeBlocked = false
-        perform("Закрываю сейф…", app: app, {
+        perform(tr("Закрываю сейф…"), app: app, {
             try SecretsVault.detach(mount, force: force)
-            return Notice.Message(.success, reason.map { "Сейф закрыт: \($0)." } ?? "Сейф закрыт — на диске снова только шифротекст.")
+            return Notice.Message(.success, reason.map { tr("Сейф закрыт: \($0).") } ?? tr("Сейф закрыт — на диске снова только шифротекст."))
         }, failed: { [weak self] error in
             // Открытые файлы — не ошибка, а вопрос: закрыть ли принудительно (см. ContentView).
             if (error as? VaultError) == .busy {
@@ -301,13 +301,13 @@ final class SafeModel {
         observers.append((workspace, workspace.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self, weak app] _ in
             MainActor.assumeIsolated {
                 guard let self, let app, self.closeOnSleep else { return }
-                self.closeNow(reason: "Mac уходит в сон", app: app)
+                self.closeNow(reason: tr("Mac уходит в сон"), app: app)
             }
         }))
         observers.append((workspace, workspace.addObserver(forName: NSWorkspace.sessionDidResignActiveNotification, object: nil, queue: .main) { [weak self, weak app] _ in
             MainActor.assumeIsolated {
                 guard let self, let app, self.closeOnLock else { return }
-                self.trigger("сменился пользователь", app: app)
+                self.trigger(tr("сменился пользователь"), app: app)
             }
         }))
         let distributed = DistributedNotificationCenter.default()
@@ -315,7 +315,7 @@ final class SafeModel {
             observers.append((distributed, distributed.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { [weak self, weak app] _ in
                 MainActor.assumeIsolated {
                     guard let self, let app, self.closeOnLock else { return }
-                    self.trigger("экран заблокирован", app: app)
+                    self.trigger(tr("экран заблокирован"), app: app)
                 }
             }))
         }
@@ -347,7 +347,7 @@ final class SafeModel {
             if interruptOperations {
                 app.cancelEverything()
             } else {
-                message = Notice.Message(.info, "Сейф закроется, как только закончится копирование (\(reason)).")
+                message = Notice.Message(.info, tr("Сейф закроется, как только закончится копирование (\(reason))."))
             }
             return
         }
@@ -365,16 +365,16 @@ final class SafeModel {
         guard let mount = state?.mount else { return }
         if app.isBusy, !interruptOperations {
             pendingClose = reason
-            message = Notice.Message(.warning, "Перед сном сейф остался открытым: шло копирование. Он закроется, как только оно закончится.")
+            message = Notice.Message(.warning, tr("Перед сном сейф остался открытым: шло копирование. Он закроется, как только оно закончится."))
             return
         }
         if app.isBusy { app.cancelEverything() }
         do {
             try SecretsVault.detach(mount, force: interruptOperations)
             state?.mount = nil
-            message = Notice.Message(.success, "Сейф закрыт: \(reason).")
+            message = Notice.Message(.success, tr("Сейф закрыт: \(reason)."))
         } catch {
-            message = Notice.Message(.warning, "Перед сном сейф закрыть не удалось: \(error.localizedDescription)")
+            message = Notice.Message(.warning, tr("Перед сном сейф закрыть не удалось: \(error.localizedDescription)"))
         }
         app.refreshVolumes()
     }
@@ -389,7 +389,7 @@ final class SafeModel {
         Task {
             let closed = await Task.detached { (try? SecretsVault.detach(mount)) != nil }.value
             if closed {
-                message = Notice.Message(.success, "Сейф закрыт: им не пользовались \(idleMinutes) мин.")
+                message = Notice.Message(.success, tr("Сейф закрыт: им не пользовались \(idleMinutes) мин."))
             }
             app.refreshVolumes()
             refresh(app: app)
@@ -401,10 +401,10 @@ final class SafeModel {
     func changePassword(old: String, new: String, app: AppModel) {
         guard let state, state.exists, state.mount == nil else { return }
         let vault = SecretsVault(imageURL: state.imageURL)
-        perform("Меняю пароль…", app: app) {
+        perform(tr("Меняю пароль…"), app: app) {
             try vault.changePassword(old: old, new: new)
-            return Notice.Message(.success, "Пароль сменён.", details: [
-                "Копии заголовка, снятые раньше, по-прежнему открываются старым паролем. Снимите новую копию, а старые удалите.",
+            return Notice.Message(.success, tr("Пароль сменён."), details: [
+                tr("Копии заголовка, снятые раньше, по-прежнему открываются старым паролем. Снимите новую копию, а старые удалите."),
             ])
         }
     }
@@ -413,14 +413,14 @@ final class SafeModel {
         guard let state, state.exists, state.mount == nil else { return }
         let vault = SecretsVault(imageURL: state.imageURL)
         let before = state.allocated
-        perform("Возвращаю место на диск…", app: app) {
+        perform(tr("Возвращаю место на диск…"), app: app) {
             try vault.compact(password: password)
             let after = vault.allocatedBytes
             let returned = max(0, before - after)
             if returned < 16 << 20 {
-                return Notice.Message(.info, "macOS не нашла в образе пустых участков: диску вернулось \(Format.bytes(returned)). Место внутри сейфа при этом свободно и пойдёт под новые данные.")
+                return Notice.Message(.info, tr("macOS не нашла в образе пустых участков: диску вернулось \(Format.bytes(returned)). Место внутри сейфа при этом свободно и пойдёт под новые данные."))
             }
-            return Notice.Message(.success, "Диску возвращено \(Format.bytes(returned)). Сейф занимает \(Format.bytes(after)).")
+            return Notice.Message(.success, tr("Диску возвращено \(Format.bytes(returned)). Сейф занимает \(Format.bytes(after))."))
         }
     }
 
@@ -430,25 +430,25 @@ final class SafeModel {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
-        panel.prompt = "Сохранить сюда"
-        panel.message = "Куда положить копию заголовка сейфа. Лучше не на тот же диск: если он откажет, пропадут и сейф, и копия."
+        panel.prompt = tr("Сохранить сюда")
+        panel.message = tr("Куда положить копию заголовка сейфа. Лучше не на тот же диск: если он откажет, пропадут и сейф, и копия.")
         guard panel.runModal() == .OK, let directory = panel.url else { return }
         let vault = SecretsVault(imageURL: state.imageURL)
         let sameDisk = directory.path.hasPrefix(state.imageURL.deletingLastPathComponent().path + "/")
-        perform("Сохраняю копию заголовка…", app: app) {
+        perform(tr("Сохраняю копию заголовка…"), app: app) {
             let url = try vault.backupHeader(to: directory)
-            var details = ["Копия защищена тем же паролем, что и сейф. Без пароля она бесполезна."]
-            if sameDisk { details.append("Копия лежит на том же диске, что и сейф: при отказе диска пропадут обе. Сохраните ещё одну в другом месте.") }
-            return Notice.Message(.success, "Копия заголовка сохранена: \(url.path)", details: details)
+            var details = [tr("Копия защищена тем же паролем, что и сейф. Без пароля она бесполезна.")]
+            if sameDisk { details.append(tr("Копия лежит на том же диске, что и сейф: при отказе диска пропадут обе. Сохраните ещё одну в другом месте.")) }
+            return Notice.Message(.success, tr("Копия заголовка сохранена: \(url.path)"), details: details)
         }
     }
 
     func restoreHeader(from file: URL, password: String, app: AppModel) {
         guard let state, state.exists, state.mount == nil else { return }
         let vault = SecretsVault(imageURL: state.imageURL)
-        perform("Восстанавливаю заголовок…", app: app) {
+        perform(tr("Восстанавливаю заголовок…"), app: app) {
             try vault.restoreHeader(from: file, password: password)
-            return Notice.Message(.success, "Заголовок восстановлен из копии, сейф открывается паролем этой копии.")
+            return Notice.Message(.success, tr("Заголовок восстановлен из копии, сейф открывается паролем этой копии."))
         }
     }
 
@@ -470,13 +470,13 @@ final class SafeModel {
             for (index, record) in records.enumerated() {
                 if token.isCancelled { break }
                 let name = URL(fileURLWithPath: record.originalPath).lastPathComponent
-                migration = Migration(index: index + 1, count: records.count, item: name, phase: "Подготовка", bytesDone: 0, bytesTotal: 0)
+                migration = Migration(index: index + 1, count: records.count, item: name, phase: tr("Подготовка"), bytesDone: 0, bytesTotal: 0)
                 do {
                     _ = try await Task.detached(priority: .userInitiated) {
                         try SafeMover(rules: rules).relocate(record, into: safe, isCancelled: { token.isCancelled }) { progress in
                             guard throttle.ready() else { return }
                             Task { @MainActor in
-                                self.migration?.phase = progress.phase.rawValue
+                                self.migration?.phase = trDynamic(progress.phase.rawValue)
                                 self.migration?.bytesDone = progress.bytesDone
                                 self.migration?.bytesTotal = progress.bytesTotal
                             }
@@ -486,18 +486,18 @@ final class SafeModel {
                 } catch is CancellationError {
                     break
                 } catch {
-                    failures.append("«\(name)»: \(error.localizedDescription)")
+                    failures.append(tr("«\(name)»: \(error.localizedDescription)"))
                 }
             }
             migration = nil
             migrationToken = nil
             app.endOperation(operationID)
             var details = failures
-            details.append("Удалённые открытые копии физически могут оставаться в памяти SSD или флешки, пока контроллер их не перезапишет. Полную гарантию даёт только диск, зашифрованный целиком.")
+            details.append(tr("Удалённые открытые копии физически могут оставаться в памяти SSD или флешки, пока контроллер их не перезапишет. Полную гарантию даёт только диск, зашифрованный целиком."))
             message = Notice.Message(failures.isEmpty ? .success : .warning,
                                      token.isCancelled
-                                         ? "Остановлено. В сейф перенесено: \(done) из \(records.count), остальное осталось на месте как было."
-                                         : "В сейф перенесено и сверено: \(done) из \(records.count). Открытые копии удалены.",
+                                         ? tr("Остановлено. В сейф перенесено: \(done) из \(records.count), остальное осталось на месте как было.")
+                                         : tr("В сейф перенесено и сверено: \(done) из \(records.count). Открытые копии удалены."),
                                      details: details)
             app.history.reload(volumes: app.historyVolumes)
             app.refreshVolumes()

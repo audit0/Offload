@@ -15,22 +15,22 @@ struct UTMSheet: View {
     @State private var utmApp: URL? = nil
 
     var body: some View {
-        SheetLayout(systemImage: "desktopcomputer", title: "Виртуальные машины UTM", subtitle: subtitle, width: 640) {
+        SheetLayout(systemImage: "desktopcomputer", title: tr("Виртуальные машины UTM"), subtitle: subtitle, width: 640) {
             list
             steps
         } actions: {
-            Button("Открыть UTM") { if let utmApp { NSWorkspace.shared.open(utmApp) } }
+            Button(tr("Открыть UTM")) { if let utmApp { NSWorkspace.shared.open(utmApp) } }
                 .disabled(utmApp == nil)
-                .help(utmApp == nil ? "UTM не найден" : "Удалять и переносить машины нужно в самом UTM")
-            Button("Готово") { dismiss() }.keyboardShortcut(.defaultAction)
+                .help(utmApp == nil ? tr("UTM не найден") : tr("Удалять и переносить машины нужно в самом UTM"))
+            Button(tr("Готово")) { dismiss() }.keyboardShortcut(.defaultAction)
         }
         .task { await load() }
     }
 
     private var subtitle: String {
-        guard let machines else { return "Считаю, сколько занимает каждая машина…" }
+        guard let machines else { return tr("Считаю, сколько занимает каждая машина…") }
         let total = machines.reduce(Int64(0)) { $0 + $1.bytes }
-        return "\(machines.count) \(pluralRu(machines.count, "машина", "машины", "машин")) · \(Format.bytes(total))"
+        return "\(machines.count) \(pluralRu(machines.count, tr("машина"), tr("машины"), tr("машин"))) · \(Format.bytes(total))"
     }
 
     private func load() async {
@@ -67,7 +67,7 @@ struct UTMSheet: View {
     private var list: some View {
         if let machines {
             if machines.isEmpty {
-                Notice(.info, "В папке UTM машин нет. Машины, открытые из других папок, UTM показывает у себя в списке.")
+                Notice(.info, tr("В папке UTM машин нет. Машины, открытые из других папок, UTM показывает у себя в списке."))
             } else if machines.count > 5 {
                 Card(padding: 0, spacing: 0) {
                     ScrollView { rows(machines) }.frame(height: 300)
@@ -78,7 +78,7 @@ struct UTMSheet: View {
         } else {
             HStack(spacing: 10) {
                 ProgressView().controlSize(.small)
-                Text("Считаю, сколько занимает каждая машина…").foregroundStyle(Theme.muted)
+                Text(tr("Считаю, сколько занимает каждая машина…")).foregroundStyle(Theme.muted)
             }
         }
     }
@@ -94,8 +94,8 @@ struct UTMSheet: View {
                 HStack(spacing: 12) {
                     IconTile(systemImage: "tray.full.fill", tone: .neutral, size: 30)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Прочее в папке UTM")
-                        Text("Кеш и данные самого UTM, не машины").font(.caption).foregroundStyle(Theme.muted)
+                        Text(tr("Прочее в папке UTM"))
+                        Text(tr("Кеш и данные самого UTM, не машины")).font(.caption).foregroundStyle(Theme.muted)
                     }
                     Spacer(minLength: 12)
                     Text(Format.bytes(rest)).fontWeight(.semibold).monospacedDigit()
@@ -120,17 +120,17 @@ struct UTMSheet: View {
             Button { revealInFinder(machine.url) } label: { Image(systemName: "magnifyingglass") }
                 .buttonStyle(.borderless)
                 .frame(width: 16)
-                .help("Показать в Finder")
+                .help(tr("Показать в Finder"))
         }
         .rowPadding()
     }
 
     private func caption(_ machine: UTMMachine) -> String? {
         var parts: [String] = []
-        if let modified = machine.modified { parts.append("менялась \(Format.relative(modified))") }
+        if let modified = machine.modified { parts.append(tr("менялась \(Format.relative(modified))")) }
         // Диски машин разрежённые: где разрежённых файлов нет, машина займёт полный объём.
         if machine.logicalBytes > machine.bytes + (1 << 30) {
-            parts.append("полный объём дисков \(Format.bytes(machine.logicalBytes))")
+            parts.append(tr("полный объём дисков \(Format.bytes(machine.logicalBytes))"))
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
@@ -139,13 +139,13 @@ struct UTMSheet: View {
 
     private var steps: some View {
         VStack(alignment: .leading, spacing: 12) {
-            step(1, "Удалить ненужную",
-                 "В UTM: правый клик по машине → «Удалить…» (Delete…). UTM удалит её вместе с дисками — место освободится сразу.")
-            step(2, "Перенести на внешний диск",
-                 "В UTM: правый клик → «Переместить…» (Move…) и выберите папку в сейфе или на диске. UTM скопирует машину, удалит оригинал и запомнит новое место. Перед запуском такой машины подключите диск и откройте сейф — иначе UTM покажет её недоступной, — а перед сном Mac и закрытием сейфа выключите её: диск машины, у которой отключили сейф, может испортиться.")
+            step(1, tr("Удалить ненужную"),
+                 tr("В UTM: правый клик по машине → «Удалить…» (Delete…). UTM удалит её вместе с дисками — место освободится сразу."))
+            step(2, tr("Перенести на внешний диск"),
+                 tr("В UTM: правый клик → «Переместить…» (Move…) и выберите папку в сейфе или на диске. UTM скопирует машину, удалит оригинал и запомнит новое место. Перед запуском такой машины подключите диск и откройте сейф — иначе UTM покажет её недоступной, — а перед сном Mac и закрытием сейфа выключите её: диск машины, у которой отключили сейф, может испортиться."))
             if let note = destinationNote { Notice(.warning, note) }
-            step(3, "Ужать диск машины QEMU",
-                 "Если внутри гостевой системы удалили много файлов, сам образ диска не уменьшается. В настройках машины, в разделе её диска, есть кнопка «Reclaim Space» — она пересобирает образ без пустых блоков.")
+            step(3, tr("Ужать диск машины QEMU"),
+                 tr("Если внутри гостевой системы удалили много файлов, сам образ диска не уменьшается. В настройках машины, в разделе её диска, есть кнопка «Reclaim Space» — она пересобирает образ без пустых блоков."))
         }
     }
 
@@ -167,9 +167,9 @@ struct UTMSheet: View {
     private var destinationNote: String? {
         guard let disk = app.destination else { return nil }
         if let limit = disk.maxFileSize, (machines ?? []).contains(where: { $0.largestFile > limit }) {
-            return "Диск «\(disk.name)» — \(disk.fsDisplayName): файлы больше 4 ГБ он не принимает, машину туда не перенести. Переносите в сейф."
+            return tr("Диск «\(disk.name)» — \(disk.fsDisplayName): файлы больше 4 ГБ он не принимает, машину туда не перенести. Переносите в сейф.")
         }
         guard !disk.keepsSparseFiles, (machines ?? []).contains(where: { $0.logicalBytes > $0.bytes + (1 << 30) }) else { return nil }
-        return "Диск «\(disk.name)» — \(disk.fsDisplayName): разрежённых файлов там нет, и машина займёт на нём полный объём дисков, а не нынешний размер. Сейф внутри — APFS, он разрежённые файлы хранит."
+        return tr("Диск «\(disk.name)» — \(disk.fsDisplayName): разрежённых файлов там нет, и машина займёт на нём полный объём дисков, а не нынешний размер. Сейф внутри — APFS, он разрежённые файлы хранит.")
     }
 }

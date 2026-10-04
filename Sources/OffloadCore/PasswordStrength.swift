@@ -31,10 +31,10 @@ public struct PasswordStrength: Sendable, Equatable {
 
     public var title: String {
         switch level {
-        case .weak: return "Слабый"
-        case .fair: return "Так себе"
-        case .good: return "Хороший"
-        case .strong: return "Надёжный"
+        case .weak: return tr("Слабый")
+        case .fair: return tr("Так себе")
+        case .good: return tr("Хороший")
+        case .strong: return tr("Надёжный")
         }
     }
 
@@ -46,7 +46,7 @@ public struct PasswordStrength: Sendable, Equatable {
         // сейф одной первой частью, а оценка считала бы весь пароль. Управляющим символам в пароле не место.
         if password.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }) {
             return PasswordStrength(bits: 0, level: .weak,
-                                    advice: ["В пароле есть невидимые управляющие символы (перевод строки, табуляция, нулевой байт) — уберите их."],
+                                    advice: [tr("В пароле есть невидимые управляющие символы (перевод строки, табуляция, нулевой байт) — уберите их.")],
                                     length: length)
         }
 
@@ -116,25 +116,25 @@ public struct PasswordStrength: Sendable, Equatable {
                       "princess", "shadow", "москва", "moskva", "russia", "россия", "лето", "зима", "весна", "осень"]
         for word in common where lowered.contains(word) || plain.contains(word) {
             bits -= Double(word.count) * perCharacter * 0.8
-            advice.append("В пароле есть «\(word)» — такие слова перебор пробует первыми, в том числе с заменами букв на цифры и знаки.")
+            advice.append(tr("В пароле есть «\(word)» — такие слова перебор пробует первыми, в том числе с заменами букв на цифры и знаки."))
         }
         // Год («2024», «1987») — сотня вариантов, а не четыре случайные цифры.
         if let year = lowered.range(of: #"(19|20)\d\d"#, options: .regularExpression) {
             bits -= max(0, 4 * perCharacter - 7)
-            advice.append("«\(lowered[year])» похоже на год — перебор подставляет годы первыми.")
+            advice.append(tr("«\(lowered[year])» похоже на год — перебор подставляет годы первыми."))
         }
         bits = max(0, bits)
 
         if length < minimumLength {
-            advice.append("Нужно не меньше \(minimumLength) символов, сейчас \(length).")
+            advice.append(tr("Нужно не меньше \(minimumLength) символов, сейчас \(length)."))
         } else if length < recommendedLength {
-            advice.append("VeraCrypt советует от \(recommendedLength) символов. Проще всего — фраза из 4–6 случайных слов через пробел.")
+            advice.append(tr("VeraCrypt советует от \(recommendedLength) символов. Проще всего — фраза из 4–6 случайных слов через пробел."))
         }
         if (weakCharacters + repeated) * 3 >= length {
-            advice.append("Много повторов и подряд идущих символов — их перебирают в первую очередь.")
+            advice.append(tr("Много повторов и подряд идущих символов — их перебирают в первую очередь."))
         }
         if classes.count == 1, length < recommendedLength {
-            advice.append("Один вид символов: добавьте слов или длины — это надёжнее, чем цифры в конце.")
+            advice.append(tr("Один вид символов: добавьте слов или длины — это надёжнее, чем цифры в конце."))
         }
 
         let level: Level

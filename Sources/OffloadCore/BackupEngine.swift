@@ -18,8 +18,8 @@ public enum BackupError: LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .destinationInsideSource(let path): return "Папка бэкапа не может лежать внутри копируемой папки «\(path)»."
-        case .destinationThroughLink(let path): return "Путь к папке бэкапа проходит через символическую ссылку «\(path)» — писать по нему не буду: бэкап оказался бы не там, где вы думаете."
+        case .destinationInsideSource(let path): return tr("Папка бэкапа не может лежать внутри копируемой папки «\(path)».")
+        case .destinationThroughLink(let path): return tr("Путь к папке бэкапа проходит через символическую ссылку «\(path)» — писать по нему не буду: бэкап оказался бы не там, где вы думаете.")
         }
     }
 }
@@ -126,7 +126,7 @@ public enum BackupEngine {
 
         for source in sources {
             guard fm.fileExists(atPath: source.path) else {
-                report.problems.append("Нет папки: \(source.path)")
+                report.problems.append(tr("Нет папки: \(source.path)"))
                 continue
             }
             let rootName = source.lastPathComponent
@@ -145,7 +145,7 @@ public enum BackupEngine {
                 }
                 return false
             }, isCancelled: isCancelled)
-            report.problems += walk.problems.map { "\(rootName)/\($0): нет доступа" }
+            report.problems += walk.problems.map { tr("\(rootName)/\($0): нет доступа") }
 
             // Папки назначения, которые оказались не папками (например, ссылкой на чужом диске).
             // O_NOFOLLOW защищает только последний компонент пути, поэтому внутрь такой папки

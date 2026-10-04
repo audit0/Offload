@@ -99,16 +99,16 @@ public struct HabitModel: Sendable {
 
         /// Причина для строки предложения.
         public var reason: String {
-            "Похожее вы обычно \(Self.verb(action)) (\(agreeing) из \(total)): \(scope)."
+            tr("Похожее вы обычно \(Self.verb(action)) (\(agreeing) из \(total)): \(scope).")
         }
 
         /// «Оставляете», «убираете в сейф»…
         public static func verb(_ action: CleanupAction) -> String {
             switch action {
-            case .trash: return "удаляете"
-            case .safe: return "убираете в сейф"
-            case .backup: return "добавляете в бэкап"
-            case .keep: return "оставляете"
+            case .trash: return tr("удаляете")
+            case .safe: return tr("убираете в сейф")
+            case .backup: return tr("добавляете в бэкап")
+            case .keep: return tr("оставляете")
             }
         }
     }
@@ -190,56 +190,56 @@ public struct HabitModel: Sendable {
 
     static func noun(_ key: DecisionFeatures) -> String {
         switch key.kind {
-        case .folder: return "папки"
-        case .project: return "проекты с git"
+        case .folder: return tr("папки")
+        case .project: return tr("проекты с git")
         case .copy:
             // У копий вид файла тоже различается: копии видео и копии документов — разные привычки.
             switch key.category ?? .other {
-            case .video: return "копии видео"
-            case .audio: return "копии музыки и звука"
-            case .image: return "копии фото и картинок"
-            case .archive: return "копии архивов"
-            case .installer: return "копии образов дисков и установщиков"
-            case .document: return "копии документов"
-            case .other: return "копии файлов"
+            case .video: return tr("копии видео")
+            case .audio: return tr("копии музыки и звука")
+            case .image: return tr("копии фото и картинок")
+            case .archive: return tr("копии архивов")
+            case .installer: return tr("копии образов дисков и установщиков")
+            case .document: return tr("копии документов")
+            case .other: return tr("копии файлов")
             }
         case .file:
             switch key.category ?? .other {
-            case .video: return "видео"
-            case .audio: return "музыка и звук"
-            case .image: return "фото и картинки"
-            case .archive: return "архивы"
-            case .installer: return "образы дисков и установщики"
-            case .document: return "документы"
-            case .other: return "файлы"
+            case .video: return tr("видео")
+            case .audio: return tr("музыка и звук")
+            case .image: return tr("фото и картинки")
+            case .archive: return tr("архивы")
+            case .installer: return tr("образы дисков и установщики")
+            case .document: return tr("документы")
+            case .other: return tr("файлы")
             }
         }
     }
 
     static let placeNames = [
-        "Downloads": "в «Загрузках»", "Desktop": "на «Рабочем столе»", "Documents": "в «Документах»",
-        "Movies": "в «Фильмах»", "Music": "в «Музыке»", "Pictures": "в «Изображениях»", "Library": "в «Библиотеке»",
+        "Downloads": tr("в «Загрузках»"), "Desktop": tr("на «Рабочем столе»"), "Documents": tr("в «Документах»"),
+        "Movies": tr("в «Фильмах»"), "Music": tr("в «Музыке»"), "Pictures": tr("в «Изображениях»"), "Library": tr("в «Библиотеке»"),
     ]
 
     static func place(_ name: String) -> String {
-        name.isEmpty ? "" : placeNames[name] ?? "в «~/\(name)»"
+        name.isEmpty ? "" : placeNames[name] ?? tr("в «~/\(name)»")
     }
 
     static func size(_ size: DecisionFeatures.Size) -> String {
         switch size {
-        case .small: return "меньше 100 МБ"
-        case .medium: return "от 100 МБ до 1 ГБ"
-        case .large: return "от 1 до 10 ГБ"
-        case .huge: return "больше 10 ГБ"
+        case .small: return tr("меньше 100 МБ")
+        case .medium: return tr("от 100 МБ до 1 ГБ")
+        case .large: return tr("от 1 до 10 ГБ")
+        case .huge: return tr("больше 10 ГБ")
         }
     }
 
     static func age(_ age: DecisionFeatures.Age) -> String? {
         switch age {
-        case .fresh: return "менялись в последний месяц"
-        case .recent: return "менялись 1–3 месяца назад"
-        case .old: return "не менялись от 3 месяцев до года"
-        case .ancient: return "не менялись больше года"
+        case .fresh: return tr("менялись в последний месяц")
+        case .recent: return tr("менялись 1–3 месяца назад")
+        case .old: return tr("не менялись от 3 месяцев до года")
+        case .ancient: return tr("не менялись больше года")
         case .unknown: return nil
         }
     }

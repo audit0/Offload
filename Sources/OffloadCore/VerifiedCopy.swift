@@ -30,11 +30,11 @@ public enum CopyError: LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .unreadable(let path): return "Не удалось прочитать «\(path)»."
-        case .destinationExists(let path): return "На диске назначения уже есть «\(path)» — перезаписывать не буду."
-        case .writeFailed(let path, let reason): return "Не удалось записать «\(path)»: \(reason)"
-        case .verificationFailed(let path): return "Копия «\(path)» не совпала с оригиналом."
-        case .changedDuringCopy(let path): return "«\(path)» изменился во время переноса — оригинал не тронут."
+        case .unreadable(let path): return tr("Не удалось прочитать «\(path)».")
+        case .destinationExists(let path): return tr("На диске назначения уже есть «\(path)» — перезаписывать не буду.")
+        case .writeFailed(let path, let reason): return tr("Не удалось записать «\(path)»: \(reason)")
+        case .verificationFailed(let path): return tr("Копия «\(path)» не совпала с оригиналом.")
+        case .changedDuringCopy(let path): return tr("«\(path)» изменился во время переноса — оригинал не тронут.")
         }
     }
 }
@@ -74,8 +74,8 @@ public enum TreeWalker {
                 return TreeEntry(relativePath: relative, kind: .symlink(target: target), size: 0, modified: modified, permissions: permissions)
             default:
                 // Сокеты, FIFO и устройства не копируются.
-                if strict { throw CopyError.unreadable("\(relative) (особый файл)") }
-                problems.append("\(relative) (особый файл пропущен)")
+                if strict { throw CopyError.unreadable(tr("\(relative) (особый файл)")) }
+                problems.append(tr("\(relative) (особый файл пропущен)"))
                 return nil
             }
         }
@@ -215,7 +215,7 @@ public enum VerifiedCopy {
                                                           progress: { progress(entry.relativePath, $0) })
             case .symlink(let linkTarget):
                 do { try fm.createSymbolicLink(atPath: target.path, withDestinationPath: linkTarget) } catch {
-                    throw CopyError.writeFailed(target.path, "символическая ссылка не создана: \(error.localizedDescription)")
+                    throw CopyError.writeFailed(target.path, tr("символическая ссылка не создана: \(error.localizedDescription)"))
                 }
             }
         }

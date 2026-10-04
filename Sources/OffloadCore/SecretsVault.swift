@@ -18,17 +18,17 @@ public enum VaultError: LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .weakPassword:
-            return "Пароль слишком слабый: нужно не меньше \(SecretsVault.minimumPasswordLength) символов и стойкость от \(Int(PasswordStrength.acceptableBits)) бит."
-        case .alreadyExists: return "Контейнер уже существует."
+            return tr("Пароль слишком слабый: нужно не меньше \(SecretsVault.minimumPasswordLength) символов и стойкость от \(Int(PasswordStrength.acceptableBits)) бит.")
+        case .alreadyExists: return tr("Контейнер уже существует.")
         // Говорим именно «не подтверждено»: снаружи случай «образ без шифрования» и случай
         // «подделанный заголовок, подсистема образов шифрования не видит» выглядят одинаково.
-        case .notEncrypted: return "Шифрование образа не подтверждено — складывать в него ключи нельзя."
-        case .wrongPassword: return "Неверный пароль."
-        case .mountFailed(let message): return "Не удалось открыть сейф: \(message)"
-        case .busy: return "В сейфе открыты файлы. Закройте их в других программах и повторите."
-        case .headerRejected(let reason): return "Заголовок не восстановлен: \(reason)"
-        case .growFailed(let reason): return "Предел сейфа не увеличен: \(reason)"
-        case .closeFailed(let message): return "Не удалось закрыть сейф: \(message)"
+        case .notEncrypted: return tr("Шифрование образа не подтверждено — складывать в него ключи нельзя.")
+        case .wrongPassword: return tr("Неверный пароль.")
+        case .mountFailed(let message): return tr("Не удалось открыть сейф: \(message)")
+        case .busy: return tr("В сейфе открыты файлы. Закройте их в других программах и повторите.")
+        case .headerRejected(let reason): return tr("Заголовок не восстановлен: \(reason)")
+        case .growFailed(let reason): return tr("Предел сейфа не увеличен: \(reason)")
+        case .closeFailed(let message): return tr("Не удалось закрыть сейф: \(message)")
         }
     }
 }
@@ -352,12 +352,12 @@ public struct SecretsVault: Sendable {
         let current = sizeLimit ?? 0
         // hdiutil округляет размер образа вверх, поэтому повтор с тем же пределом видит
         // чуть больший нынешний — это не уменьшение.
-        guard maxBytes >= current - (64 << 20) else { throw VaultError.growFailed("уменьшать сейф нельзя — только увеличивать") }
+        guard maxBytes >= current - (64 << 20) else { throw VaultError.growFailed(tr("уменьшать сейф нельзя — только увеличивать")) }
         let pass = Data(password.utf8)
 
         let content = try withRawDevices(pass) { _, partition in Self.diskInfo(partition)?["Content"] as? String }
         guard content == "Apple_APFS" else {
-            throw VaultError.growFailed("внутри не APFS (\(content ?? "неизвестно")) — такой сейф OffLoadAI не растягивает. Создайте новый сейф нужного размера и перенесите содержимое.")
+            throw VaultError.growFailed(tr("внутри не APFS (\(content ?? tr("неизвестно"))) — такой сейф OffLoadAI не растягивает. Создайте новый сейф нужного размера и перенесите содержимое."))
         }
 
         if maxBytes > current {
@@ -392,7 +392,7 @@ public struct SecretsVault: Sendable {
             let reached = partitionSize()
             guard reached >= target else {
                 let layout = (try? Runner.run("diskutil", ["list", whole], timeout: 30)).map(output) ?? ""
-                throw VaultError.growFailed("раздел занимает \(reached) байт из \(target). " + (log + [layout]).joined(separator: "\n"))
+                throw VaultError.growFailed(tr("раздел занимает \(reached) байт из \(target). ") + (log + [layout]).joined(separator: "\n"))
             }
         }
     }
@@ -405,19 +405,19 @@ public struct SecretsVault: Sendable {
         guard attached.succeeded else { throw Self.growError(attached.stderr) }
         let devices = Self.devices(fromAttachPlist: attached.stdout)
         guard let whole = devices.whole else {
-            throw VaultError.growFailed("hdiutil не сообщил, каким диском подключился образ")
+            throw VaultError.growFailed(tr("hdiutil не сообщил, каким диском подключился образ"))
         }
         // Отключаем что бы ни случилось — и не молчим, если не вышло: подключённый без монтирования
         // образ держит ключ в памяти, а автозакрытие его не видит (точки монтирования нет).
         func release() throws {
             if (try? Runner.run("hdiutil", ["detach", whole], timeout: 120))?.succeeded == true { return }
             if (try? Runner.run("hdiutil", ["detach", "-force", whole], timeout: 120))?.succeeded == true { return }
-            throw VaultError.growFailed("образ остался подключённым как \(whole). Отключите его: hdiutil detach -force \(whole)")
+            throw VaultError.growFailed(tr("образ остался подключённым как \(whole). Отключите его: hdiutil detach -force \(whole)"))
         }
         let result: T
         do {
             guard let partition = devices.partition else {
-                throw VaultError.growFailed("в образе не нашёлся раздел с файловой системой")
+                throw VaultError.growFailed(tr("в образе не нашёлся раздел с файловой системой"))
             }
             result = try body(whole, partition)
         } catch {
@@ -554,10 +554,10 @@ public struct SecretsVault: Sendable {
         guard let data = try? Data(contentsOf: file), data.count < 4 << 20,
               let backup = try? decoder.decode(HeaderBackup.self, from: data),
               backup.token.prefix(8) == Data("encrcdsa".utf8) else {
-            throw VaultError.headerRejected("файл не похож на копию заголовка OffLoadAI")
+            throw VaultError.headerRejected(tr("файл не похож на копию заголовка OffLoadAI"))
         }
         if let expected = backup.uuid, let current = Self.encryptionInfo(of: imageURL)?.uuid, expected != current {
-            throw VaultError.headerRejected("копия снята с другого сейфа")
+            throw VaultError.headerRejected(tr("копия снята с другого сейфа"))
         }
         let token = imageURL.appendingPathComponent("token")
         let aside = imageURL.appendingPathComponent("token.offload-previous")
@@ -565,7 +565,7 @@ public struct SecretsVault: Sendable {
         // Отложенный заголовок от прерванного восстановления может оказаться единственным настоящим:
         // молча удалить его значило бы потерять сейф.
         guard !SafeMover.exists(aside) else {
-            throw VaultError.headerRejected("в сейфе остался отложенный заголовок от прерванного восстановления (token.offload-previous). Если сейф не открывается, верните его на место token вручную")
+            throw VaultError.headerRejected(tr("в сейфе остался отложенный заголовок от прерванного восстановления (token.offload-previous). Если сейф не открывается, верните его на место token вручную"))
         }
         if fm.fileExists(atPath: token.path) { try fm.moveItem(at: token, to: aside) }
         do {
@@ -578,10 +578,10 @@ public struct SecretsVault: Sendable {
                 do {
                     try fm.moveItem(at: aside, to: token)
                 } catch {
-                    throw VaultError.headerRejected("копия не подошла, а прежний заголовок вернуть не удалось: \(error.localizedDescription). Он лежит в token.offload-previous внутри сейфа — переименуйте его в token")
+                    throw VaultError.headerRejected(tr("копия не подошла, а прежний заголовок вернуть не удалось: \(error.localizedDescription). Он лежит в token.offload-previous внутри сейфа — переименуйте его в token"))
                 }
             }
-            if case VaultError.wrongPassword = error { throw VaultError.headerRejected("пароль к этой копии не подходит") }
+            if case VaultError.wrongPassword = error { throw VaultError.headerRejected(tr("пароль к этой копии не подходит")) }
             throw error
         }
         // Старый заголовок внутри образа не оставляем: он открылся бы старым паролем.
@@ -610,7 +610,7 @@ public struct SecretsVault: Sendable {
             if let whole = Self.devices(fromAttachPlist: result.stdout).whole {
                 _ = try? Runner.run("hdiutil", ["detach", "-force", whole], timeout: 120)
             }
-            throw VaultError.mountFailed("hdiutil не сообщил точку монтирования")
+            throw VaultError.mountFailed(tr("hdiutil не сообщил точку монтирования"))
         }
         let mountPoint = URL(fileURLWithPath: mount, isDirectory: true)
         // Код возврата hdiutil здесь ничего не доказывает: к подделанному образу (token
@@ -626,7 +626,7 @@ public struct SecretsVault: Sendable {
         // Дома их закрывали права ~/Documents; в сейфе закрываем корнем. APFS права хранит.
         guard Self.restrictToOwner(mountPoint) else {
             Self.detachIgnoringErrors(mountPoint)
-            throw VaultError.mountFailed("не удалось закрыть сейф от других пользователей этого Mac (chmod 700)")
+            throw VaultError.mountFailed(tr("не удалось закрыть сейф от других пользователей этого Mac (chmod 700)"))
         }
         return mountPoint
     }
@@ -713,7 +713,7 @@ public struct SecretsVault: Sendable {
                         let real = from.resolvingSymlinksInPath()
                         guard let attributes = try? fm.attributesOfItem(atPath: real.path),
                               attributes[.type] as? FileAttributeType == .typeRegular else {
-                            report.problems.append("\(from.path): символическая ссылка не на обычный файл — не скопирована")
+                            report.problems.append(tr("\(from.path): символическая ссылка не на обычный файл — не скопирована"))
                             continue
                         }
                         try fm.createDirectory(at: to.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -782,7 +782,7 @@ public struct SecretsVault: Sendable {
             var secrets: [TreeEntry] = []
             for entry in walk.entries where entry.isFile && BackupEngine.isSecretPath(entry.relativePath, in: root) {
                 if let owner = claimed[entry.relativePath], owner != root.path {
-                    report.problems.append("\(root.lastPathComponent)/\(entry.relativePath): такой же путь уже есть в «\((owner as NSString).lastPathComponent)» — пропущен, чтобы не затереть")
+                    report.problems.append(tr("\(root.lastPathComponent)/\(entry.relativePath): такой же путь уже есть в «\((owner as NSString).lastPathComponent)» — пропущен, чтобы не затереть"))
                     continue
                 }
                 claimed[entry.relativePath] = root.path

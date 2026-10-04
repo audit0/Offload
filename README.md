@@ -181,6 +181,12 @@ XCTest и swift-testing входят только в Xcode, поэтому пр�
 
 Переменные `OFFLOAD_SKIP_INTEGRATION=1` и `OFFLOAD_SKIP_DOCKER=1` отключают соответствующие части.
 
+### Переводы
+
+Интерфейс Mac — на русском и английском, язык выбирает macOS: русским — русский, всем остальным — английский. Русский текст в коде и есть ключ перевода: `Text("…")`, `tr("…")` для строк, которые собираются в коде, `trDynamic(…)` для значений вроде `rawValue`. Английский — в `Localization/en.lproj/Localizable.strings`. `scripts/check-l10n.sh` собирает ключи компилятором и проверяет, что у каждого есть перевод с теми же форматами (`%@`, `%lld`); его гоняет CI. Имена файлов на диске, шаблоны поиска и текст для модели помощника не переводятся.
+
+Запустить на другом языке, не меняя системный: `dist/OffLoadAI.app/Contents/MacOS/OffLoadAI -AppleLanguages '(en)'`.
+
 ### Снимки экранов
 
 Для проверки интерфейса и скриншотов в README у приложения есть режим снимков: оно проходит по всем разделам, сохраняет каждый в PNG и завершается. Работает только вместе с демонстрационным режимом (`OFFLOAD_DEMO=1`, см. ниже): иначе любая программа могла бы запустить OffLoadAI с полным доступом к диску и получить снимки ваших настоящих папок.
@@ -258,4 +264,4 @@ Install:
 curl -fsSL https://raw.githubusercontent.com/audit0/Offload/main/scripts/install.sh | zsh
 ```
 
-Build from source with Xcode Command Line Tools: `swift run OffloadChecks`, then `scripts/install-local.sh`. With Command Line Tools 27+ and no Xcode, plain `swift build` cannot build the SwiftUI layer (the `@State` macro plugin ships with Xcode); `scripts/build-app.sh` falls back to the SDK 26 that ships with the same tools. A Windows version (WPF, .NET 10, BitLocker-encrypted VHDX vault) lives in `windows/`; install it with `irm https://raw.githubusercontent.com/audit0/Offload/main/windows/scripts/install.ps1 | iex`. The UI is in Russian. See [SECURITY.md](SECURITY.md) for the threat model. MIT licensed.
+Build from source with Xcode Command Line Tools: `swift run OffloadChecks`, then `scripts/install-local.sh`. With Command Line Tools 27+ and no Xcode, plain `swift build` cannot build the SwiftUI layer (the `@State` macro plugin ships with Xcode); `scripts/build-app.sh` falls back to the SDK 26 that ships with the same tools. A Windows version (WPF, .NET 10, BitLocker-encrypted VHDX vault) lives in `windows/`; install it with `irm https://raw.githubusercontent.com/audit0/Offload/main/windows/scripts/install.ps1 | iex`. The Mac UI is in English and Russian and follows the system language (Russian for Russian, English for everyone else); the Windows UI is in Russian for now. See [SECURITY.md](SECURITY.md) for the threat model. MIT licensed.

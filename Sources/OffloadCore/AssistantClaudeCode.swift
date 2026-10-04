@@ -10,7 +10,7 @@ import Foundation
 /// Всё, что он знает, — сведения, которые OffLoadAI передаёт во входном потоке.
 public struct ClaudeCodeAssistant: AssistantProvider {
     public let model: String
-    public var title: String { "Claude Code на этом Mac" }
+    public var title: String { tr("Claude Code на этом Mac") }
     public static let timeout: TimeInterval = 4 * 60
 
     public init(model: String = "sonnet") {
@@ -19,7 +19,7 @@ public struct ClaudeCodeAssistant: AssistantProvider {
 
     public func problem() async -> String? {
         Runner.locate("claude") == nil
-            ? "Claude Code не найден. Установите его (claude.com/claude-code) и войдите своей учётной записью Claude — затем «Проверить снова»."
+            ? tr("Claude Code не найден. Установите его (claude.com/claude-code) и войдите своей учётной записью Claude — затем «Проверить снова».")
             : nil
     }
 
@@ -61,7 +61,7 @@ public struct ClaudeCodeAssistant: AssistantProvider {
         }
         try Task.checkCancellation()
         guard let result else {
-            throw AssistantError(.timedOut, "Помощник не ответил за четыре минуты. Попробуйте папку поменьше.")
+            throw AssistantError(.timedOut, tr("Помощник не ответил за четыре минуты. Попробуйте папку поменьше."))
         }
         return try read(output: result.output, errors: result.stderr, facts: facts)
     }
@@ -118,17 +118,17 @@ public struct ClaudeCodeAssistant: AssistantProvider {
     /// Ответ `claude -p --output-format json`: структурированный вывод по схеме, цена, ошибка входа.
     public func read(output: String, errors: String, facts: [FileFact]) throws -> AssistantAnswer {
         guard let root = (try? JSONSerialization.jsonObject(with: Data(output.utf8))) as? [String: Any] else {
-            throw AssistantError(.failed, "Claude Code не ответил: " + Self.firstLine(errors.isEmpty ? output : errors))
+            throw AssistantError(.failed, tr("Claude Code не ответил: ") + Self.firstLine(errors.isEmpty ? output : errors))
         }
         let text = root["result"] as? String ?? ""
         if root["is_error"] as? Bool == true {
             if text.range(of: "Unable to connect", options: .caseInsensitive) != nil
                 || text.range(of: "ConnectionRefused", options: .caseInsensitive) != nil {
-                throw AssistantError(.failed, "Claude Code не может связаться с Anthropic — проверьте интернет (или прокси, если он нужен).")
+                throw AssistantError(.failed, tr("Claude Code не может связаться с Anthropic — проверьте интернет (или прокси, если он нужен)."))
             }
             let signIn = ["login", "API key", "authenticat"].contains { text.range(of: $0, options: .caseInsensitive) != nil }
             throw signIn
-                ? AssistantError(.notSignedIn, "Claude Code не вошёл в учётную запись. Откройте Терминал, запустите claude и войдите (/login) — затем «Проверить снова».")
+                ? AssistantError(.notSignedIn, tr("Claude Code не вошёл в учётную запись. Откройте Терминал, запустите claude и войдите (/login) — затем «Проверить снова»."))
                 : AssistantError(.failed, "Claude Code: " + Self.firstLine(text))
         }
         let cost = (root["total_cost_usd"] as? NSNumber)?.doubleValue
@@ -140,7 +140,7 @@ public struct ClaudeCodeAssistant: AssistantProvider {
 
     static func firstLine(_ text: String) -> String {
         guard let line = text.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").first?
-            .trimmingCharacters(in: .whitespaces), !line.isEmpty else { return "без объяснений" }
+            .trimmingCharacters(in: .whitespaces), !line.isEmpty else { return tr("без объяснений") }
         return line.count > 200 ? line.prefix(200) + "…" : line
     }
 }

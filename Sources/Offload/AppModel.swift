@@ -11,14 +11,14 @@ enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
 
     var title: String {
         switch self {
-        case .overview: return "Обзор"
-        case .cleanup: return "Разобрать"
-        case .assistant: return "Помощник"
-        case .safe: return "Сейф"
-        case .space: return "Освободить место"
-        case .history: return "Перенесённое"
-        case .backup: return "Бэкап"
-        case .icloud: return "Из iCloud"
+        case .overview: return tr("Обзор")
+        case .cleanup: return tr("Разобрать")
+        case .assistant: return tr("Помощник")
+        case .safe: return tr("Сейф")
+        case .space: return tr("Освободить место")
+        case .history: return tr("Перенесённое")
+        case .backup: return tr("Бэкап")
+        case .icloud: return tr("Из iCloud")
         case .docker: return "Docker"
         }
     }
@@ -43,7 +43,7 @@ enum StoreMode: String, CaseIterable, Identifiable {
     case safe, open
 
     var id: Self { self }
-    var title: String { self == .safe ? "В сейф" : "Открыто на диск" }
+    var title: String { self == .safe ? tr("В сейф") : tr("Открыто на диск") }
 }
 
 @MainActor
@@ -99,9 +99,9 @@ final class AppModel {
 
     /// Почему класть некуда — одной фразой, с тем, что сделать.
     var targetProblem: String? {
-        guard destination != nil else { return "Подключите внешний диск." }
+        guard destination != nil else { return tr("Подключите внешний диск.") }
         guard storeMode == .safe, safeVolume == nil else { return nil }
-        return safe.exists ? "Сейф закрыт — откройте его паролем." : "На диске нет сейфа — создайте его в разделе «Сейф»."
+        return safe.exists ? tr("Сейф закрыт — откройте его паролем.") : tr("На диске нет сейфа — создайте его в разделе «Сейф».")
     }
 
     /// Где искать журналы переносов: подключённые диски и открытый сейф.
@@ -250,6 +250,8 @@ func relativeToHome(_ path: String, home: URL) -> String {
 
 /// 1 объект, 3 объекта, 5 объектов.
 func pluralRu(_ count: Int, _ one: String, _ few: String, _ many: String) -> String {
+    // По-английски форм две: перевод «одного» для 1 и перевод «многих» для остального.
+    if !AppLanguage.isRussian { return abs(count) == 1 ? trDynamic(one) : trDynamic(many) }
     let hundreds = abs(count) % 100
     let tens = hundreds % 10
     if (11...14).contains(hundreds) { return many }

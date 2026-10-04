@@ -98,8 +98,8 @@ final class CloudRestoreModel {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.directoryURL = CloudRestore.iCloudDrive
-        panel.prompt = "Выбрать"
-        panel.message = "Папка хранилища restic — в ней лежат config, keys и data"
+        panel.prompt = tr("Выбрать")
+        panel.message = tr("Папка хранилища restic — в ней лежат config, keys и data")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         guard CloudRestore.isRepository(url) else {
             error = CloudRestore.RestoreError.notARepository(url.path).localizedDescription
@@ -122,8 +122,8 @@ final class CloudRestoreModel {
             panel.canChooseFiles = true
             panel.canChooseDirectories = false
             panel.showsHiddenFiles = true
-            panel.prompt = "Выбрать"
-            panel.message = "Файл, в котором записан пароль хранилища"
+            panel.prompt = tr("Выбрать")
+            panel.message = tr("Файл, в котором записан пароль хранилища")
             guard panel.runModal() == .OK else { return }
             file = panel.url
         }
@@ -134,7 +134,7 @@ final class CloudRestoreModel {
     private func unlock(with candidate: CloudRestore.Password) {
         guard let repository, loading == nil else { return }
         if Demo.isOn { return }
-        loading = "Открываю хранилище…"
+        loading = tr("Открываю хранилище…")
         error = nil
         Task {
             do {
@@ -149,7 +149,7 @@ final class CloudRestoreModel {
                 }
                 snapshots = found
                 loading = nil
-                if found.isEmpty { error = "В хранилище пока нет ни одного снимка." }
+                if found.isEmpty { error = tr("В хранилище пока нет ни одного снимка.") }
                 snapshotID = found.first?.id
             } catch {
                 loading = nil
@@ -180,7 +180,7 @@ final class CloudRestoreModel {
             if Demo.isOn { directory = path }
             return
         }
-        loading = "Читаю «\((path as NSString).lastPathComponent)»…"
+        loading = tr("Читаю «\((path as NSString).lastPathComponent)»…")
         error = nil
         Task {
             do {
@@ -202,7 +202,7 @@ final class CloudRestoreModel {
         let text = query.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { searchResults = nil; return }
         guard let repository, let password, let snapshotID else { return }
-        loading = "Ищу «\(text)»…"
+        loading = tr("Ищу «\(text)»…")
         error = nil
         Task {
             do {
@@ -231,8 +231,8 @@ final class CloudRestoreModel {
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
         panel.directoryURL = destination
-        panel.prompt = "Выбрать"
-        panel.message = "Куда класть восстановленное — внутри появится новая папка"
+        panel.prompt = tr("Выбрать")
+        panel.message = tr("Куда класть восстановленное — внутри появится новая папка")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         destination = url
         if !Demo.isOn { UserDefaults.standard.set(url.path, forKey: Self.destinationKey) }
@@ -241,7 +241,7 @@ final class CloudRestoreModel {
     func restore(_ entry: Entry, app: AppModel) {
         guard restoring == nil else { return }
         if Demo.isOn {
-            restoreMessage = Notice.Message(.success, "Демонстрация: «\(entry.name)» восстановился бы в новую папку в «\(destination.lastPathComponent)».")
+            restoreMessage = Notice.Message(.success, tr("Демонстрация: «\(entry.name)» восстановился бы в новую папку в «\(destination.lastPathComponent)»."))
             return
         }
         guard let repository, let password, let snapshot else { return }
@@ -275,14 +275,14 @@ final class CloudRestoreModel {
                 }.value
                 restoredItem = report.item
                 let what = entry.isDirectory
-                    ? "\(report.files) \(pluralRu(report.files, "файл", "файла", "файлов")), \(Format.bytes(report.bytes))"
+                    ? "\(report.files) \(pluralRu(report.files, tr("файл"), tr("файла"), tr("файлов"))), \(Format.bytes(report.bytes))"
                     : Format.bytes(report.bytes)
                 restoreMessage = report.verified && report.problems.isEmpty
-                    ? Notice.Message(.success, "«\(entry.name)» восстановлено и сверено с бэкапом: \(what).")
-                    : Notice.Message(.warning, "«\(entry.name)» восстановлено не целиком: \(what). Файлы, которые не прочитались из бэкапа, убраны — они были бы испорчены; остальное с бэкапом не сверено: после ошибок restic не сверяет. Не удалось:",
+                    ? Notice.Message(.success, tr("«\(entry.name)» восстановлено и сверено с бэкапом: \(what)."))
+                    : Notice.Message(.warning, tr("«\(entry.name)» восстановлено не целиком: \(what). Файлы, которые не прочитались из бэкапа, убраны — они были бы испорчены; остальное с бэкапом не сверено: после ошибок restic не сверяет. Не удалось:"),
                                      details: Array(report.problems.prefix(10)))
             } catch is CancellationError {
-                restoreMessage = Notice.Message(.info, "Восстановление остановлено, недокачанное убрано.")
+                restoreMessage = Notice.Message(.info, tr("Восстановление остановлено, недокачанное убрано."))
             } catch {
                 restoreMessage = Notice.Message(.error, error.localizedDescription)
             }

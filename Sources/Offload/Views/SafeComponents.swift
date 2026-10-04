@@ -4,10 +4,10 @@ import SwiftUI
 extension SafeModel {
     /// Состояние сейфа одной строкой — для боковой панели и «Обзора».
     var summary: (title: String, systemImage: String, tone: Tone) {
-        guard let state else { return ("Смотрю, есть ли сейф…", "lock", .neutral) }
-        if !state.exists { return ("Сейфа нет", "lock.slash", .neutral) }
-        if !state.isEncrypted { return ("Образ не зашифрован", "exclamationmark.octagon.fill", .danger) }
-        return isOpen ? ("Сейф открыт", "lock.open.fill", .caution) : ("Сейф закрыт", "lock.fill", .good)
+        guard let state else { return (tr("Смотрю, есть ли сейф…"), "lock", .neutral) }
+        if !state.exists { return (tr("Сейфа нет"), "lock.slash", .neutral) }
+        if !state.isEncrypted { return (tr("Образ не зашифрован"), "exclamationmark.octagon.fill", .danger) }
+        return isOpen ? (tr("Сейф открыт"), "lock.open.fill", .caution) : (tr("Сейф закрыт"), "lock.fill", .good)
     }
 }
 
@@ -28,7 +28,7 @@ struct PasswordStrengthView: View {
                             .frame(width: 34, height: 5)
                     }
                 }
-                Text(password.isEmpty ? "Введите пароль" : "\(strength.title) · ≈\(Int(strength.bits)) бит")
+                Text(password.isEmpty ? tr("Введите пароль") : tr("\(strength.title) · ≈\(Int(strength.bits)) бит"))
                     .font(.caption.weight(.medium))
                     .foregroundStyle(password.isEmpty ? .secondary : color(strength.level))
                     .monospacedDigit()
@@ -60,13 +60,13 @@ struct NewPasswordFields: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SecureField("Новый пароль", text: $password)
+            SecureField(tr("Новый пароль"), text: $password)
                 .textFieldStyle(.roundedBorder)
-            SecureField("Ещё раз", text: $confirmation)
+            SecureField(tr("Ещё раз"), text: $confirmation)
                 .textFieldStyle(.roundedBorder)
             PasswordStrengthView(password: password)
             if !confirmation.isEmpty, confirmation != password {
-                Label("Пароли не совпадают.", systemImage: "xmark.circle.fill")
+                Label(tr("Пароли не совпадают."), systemImage: "xmark.circle.fill")
                     .font(.caption).foregroundStyle(Theme.bad)
             }
         }
@@ -79,7 +79,7 @@ struct NewPasswordFields: View {
 struct SafeUnlockRow: View {
     @Environment(AppModel.self) private var app
     @State private var password = ""
-    var prompt = "Пароль сейфа"
+    var prompt = tr("Пароль сейфа")
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -91,7 +91,7 @@ struct SafeUnlockRow: View {
                 if app.safe.activity != nil {
                     ProgressView().controlSize(.small)
                 } else {
-                    Button("Открыть", action: open)
+                    Button(tr("Открыть"), action: open)
                         .prominentButton()
                         .disabled(password.isEmpty)
                 }
@@ -123,12 +123,12 @@ struct TargetSummary: View {
         if let target = app.target {
             if target.isEncryptedImage {
                 banner(systemImage: "lock.fill", tone: .good,
-                       title: "В сейф «\(target.name)»",
-                       detail: "зашифровано · свободно \(Format.bytes(target.availableBytes))")
+                       title: tr("В сейф «\(target.name)»"),
+                       detail: tr("зашифровано · свободно \(Format.bytes(target.availableBytes))"))
             } else {
                 banner(systemImage: "lock.open.trianglebadge.exclamationmark", tone: .caution,
-                       title: "На диск «\(target.name)» открыто",
-                       detail: "не зашифровано · свободно \(Format.bytes(target.availableBytes))")
+                       title: tr("На диск «\(target.name)» открыто"),
+                       detail: tr("не зашифровано · свободно \(Format.bytes(target.availableBytes))"))
             }
         } else if let problem = app.targetProblem {
             banner(systemImage: "lock.slash", tone: problemTone, title: problem, detail: nil)
@@ -162,13 +162,13 @@ struct SafeStatusPanel: View {
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Внешний диск").font(.caption).foregroundStyle(Theme.muted)
+                Text(tr("Внешний диск")).font(.caption).foregroundStyle(Theme.muted)
                 if app.volumes.isEmpty {
-                    Label("Не подключён", systemImage: "externaldrive.badge.xmark").font(.callout).foregroundStyle(Theme.muted)
+                    Label(tr("Не подключён"), systemImage: "externaldrive.badge.xmark").font(.callout).foregroundStyle(Theme.muted)
                 } else {
                     // Выбор нужен, только когда дисков несколько; один диск — просто его имя.
                     if app.volumes.count > 1 || app.destination == nil {
-                        Picker("Внешний диск", selection: $app.destinationID) {
+                        Picker(tr("Внешний диск"), selection: $app.destinationID) {
                             ForEach(app.volumes) { volume in
                                 Text(volume.name).tag(Optional(volume.id))
                             }
@@ -177,7 +177,7 @@ struct SafeStatusPanel: View {
                         // Сон, блокировка и простой закрывают сейф выбранного диска. Переключись на другой
                         // диск при открытом сейфе — прежний остался бы открытым без присмотра.
                         .disabled(app.safe.isOpen || app.safe.activity != nil)
-                        .help(app.safe.isOpen ? "Закройте сейф, чтобы выбрать другой диск" : "")
+                        .help(app.safe.isOpen ? tr("Закройте сейф, чтобы выбрать другой диск") : "")
                     } else if let volume = app.destination {
                         Label(volume.name, systemImage: "externaldrive.fill")
                             .font(.callout.weight(.medium))
@@ -187,7 +187,7 @@ struct SafeStatusPanel: View {
                         if volume.totalBytes > 0 {
                             CapacityBar(fraction: Double(volume.totalBytes - volume.availableBytes) / Double(volume.totalBytes), height: 4)
                         }
-                        Text("\(volume.fsDisplayName) · свободно \(Format.bytes(volume.availableBytes))")
+                        Text(tr("\(volume.fsDisplayName) · свободно \(Format.bytes(volume.availableBytes))"))
                             .font(.caption).foregroundStyle(Theme.muted)
                     }
                 }
@@ -196,12 +196,12 @@ struct SafeStatusPanel: View {
             if app.destination != nil {
                 Divider()
                 safeRow
-                Picker("Куда класть", selection: $app.storeMode) {
+                Picker(tr("Куда класть"), selection: $app.storeMode) {
                     ForEach(StoreMode.allCases) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .help("Куда пойдут перенос, бэкап и тома Docker")
+                .help(tr("Куда пойдут перенос, бэкап и тома Docker"))
             }
         }
         .padding(10)
@@ -224,19 +224,19 @@ struct SafeStatusPanel: View {
             if safe.activity != nil {
                 ProgressView().controlSize(.small)
             } else if safe.isOpen {
-                Button("Закрыть") { safe.close(app: app) }
+                Button(tr("Закрыть")) { safe.close(app: app) }
                     .controlSize(.small)
-                    .help("Закрыть сейф (⌘⇧L)")
+                    .help(tr("Закрыть сейф (⌘⇧L)"))
             } else if safe.state?.isEncrypted == true {
-                Button("Открыть") { unlocking = true }
+                Button(tr("Открыть")) { unlocking = true }
                     .controlSize(.small)
                     .popover(isPresented: $unlocking, arrowEdge: .trailing) {
                         VStack(alignment: .leading, spacing: 12) {
                             HStack(spacing: 10) {
                                 IconTile(systemImage: "lock.fill", tone: .good, size: 32)
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text("Открыть сейф").font(.headline)
-                                    Text("«\(safe.state?.displayName ?? "")»").font(.caption).foregroundStyle(Theme.muted)
+                                    Text(tr("Открыть сейф")).font(.headline)
+                                    Text(tr("«\(safe.state?.displayName ?? "")»")).font(.caption).foregroundStyle(Theme.muted)
                                 }
                             }
                             SafeUnlockRow().frame(width: 300)
@@ -245,7 +245,7 @@ struct SafeStatusPanel: View {
                         .onChange(of: safe.isOpen) { if safe.isOpen { unlocking = false } }
                     }
             } else {
-                Button("Создать") { app.section = .safe }.controlSize(.small)
+                Button(tr("Создать")) { app.section = .safe }.controlSize(.small)
             }
         }
     }
@@ -253,9 +253,9 @@ struct SafeStatusPanel: View {
     /// Вторая строка под состоянием: где сейф и сколько в нём места.
     private var status: String {
         let safe = app.safe
-        guard let state = safe.state, state.exists else { return "на «\(app.destination?.name ?? "")»" }
-        if !state.isEncrypted { return "класть в него нельзя" }
-        if let volume = app.safeVolume { return "свободно \(Format.bytes(volume.availableBytes))" }
-        return "«\(state.displayName)»"
+        guard let state = safe.state, state.exists else { return tr("на «\(app.destination?.name ?? "")»") }
+        if !state.isEncrypted { return tr("класть в него нельзя") }
+        if let volume = app.safeVolume { return tr("свободно \(Format.bytes(volume.availableBytes))") }
+        return tr("«\(state.displayName)»")
     }
 }

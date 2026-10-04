@@ -25,6 +25,10 @@ jobs:
           OFFLOAD_SKIP_DOCKER: "1"
         run: swift run -c release OffloadChecks
 
+      # У каждой строки интерфейса должен быть английский перевод.
+      - name: Переводы
+        run: scripts/check-l10n.sh
+
       # Universal и упаковка — ровно то, что делает release.yml на теге.
       # Иначе первая же проверка этих шагов случалась бы на настоящем релизе.
       - name: Сборка OffLoadAI.app (universal)

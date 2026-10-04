@@ -23,19 +23,19 @@ public enum ProFeature: String, CaseIterable, Sendable, Hashable {
 
     public var title: String {
         switch self {
-        case .duplicates: return "Лишние копии"
-        case .habits: return "Привычки"
-        case .projectBackup: return "Бэкап проектов"
-        case .dockerVolumes: return "Тома Docker в сейф"
+        case .duplicates: return tr("Лишние копии")
+        case .habits: return tr("Привычки")
+        case .projectBackup: return tr("Бэкап проектов")
+        case .dockerVolumes: return tr("Тома Docker в сейф")
         }
     }
 
     public var detail: String {
         switch self {
-        case .duplicates: return "Одинаковые файлы находятся по SHA-256, одна копия остаётся всегда, лишние уходят в Корзину."
-        case .habits: return "OffLoadAI учится на ваших ответах и сам кладёт похожее в нужный вопрос."
-        case .projectBackup: return "Обновляемая копия папок с проектами в сейф: копируется только изменённое."
-        case .dockerVolumes: return "Неиспользуемые тома упаковываются в сейф со сверкой каждого файла."
+        case .duplicates: return tr("Одинаковые файлы находятся по SHA-256, одна копия остаётся всегда, лишние уходят в Корзину.")
+        case .habits: return tr("OffLoadAI учится на ваших ответах и сам кладёт похожее в нужный вопрос.")
+        case .projectBackup: return tr("Обновляемая копия папок с проектами в сейф: копируется только изменённое.")
+        case .dockerVolumes: return tr("Неиспользуемые тома упаковываются в сейф со сверкой каждого файла.")
         }
     }
 
@@ -80,9 +80,9 @@ public enum LicenseError: Error, LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .malformed: return "Это не похоже на ключ OffLoadAI Pro. Скопируйте его целиком, вместе с «OFFLOAD-»."
-        case .badSignature: return "Ключ не подходит: подпись не сходится. Возможно, в нём опечатка — скопируйте его заново."
-        case .unsupportedVersion: return "Ключ выпущен для более новой версии OffLoadAI. Обновите программу."
+        case .malformed: return tr("Это не похоже на ключ OffLoadAI Pro. Скопируйте его целиком, вместе с «OFFLOAD-».")
+        case .badSignature: return tr("Ключ не подходит: подпись не сходится. Возможно, в нём опечатка — скопируйте его заново.")
+        case .unsupportedVersion: return tr("Ключ выпущен для более новой версии OffLoadAI. Обновите программу.")
         }
     }
 }

@@ -254,7 +254,7 @@ public struct CleanupPlanner: Sendable {
         // Кеш открытой программы не отмечается, даже если в прошлый раз его удаляли.
         if regenerableReason != nil, let reason = busy[path] { return make(.keep, reason) }
         if let remembered = memory[path], allowed.contains(remembered) {
-            return make(remembered, "В прошлый раз вы выбрали это же.", learned: true)
+            return make(remembered, tr("В прошлый раз вы выбрали это же."), learned: true)
         }
         // Привычка решает, когда расходится с правилом. А когда совпадает с тем, что правила только
         // предлагают, не отмечая (сейф), — отмечает сразу: вы так обычно и делаете. В остальном
@@ -274,21 +274,21 @@ public struct CleanupPlanner: Sendable {
         if let regenerableReason { return (.trash, regenerableReason) }
         if case .blocked(let reason) = item.verdict { return (.keep, reason) }
         if item.isProject, allowed.contains(.backup) {
-            return (.backup, "Похоже на проект (внутри git): его лучше держать в бэкапе, а не переносить.")
+            return (.backup, tr("Похоже на проект (внутри git): его лучше держать в бэкапе, а не переносить."))
         }
         if item.bytes >= bigBytes, let days, days >= staleDays, item.verdict == .safe {
-            return (.safe, "Большое и давно не менялось — в сейфе не мешает, а вернуть можно в любой момент.")
+            return (.safe, tr("Большое и давно не менялось — в сейфе не мешает, а вернуть можно в любой момент."))
         }
         if allowed.contains(.trash) {
-            return (.keep, "Старый установщик: если программа уже стоит, его можно скачать снова.")
+            return (.keep, tr("Старый установщик: если программа уже стоит, его можно скачать снова."))
         }
         if item.isEncryptedImage {
-            return (.keep, "Зашифрованный образ диска — похоже, в нём ваши данные. Удалить его из разбора нельзя.")
+            return (.keep, tr("Зашифрованный образ диска — похоже, в нём ваши данные. Удалить его из разбора нельзя."))
         }
-        if let days, days < 30 { return (.keep, "Менялось недавно — похоже, вы этим пользуетесь.") }
-        if item.bytes < bigBytes { return (.keep, "Места занимает немного.") }
-        if case .caution = item.verdict { return (.keep, "Есть оговорки — решите сами.") }
-        return (.keep, "Менялось не так давно — решите сами.")
+        if let days, days < 30 { return (.keep, tr("Менялось недавно — похоже, вы этим пользуетесь.")) }
+        if item.bytes < bigBytes { return (.keep, tr("Места занимает немного.")) }
+        if case .caution = item.verdict { return (.keep, tr("Есть оговорки — решите сами.")) }
+        return (.keep, tr("Менялось не так давно — решите сами."))
     }
 
     /// Предложения по плиткам (мусор, сейф, копии, установщики, проекты), внутри — по размеру.
@@ -366,33 +366,33 @@ public struct CleanupPlanner: Sendable {
     /// Известные места, которые программы пересоздают сами. Только такие OffLoadAI отмечает сразу:
     /// это его «база безопасности», как у CleanMyMac, — не догадки по именам папок.
     public static let regenerableLocations: [RegenerableLocation] = [
-        RegenerableLocation("Library/Developer/Xcode/DerivedData", "Промежуточные файлы сборки Xcode — пересоздаются при следующей сборке.",
+        RegenerableLocation("Library/Developer/Xcode/DerivedData", tr("Промежуточные файлы сборки Xcode — пересоздаются при следующей сборке."),
                             apps: ["com.apple.dt.Xcode"]),
-        RegenerableLocation("Library/Developer/Xcode/iOS DeviceSupport", "Файлы для отладки на iPhone — Xcode скачает их снова, когда понадобятся.",
+        RegenerableLocation("Library/Developer/Xcode/iOS DeviceSupport", tr("Файлы для отладки на iPhone — Xcode скачает их снова, когда понадобятся."),
                             apps: ["com.apple.dt.Xcode"]),
-        RegenerableLocation("Library/Developer/CoreSimulator/Caches", "Кеш симулятора iOS — пересоздаётся сам.",
+        RegenerableLocation("Library/Developer/CoreSimulator/Caches", tr("Кеш симулятора iOS — пересоздаётся сам."),
                             apps: ["com.apple.iphonesimulator"]),
-        RegenerableLocation("Library/Caches/com.apple.dt.Xcode", "Кеш Xcode — пересоздаётся сам.", apps: ["com.apple.dt.Xcode"]),
-        RegenerableLocation("Library/Caches/Homebrew", "Скачанные пакеты Homebrew — brew скачает их снова."),
-        RegenerableLocation("Library/Caches/pip", "Кеш pip — пакеты скачаются снова."),
-        RegenerableLocation("Library/Caches/Yarn", "Кеш Yarn — пакеты скачаются снова."),
-        RegenerableLocation(".yarn/berry/cache", "Кеш Yarn — пакеты скачаются снова."),
-        RegenerableLocation(".npm/_cacache", "Кеш npm — пакеты скачаются снова."),
-        RegenerableLocation("Library/Caches/CocoaPods", "Кеш CocoaPods — поды скачаются снова."),
-        RegenerableLocation("Library/Caches/go-build", "Кеш сборки Go — пересоздаётся при следующей сборке."),
-        RegenerableLocation(".gradle/caches", "Кеш Gradle — зависимости скачаются снова."),
-        RegenerableLocation(".cargo/registry/cache", "Скачанные пакеты Cargo — скачаются снова."),
-        RegenerableLocation("Library/Caches/ms-playwright", "Браузеры Playwright — скачаются снова командой «playwright install»."),
-        RegenerableLocation("Library/Caches/JetBrains", "Кеши и индексы сред JetBrains — пересоздаются при следующем запуске. Локальная история правок не затрагивается.",
+        RegenerableLocation("Library/Caches/com.apple.dt.Xcode", tr("Кеш Xcode — пересоздаётся сам."), apps: ["com.apple.dt.Xcode"]),
+        RegenerableLocation("Library/Caches/Homebrew", tr("Скачанные пакеты Homebrew — brew скачает их снова.")),
+        RegenerableLocation("Library/Caches/pip", tr("Кеш pip — пакеты скачаются снова.")),
+        RegenerableLocation("Library/Caches/Yarn", tr("Кеш Yarn — пакеты скачаются снова.")),
+        RegenerableLocation(".yarn/berry/cache", tr("Кеш Yarn — пакеты скачаются снова.")),
+        RegenerableLocation(".npm/_cacache", tr("Кеш npm — пакеты скачаются снова.")),
+        RegenerableLocation("Library/Caches/CocoaPods", tr("Кеш CocoaPods — поды скачаются снова.")),
+        RegenerableLocation("Library/Caches/go-build", tr("Кеш сборки Go — пересоздаётся при следующей сборке.")),
+        RegenerableLocation(".gradle/caches", tr("Кеш Gradle — зависимости скачаются снова.")),
+        RegenerableLocation(".cargo/registry/cache", tr("Скачанные пакеты Cargo — скачаются снова.")),
+        RegenerableLocation("Library/Caches/ms-playwright", tr("Браузеры Playwright — скачаются снова командой «playwright install».")),
+        RegenerableLocation("Library/Caches/JetBrains", tr("Кеши и индексы сред JetBrains — пересоздаются при следующем запуске. Локальная история правок не затрагивается."),
                             apps: ["com.jetbrains."], children: ["caches", "index"]),
-        RegenerableLocation("Library/Application Support/Code/Cache", "Кеш VS Code — пересоздаётся сам.", apps: ["com.microsoft.VSCode"]),
-        RegenerableLocation("Library/Application Support/Code/CachedData", "Кеш VS Code — пересоздаётся сам.",
+        RegenerableLocation("Library/Application Support/Code/Cache", tr("Кеш VS Code — пересоздаётся сам."), apps: ["com.microsoft.VSCode"]),
+        RegenerableLocation("Library/Application Support/Code/CachedData", tr("Кеш VS Code — пересоздаётся сам."),
                             apps: ["com.microsoft.VSCode"]),
-        RegenerableLocation("Library/Caches/Google/Chrome", "Кеш Chrome — страницы подгрузятся снова; закладки, пароли и история не затрагиваются.",
+        RegenerableLocation("Library/Caches/Google/Chrome", tr("Кеш Chrome — страницы подгрузятся снова; закладки, пароли и история не затрагиваются."),
                             apps: ["com.google.Chrome"]),
-        RegenerableLocation("Library/Caches/com.spotify.client", "Кеш Spotify — музыка подгрузится снова. Скачанное для прослушивания без сети, возможно, придётся скачать заново.",
+        RegenerableLocation("Library/Caches/com.spotify.client", tr("Кеш Spotify — музыка подгрузится снова. Скачанное для прослушивания без сети, возможно, придётся скачать заново."),
                             apps: ["com.spotify.client"]),
-        RegenerableLocation("Library/iTunes/iPhone Software Updates", "Прошивки iPhone — Finder скачает нужную снова."),
+        RegenerableLocation("Library/iTunes/iPhone Software Updates", tr("Прошивки iPhone — Finder скачает нужную снова.")),
     ]
 
     /// Восстанавливаемые места, которые действительно есть у этого человека.
@@ -414,7 +414,7 @@ public struct CleanupPlanner: Sendable {
             let holders = running.filter { id, _ in location.apps.contains { id.hasPrefix($0) } }
             guard let name = holders.sorted(by: { $0.key < $1.key }).first?.value else { continue }
             for path in paths(of: location, home: home, fileManager: fileManager) {
-                result[path] = "Сейчас открыт \(name): кеш занят. Закройте программу — и его можно будет удалить."
+                result[path] = tr("Сейчас открыт \(name): кеш занят. Закройте программу — и его можно будет удалить.")
             }
         }
         return result
@@ -459,22 +459,22 @@ extension CleanupPlanner {
 
     /// Почему эту копию удалять нельзя; nil — можно.
     func keepReason(_ copy: DuplicateCopy) -> String? {
-        if isIgnored(copy.url.path) { return "Вы просили не предлагать этот файл — эта копия остаётся." }
+        if isIgnored(copy.url.path) { return tr("Вы просили не предлагать этот файл — эта копия остаётся.") }
         switch copy.verdict {
         case .blocked(let reason): return reason
         case .caution(let notes): return notes.first
         case .safe: break
         }
-        if copy.sharesData { return "Клон другой копии: данные у них общие, и удаление места не освободит." }
+        if copy.sharesData { return tr("Клон другой копии: данные у них общие, и удаление места не освободит.") }
         if let folder = managedFolder(copy.url) {
-            return "Файл медиатеки в ~/\(folder): приложение найдёт его только на этом месте."
+            return tr("Файл медиатеки в ~/\(folder): приложение найдёт его только на этом месте.")
         }
         // Как и сами образы в разборе: зашифрованный .dmg — личные данные, к .iso бывает подключена виртуальная машина.
         if copy.isEncryptedImage {
-            return "Зашифрованный образ диска — похоже, в нём ваши данные. Удалить его из разбора нельзя."
+            return tr("Зашифрованный образ диска — похоже, в нём ваши данные. Удалить его из разбора нельзя.")
         }
         if copy.url.pathExtension.lowercased() == "iso" {
-            return "Образ .iso: к нему бывает подключена виртуальная машина. Удалить его из разбора нельзя."
+            return tr("Образ .iso: к нему бывает подключена виртуальная машина. Удалить его из разбора нельзя.")
         }
         return nil
     }
@@ -510,16 +510,16 @@ extension CleanupPlanner {
     func keeperReason(_ keeper: DuplicateCopy, others: [DuplicateCopy]) -> String {
         if let reason = keepReason(keeper) { return reason }
         if !isTransient(keeper.url), others.contains(where: { isTransient($0.url) }) {
-            return "Лежит на своём месте, а не в Загрузках или на Рабочем столе, — эта копия остаётся."
+            return tr("Лежит на своём месте, а не в Загрузках или на Рабочем столе, — эта копия остаётся.")
         }
         if !Self.looksLikeCopy(keeper.url.lastPathComponent), others.contains(where: { Self.looksLikeCopy($0.url.lastPathComponent) }) {
-            return "Имя без «(1)» и «копия» — похоже на оригинал, он остаётся."
+            return tr("Имя без «(1)» и «копия» — похоже на оригинал, он остаётся.")
         }
         if let date = keeper.created ?? keeper.modified,
            others.allSatisfy({ ($0.created ?? $0.modified).map { $0 > date } ?? true }) {
-            return "Появилась раньше остальных — похоже на оригинал, он остаётся."
+            return tr("Появилась раньше остальных — похоже на оригинал, он остаётся.")
         }
-        return "Одна копия остаётся — эта."
+        return tr("Одна копия остаётся — эта.")
     }
 
     /// Строки одной группы: первая — копия, которая остаётся, остальные — лишние.
@@ -545,7 +545,7 @@ extension CleanupPlanner {
                 reason = reasonToKeep
             } else {
                 action = .trash
-                reason = "Лишняя копия: содержимое то же, что у копии, которая остаётся."
+                reason = tr("Лишняя копия: содержимое то же, что у копии, которая остаётся.")
                 // Привычка может лишнюю копию только оставить, но не удалить: какую копию удалить,
                 // решают правила, а та, что остаётся, привычкам не подчиняется.
                 let features = DecisionFeatures.of(path: copy.url.path, home: home, kind: .copy, bytes: copy.allocated,
@@ -559,7 +559,7 @@ extension CleanupPlanner {
             var learned = false
             if let remembered = memory[copy.url.path], allowed.contains(remembered) {
                 action = remembered
-                reason = "В прошлый раз вы выбрали это же."
+                reason = tr("В прошлый раз вы выбрали это же.")
                 learned = true
                 habit = false
             }

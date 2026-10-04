@@ -241,7 +241,8 @@ public struct AssistantTrash: Sendable {
 
 /// Что помощнику говорят и чего от него ждут. Одинаково для любой модели.
 public enum AssistantPrompt {
-    public static let instructions = """
+    /// Язык пояснений — тот же, что у интерфейса: английскому пользователю модель отвечает по-английски.
+    public static var instructions: String { """
         Ты — помощник программы OffLoadAI, которая освобождает место на диске без риска потерять данные.
         Твоя единственная задача — помочь человеку разобраться с его файлами и папками: что важно, что менее важно, а что мусор.
         Ты видишь только сведения, которые передаёт программа: путь от домашней папки (~), размер, дату изменения,
@@ -254,7 +255,7 @@ public enum AssistantPrompt {
           "junk" — мусор, который создаётся заново или больше не нужен (кеши, временные файлы, логи, скачанные установщики, дубликаты).
         - action: "keep" — оставить на месте; "safe" — убрать в зашифрованный сейф на внешнем диске (вернуть можно в любой момент);
           "trash" — в Корзину (вернуть можно, пока Корзина не очищена).
-        - reason: одна короткая фраза по-русски, почему — так, чтобы понял человек без технических знаний.
+        - reason: одна короткая фраза на языке «\(AppLanguage.modelLanguage)», почему — так, чтобы понял человек без технических знаний.
 
         Правила:
         - Сомневаешься — выбирай более бережное: keep лучше safe, safe лучше trash. Важное никогда не отправляй в Корзину.
@@ -262,10 +263,10 @@ public enum AssistantPrompt {
           заново, и старые установщики. Остальное, что не нужно на диске, — "safe".
         - Объекты с пометкой "blocked" программа трогать запрещает: для них только "keep", объясни, что это.
         - Не выдумывай: если по сведениям непонятно, что это, так и скажи в reason и выбери "keep".
-        - summary: 1–3 предложения по-русски — что главное в этом списке и сколько места можно освободить.
+        - summary: 1–3 предложения на языке «\(AppLanguage.modelLanguage)» — что главное в этом списке и сколько места можно освободить.
         - Если человек задал вопрос, ответь на него в summary, коротко и по делу, только о его файлах.
         Отвечай строго по схеме JSON, только объектами из списка (по их id).
-        """
+        """ }
 
     public static let schema = """
         {"type":"object","additionalProperties":false,"required":["summary","items"],"properties":{
@@ -323,7 +324,7 @@ public enum AssistantPrompt {
     /// поправляются: запрещённое не трогается, Корзина — только для того, что правила разрешают удалить.
     public static func parse(_ answer: Any?, facts: [FileFact], provider: String, cost: Double?) throws -> AssistantAnswer {
         guard let root = answer as? [String: Any], let items = root["items"] as? [Any] else {
-            throw AssistantError(.badAnswer, "Помощник ответил не по форме — попробуйте ещё раз.")
+            throw AssistantError(.badAnswer, tr("Помощник ответил не по форме — попробуйте ещё раз."))
         }
         let byID = Dictionary(facts.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var advice: [Advice] = []
@@ -356,18 +357,18 @@ public enum AssistantPrompt {
         var advice = advice
         if fact.verdict.isBlocked, advice.action != .keep {
             advice.action = .keep
-            advice.overruled = "Правила OffLoadAI запрещают это трогать: " + fact.verdict.notes.joined(separator: " ")
+            advice.overruled = tr("Правила OffLoadAI запрещают это трогать: ") + fact.verdict.notes.joined(separator: " ")
         } else if advice.action == .trash, case .caution = fact.verdict {
             advice.action = .safe
-            advice.overruled = "С оговорками — поэтому не в Корзину, а в сейф: оттуда вернуть проще."
+            advice.overruled = tr("С оговорками — поэтому не в Корзину, а в сейф: оттуда вернуть проще.")
         } else if advice.action == .trash, advice.importance == .important {
             advice.action = .safe
-            advice.overruled = "Важное в Корзину не отправляю — только в сейф."
+            advice.overruled = tr("Важное в Корзину не отправляю — только в сейф.")
         } else if advice.action == .trash, !fact.canTrash {
             // Помощник мог ошибиться или поддаться имени файла: удалить OffLoadAI разрешает только то, что
             // создаётся заново, и старые установщики — как в «Разобрать». Личное — в сейф, со сверкой.
             advice.action = .safe
-            advice.overruled = "Удалять OffLoadAI разрешает только то, что создаётся заново, и старые установщики. Это — в сейф: оригинал исчезнет, только когда копия сверена."
+            advice.overruled = tr("Удалять OffLoadAI разрешает только то, что создаётся заново, и старые установщики. Это — в сейф: оригинал исчезнет, только когда копия сверена.")
         }
         return advice
     }

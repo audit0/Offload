@@ -16,26 +16,26 @@ struct DockerView: View {
             Divider()
             switch model.status {
             case .unknown, .checking:
-                ProgressView("Спрашиваю Docker…").frame(maxWidth: .infinity, maxHeight: .infinity)
+                ProgressView(tr("Спрашиваю Docker…")).frame(maxWidth: .infinity, maxHeight: .infinity)
             case .notInstalled:
-                ContentUnavailableView("Docker не установлен", systemImage: "shippingbox",
-                                       description: Text("Этот раздел нужен, только если вы пользуетесь Docker."))
+                ContentUnavailableView(tr("Docker не установлен"), systemImage: "shippingbox",
+                                       description: Text(tr("Этот раздел нужен, только если вы пользуетесь Docker.")))
             case .notRunning:
                 ContentUnavailableView {
-                    Label("Docker не запущен", systemImage: "shippingbox")
+                    Label(tr("Docker не запущен"), systemImage: "shippingbox")
                 } description: {
-                    Text("Откройте Docker Desktop и обновите список.")
+                    Text(tr("Откройте Docker Desktop и обновите список."))
                 } actions: {
-                    Button("Обновить") { model.reload(app: app) }
+                    Button(tr("Обновить")) { model.reload(app: app) }
                 }
             case .ready:
                 usageBand
                 Divider()
                 Table(model.volumes, selection: $bindable.selection) {
-                    TableColumn("Том") { volume in
+                    TableColumn(tr("Том")) { volume in
                         Text(volume.name).lineLimit(1).truncationMode(.middle)
                     }
-                    TableColumn("Размер") { volume in
+                    TableColumn(tr("Размер")) { volume in
                         if let bytes = volume.sizeBytes {
                             Text(Format.bytes(bytes)).monospacedDigit()
                         } else if model.sizing {
@@ -45,21 +45,21 @@ struct DockerView: View {
                         }
                     }
                     .width(90)
-                    TableColumn("Создан") { volume in
+                    TableColumn(tr("Создан")) { volume in
                         Text(volume.createdAt.map { Format.relative($0) } ?? "—")
                     }
                     .width(140)
-                    TableColumn("Последнее изменение") { volume in
+                    TableColumn(tr("Последнее изменение")) { volume in
                         if let date = model.activity[volume.name] {
                             Text(Format.relative(date))
                         } else if model.checking.contains(volume.name) {
                             ProgressView().controlSize(.mini)
                         } else {
-                            Button("Проверить") { model.checkActivity([volume.name]) }.controlSize(.small)
+                            Button(tr("Проверить")) { model.checkActivity([volume.name]) }.controlSize(.small)
                         }
                     }
                     .width(160)
-                    TableColumn("Используется") { volume in
+                    TableColumn(tr("Используется")) { volume in
                         if volume.usedBy.isEmpty {
                             Text("—").foregroundStyle(Theme.muted)
                         } else {
@@ -77,25 +77,25 @@ struct DockerView: View {
         .sheet(isPresented: $showPrune) { DockerPruneSheet() }
         .task { if model.status == .unknown { model.reload(app: app) } }
         .onChange(of: app.target?.id) { model.reload(app: app) }
-        .confirmationDialog("Архивировать выбранные тома?", isPresented: $confirmArchive) {
+        .confirmationDialog(tr("Архивировать выбранные тома?"), isPresented: $confirmArchive) {
             Button(app.target?.isEncryptedImage == true
-                   ? "Упаковать в сейф и убрать из Docker"
-                   : "Упаковать на «\(app.target?.name ?? "")» открыто и убрать из Docker") {
+                   ? tr("Упаковать в сейф и убрать из Docker")
+                   : tr("Упаковать на «\(app.target?.name ?? "")» открыто и убрать из Docker")) {
                 if let volume = app.target { model.archiveSelected(to: volume, app: app) }
             }
-            Button("Отмена", role: .cancel) {}
+            Button(tr("Отмена"), role: .cancel) {}
         } message: {
-            Text("Выбрано \(model.selection.count), около \(Format.bytes(model.selectedBytes)). Каждый том упаковывается в архив, список всех его файлов сверяется с архивом, и только потом том удаляется из Docker. Тома, подключённые к контейнерам, не трогаются.")
+            Text(tr("Выбрано \(model.selection.count), около \(Format.bytes(model.selectedBytes)). Каждый том упаковывается в архив, список всех его файлов сверяется с архивом, и только потом том удаляется из Docker. Тома, подключённые к контейнерам, не трогаются."))
         }
-        .alert("Вернуть том в Docker",
+        .alert(tr("Вернуть том в Docker"),
                isPresented: Binding(get: { restoreArchive != nil }, set: { if !$0 { restoreArchive = nil } })) {
-            TextField("Имя тома", text: $restoreName)
-            Button("Вернуть") {
+            TextField(tr("Имя тома"), text: $restoreName)
+            Button(tr("Вернуть")) {
                 if let archive = restoreArchive { model.restore(archive, name: restoreName, app: app) }
             }
-            Button("Отмена", role: .cancel) {}
+            Button(tr("Отмена"), role: .cancel) {}
         } message: {
-            Text("Будет создан новый том и заполнен из архива со сверкой. Существующий том с таким именем не перезаписывается.")
+            Text(tr("Будет создан новый том и заполнен из архива со сверкой. Существующий том с таким именем не перезаписывается."))
         }
     }
 
@@ -113,30 +113,30 @@ struct DockerView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Docker").font(Theme.display(19))
                 if model.sizing {
-                    Text("Docker считает размеры томов — это может занять минуту").font(.caption).foregroundStyle(Theme.muted)
+                    Text(tr("Docker считает размеры томов — это может занять минуту")).font(.caption).foregroundStyle(Theme.muted)
                 } else if let raw = model.rawBytes {
-                    Text("Диск Docker (Docker.raw) занимает \(Format.bytes(raw))").font(.caption).foregroundStyle(Theme.muted)
+                    Text(tr("Диск Docker (Docker.raw) занимает \(Format.bytes(raw))")).font(.caption).foregroundStyle(Theme.muted)
                 }
             }
             Spacer()
             if let busy = model.busy {
                 ProgressView().controlSize(.small)
                 Text(busy).font(.callout).lineLimit(1).truncationMode(.middle)
-                if !model.pruning { Button("Отменить") { model.cancel() } }
+                if !model.pruning { Button(tr("Отменить")) { model.cancel() } }
             }
-            Button { model.reload(app: app) } label: { Label("Обновить", systemImage: "arrow.clockwise") }
+            Button { model.reload(app: app) } label: { Label(tr("Обновить"), systemImage: "arrow.clockwise") }
                 .disabled(model.busy != nil)
             Button {
                 if app.pro.allows(.dockerVolumes) { confirmArchive = true } else { app.pro.offer(.dockerVolumes) }
             } label: {
                 HStack(spacing: 6) {
-                    Label("Архивировать на диск…", systemImage: "archivebox")
+                    Label(tr("Архивировать на диск…"), systemImage: "archivebox")
                     if !app.pro.allows(.dockerVolumes) { ProTag() }
                 }
             }
                 .prominentButton()
                 .disabled(model.selection.isEmpty || model.busy != nil || app.target == nil)
-                .help(app.targetProblem ?? "Упаковать выбранные тома и убрать их из Docker")
+                .help(app.targetProblem ?? tr("Упаковать выбранные тома и убрать их из Docker"))
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
@@ -147,22 +147,22 @@ struct DockerView: View {
         let model = app.docker
         return HStack(spacing: 24) {
             if let usage = model.usage {
-                figure("Образы", usage.images, note: "можно убрать")
-                figure("Кеш сборки", usage.buildCache, note: "можно убрать")
-                figure("Контейнеры", usage.containers, note: "можно убрать")
+                figure(tr("Образы"), usage.images, note: tr("можно убрать"))
+                figure(tr("Кеш сборки"), usage.buildCache, note: tr("можно убрать"))
+                figure(tr("Контейнеры"), usage.containers, note: tr("можно убрать"))
                 // Тома очистка не трогает: неподключённые можно только упаковать на диск.
-                figure("Тома", usage.volumes, note: "не подключены", tone: .neutral)
+                figure(tr("Тома"), usage.volumes, note: tr("не подключены"), tone: .neutral)
             } else if model.measuringUsage {
                 ProgressView().controlSize(.small)
-                Text("Docker считает, что занимает место внутри него…").font(.callout).foregroundStyle(Theme.muted)
+                Text(tr("Docker считает, что занимает место внутри него…")).font(.callout).foregroundStyle(Theme.muted)
             } else {
-                Text("Docker не сказал, сколько места занято внутри.").font(.callout).foregroundStyle(Theme.muted)
+                Text(tr("Docker не сказал, сколько места занято внутри.")).font(.callout).foregroundStyle(Theme.muted)
             }
             Spacer(minLength: 12)
             if model.usage != nil, model.measuringUsage { ProgressView().controlSize(.small) }
-            Button { showPrune = true } label: { Label("Освободить место…", systemImage: "sparkles") }
+            Button { showPrune = true } label: { Label(tr("Освободить место…"), systemImage: "sparkles") }
                 .disabled(model.usage == nil || model.busy != nil)
-                .help("Удалить кеш сборки, неиспользуемые образы и остановленные контейнеры. Тома не трогаются.")
+                .help(tr("Удалить кеш сборки, неиспользуемые образы и остановленные контейнеры. Тома не трогаются."))
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
@@ -193,7 +193,7 @@ struct DockerView: View {
         if !model.archives.isEmpty {
             Divider()
             VStack(alignment: .leading, spacing: 8) {
-                Text("Архивы томов").font(.headline)
+                Text(tr("Архивы томов")).font(.headline)
                 ScrollView {
                     VStack(spacing: 0) {
                         ForEach(model.archives, id: \.self) { archive in
@@ -203,10 +203,10 @@ struct DockerView: View {
                                          tone: place.inSafe ? .good : .neutral, size: 26)
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(place.path).lineLimit(1).truncationMode(.middle).help(archive.path)
-                                    Text(place.inSafe ? "в сейфе" : "открыто на диске").font(.caption).foregroundStyle(Theme.muted)
+                                    Text(place.inSafe ? tr("в сейфе") : tr("открыто на диске")).font(.caption).foregroundStyle(Theme.muted)
                                 }
                                 Spacer()
-                                Button("Вернуть в Docker…") {
+                                Button(tr("Вернуть в Docker…")) {
                                     restoreName = DockerService.volumeName(fromArchive: archive) ?? ""
                                     restoreArchive = archive
                                 }
@@ -235,23 +235,23 @@ struct DockerView: View {
 extension DockerPruneTarget {
     var title: String {
         switch self {
-        case .buildCache: return "Кеш сборки"
-        case .danglingImages: return "Образы без имени"
-        case .images: return "Все неиспользуемые образы"
-        case .containers: return "Остановленные контейнеры"
+        case .buildCache: return tr("Кеш сборки")
+        case .danglingImages: return tr("Образы без имени")
+        case .images: return tr("Все неиспользуемые образы")
+        case .containers: return tr("Остановленные контейнеры")
         }
     }
 
     var detail: String {
         switch self {
         case .buildCache:
-            return "Промежуточные слои от docker build. Следующая сборка пойдёт дольше, пока кеш не наберётся заново."
+            return tr("Промежуточные слои от docker build. Следующая сборка пойдёт дольше, пока кеш не наберётся заново.")
         case .danglingImages:
-            return "Остатки пересборок с именем <none>: запустить их не по чему, ни один контейнер их не использует."
+            return tr("Остатки пересборок с именем <none>: запустить их не по чему, ни один контейнер их не использует.")
         case .images:
-            return "Образы, которые не нужны ни одному контейнеру. Docker скачает их заново, когда понадобятся; собранные вами и никуда не отправленные придётся собрать снова. Отмечайте сами."
+            return tr("Образы, которые не нужны ни одному контейнеру. Docker скачает их заново, когда понадобятся; собранные вами и никуда не отправленные придётся собрать снова. Отмечайте сами.")
         case .containers:
-            return "Всё, что записано внутри контейнера, а не в томе, пропадёт вместе с ним. Образы удалённых контейнеров тоже освободятся."
+            return tr("Всё, что записано внутри контейнера, а не в томе, пропадёт вместе с ним. Образы удалённых контейнеров тоже освободятся.")
         }
     }
 }
@@ -270,8 +270,8 @@ struct DockerPruneSheet: View {
     var body: some View {
         let model = app.docker
         let usage = model.usage ?? DockerUsage()
-        SheetLayout(systemImage: "shippingbox.fill", title: "Освободить место в Docker",
-                    subtitle: model.rawBytes.map { "Диск Docker (Docker.raw) занимает на Mac \(Format.bytes($0))" },
+        SheetLayout(systemImage: "shippingbox.fill", title: tr("Освободить место в Docker"),
+                    subtitle: model.rawBytes.map { tr("Диск Docker (Docker.raw) занимает на Mac \(Format.bytes($0))") },
                     width: 580) {
             Card(padding: 0, spacing: 0) {
                 ForEach(Self.order, id: \.self) { target in
@@ -280,12 +280,12 @@ struct DockerPruneSheet: View {
                 }
             }
             if targets.contains(.containers) {
-                Notice(.warning, "Отмечайте остановленные контейнеры, только если они точно не нужны: удалённый контейнер не вернуть.")
+                Notice(.warning, tr("Отмечайте остановленные контейнеры, только если они точно не нужны: удалённый контейнер не вернуть."))
             }
-            Notice(.info, "Тома не трогаются: в них данные баз и проектов. Ненужные тома можно упаковать на диск кнопкой «Архивировать на диск…».")
+            Notice(.info, tr("Тома не трогаются: в них данные баз и проектов. Ненужные тома можно упаковать на диск кнопкой «Архивировать на диск…»."))
         } actions: {
-            Button("Отмена") { dismiss() }.keyboardShortcut(.cancelAction)
-            Button(targets.isEmpty ? "Освободить" : "Освободить около \(Format.bytes(usage.reclaimable(targets)))") {
+            Button(tr("Отмена")) { dismiss() }.keyboardShortcut(.cancelAction)
+            Button(targets.isEmpty ? tr("Освободить") : tr("Освободить около \(Format.bytes(usage.reclaimable(targets)))")) {
                 model.prune(targets, app: app)
                 dismiss()
             }

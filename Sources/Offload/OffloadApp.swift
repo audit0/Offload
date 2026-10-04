@@ -21,25 +21,25 @@ struct OffloadApp: App {
         .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .appInfo) {
-                Button("О программе OffLoadAI") { AboutPanel.show() }
-                Button("Проверить обновления…") { model.updates.checkNow() }
+                Button(tr("О программе OffLoadAI")) { AboutPanel.show() }
+                Button(tr("Проверить обновления…")) { model.updates.checkNow() }
                     .disabled(model.updates.isChecking)
-                Toggle("Сообщать о новых версиях", isOn: Binding(get: { model.updates.enabled == true },
+                Toggle(tr("Сообщать о новых версиях"), isOn: Binding(get: { model.updates.enabled == true },
                                                                  set: { model.updates.setEnabled($0) }))
                 Button("OffLoadAI Pro…") { model.pro.offer() }
             }
             // Как «Dismount All» в VeraCrypt: закрыть сейф из любого места одним сочетанием.
-            CommandMenu("Сейф") {
-                Button("Закрыть сейф") { model.safe.close(app: model) }
+            CommandMenu(tr("Сейф")) {
+                Button(tr("Закрыть сейф")) { model.safe.close(app: model) }
                     .keyboardShortcut("l", modifiers: [.command, .shift])
                     .disabled(!model.safe.isOpen)
-                Button("Открыть раздел «Сейф»") { model.section = .safe }
+                Button(tr("Открыть раздел «Сейф»")) { model.section = .safe }
                     .keyboardShortcut("0", modifiers: [.command])
             }
             CommandGroup(replacing: .help) {
-                Link("OffLoadAI на GitHub", destination: Self.repositoryURL)
-                Link("Канал OffLoadAI в Telegram", destination: URL(string: "https://t.me/OffLoadAI")!)
-                Link("Сообщить о проблеме", destination: Self.repositoryURL.appendingPathComponent("issues"))
+                Link(tr("OffLoadAI на GitHub"), destination: Self.repositoryURL)
+                Link(tr("Канал OffLoadAI в Telegram"), destination: URL(string: "https://t.me/OffLoadAI")!)
+                Link(tr("Сообщить о проблеме"), destination: Self.repositoryURL.appendingPathComponent("issues"))
             }
         }
     }
@@ -48,8 +48,8 @@ struct OffloadApp: App {
 enum AboutPanel {
     static func show() {
         let info = Bundle.main.infoDictionary ?? [:]
-        let version = info["CFBundleShortVersionString"] as? String ?? "разработка"
-        let credits = NSMutableAttributedString(string: "Разгрузка диска Mac без риска потерять данные.\nОригинал удаляется только после проверенной копии.\n\n")
+        let version = info["CFBundleShortVersionString"] as? String ?? tr("разработка")
+        let credits = NSMutableAttributedString(string: tr("Разгрузка диска Mac без риска потерять данные.\nОригинал удаляется только после проверенной копии.\n\n"))
         credits.append(NSAttributedString(string: "github.com/audit0/Offload", attributes: [.link: OffloadApp.repositoryURL]))
         credits.addAttribute(.font, value: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize), range: NSRange(location: 0, length: credits.length))
         NSApp.orderFrontStandardAboutPanel(options: [
@@ -92,10 +92,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return .terminateNow
         }
         let alert = NSAlert()
-        alert.messageText = "Сейчас идёт копирование"
-        alert.informativeText = "Если выйти, копирование прервётся. Данные не пострадают: оригинал не удаляется, пока копия не сверена, а незаконченная копия будет убрана."
-        alert.addButton(withTitle: "Прервать и выйти")
-        alert.addButton(withTitle: "Не выходить")
+        alert.messageText = tr("Сейчас идёт копирование")
+        alert.informativeText = tr("Если выйти, копирование прервётся. Данные не пострадают: оригинал не удаляется, пока копия не сверена, а незаконченная копия будет убрана.")
+        alert.addButton(withTitle: tr("Прервать и выйти"))
+        alert.addButton(withTitle: tr("Не выходить"))
         guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
         model.cancelEverything()
         Task { @MainActor in
@@ -120,10 +120,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try SecretsVault.detach(mount)
         } catch {
             let alert = NSAlert()
-            alert.messageText = "Сейф не закрывается"
-            alert.informativeText = "В нём открыты файлы в других программах. Закрыть принудительно? Несохранённое в этих программах может пропасть."
-            alert.addButton(withTitle: "Закрыть принудительно")
-            alert.addButton(withTitle: "Оставить открытым")
+            alert.messageText = tr("Сейф не закрывается")
+            alert.informativeText = tr("В нём открыты файлы в других программах. Закрыть принудительно? Несохранённое в этих программах может пропасть.")
+            alert.addButton(withTitle: tr("Закрыть принудительно"))
+            alert.addButton(withTitle: tr("Оставить открытым"))
             if alert.runModal() == .alertFirstButtonReturn { try? SecretsVault.detach(mount, force: true) }
         }
     }
@@ -139,7 +139,7 @@ enum Snapshots {
         try? await Task.sleep(for: .seconds(1))
         for candidate in NSApp.windows {
             let f = candidate.frame
-            FileHandle.standardError.write(Data("окно #\(candidate.windowNumber) «\(candidate.title)» \(Int(f.width))×\(Int(f.height)) видимо=\(candidate.isVisible) класс=\(type(of: candidate))\n".utf8))
+            FileHandle.standardError.write(Data(tr("окно #\(candidate.windowNumber) «\(candidate.title)» \(Int(f.width))×\(Int(f.height)) видимо=\(candidate.isVisible) класс=\(type(of: candidate))\n").utf8))
         }
         guard let window = NSApp.windows.first(where: { $0.isVisible && $0.styleMask.contains(.titled) }), let model = delegate.model else {
             NSApp.terminate(nil)
@@ -150,11 +150,11 @@ enum Snapshots {
         // Первое программное переключение раздела до окончания начальной раскладки боковой панели теряется.
         try? await Task.sleep(for: .seconds(2))
         let started = Date()
-        func log(_ text: String) { FileHandle.standardError.write(Data("[\(Int(Date().timeIntervalSince(started))) с] \(text)\n".utf8)) }
+        func log(_ text: String) { FileHandle.standardError.write(Data(tr("[\(Int(Date().timeIntervalSince(started))) с] \(text)\n").utf8)) }
         let wanted = ProcessInfo.processInfo.environment["OFFLOAD_SNAPSHOT_SECTIONS"]?
             .split(separator: ",").compactMap { SidebarSection(rawValue: String($0)) }
         for section in wanted?.isEmpty == false ? wanted! : SidebarSection.allCases {
-            log("раздел \(section.rawValue)")
+            log(tr("раздел \(section.rawValue)"))
             model.section = section
             try? await Task.sleep(for: .seconds(3))
             await focus(window, model: model, section: section)
@@ -167,7 +167,7 @@ enum Snapshots {
                 await focus(window, model: model, section: section)
                 save(window, to: directory.appendingPathComponent("\(section.rawValue).png"))
             }
-            log("снимок \(section.rawValue)")
+            log(tr("снимок \(section.rawValue)"))
         }
         // OFFLOAD_SNAPSHOT_PRO=1 — ещё и окно «OffLoadAI Pro», открытое «да» на лишние копии.
         if ProcessInfo.processInfo.environment["OFFLOAD_SNAPSHOT_PRO"] == "1" {
@@ -176,7 +176,7 @@ enum Snapshots {
             if let sheet = window.attachedSheet ?? NSApp.windows.first(where: { $0.sheetParent == window || ($0 != window && $0.isVisible && $0.title.isEmpty) }) {
                 save(sheet, to: directory.appendingPathComponent("pro.png"))
             } else {
-                log("окно «OffLoadAI Pro» не нашлось")
+                log(tr("окно «OffLoadAI Pro» не нашлось"))
             }
             // С открытым листом программа не завершается: сначала закрыть.
             model.pro.isPresented = false
@@ -213,7 +213,7 @@ enum Snapshots {
     /// в PNG стал бы белым, и светлый текст тёмной темы пропал бы на нём целиком.
     static func save(_ window: NSWindow, to url: URL) {
         if ProcessInfo.processInfo.environment["OFFLOAD_SNAPSHOT_DEBUG"] == "1", let root = window.contentView {
-            FileHandle.standardError.write(Data("--- иерархия вью для \(url.lastPathComponent) ---\n".utf8))
+            FileHandle.standardError.write(Data(tr("--- иерархия вью для \(url.lastPathComponent) ---\n").utf8))
             dump(root)
         }
         guard let root = window.contentView, let layer = root.layer else { return }

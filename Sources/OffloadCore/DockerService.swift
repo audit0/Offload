@@ -89,18 +89,18 @@ public enum DockerError: LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .notInstalled: return "Docker не установлен."
-        case .notRunning: return "Docker не запущен. Откройте Docker Desktop и повторите."
-        case .invalidName(let name): return "Недопустимое имя тома: «\(name)»."
-        case .inUse(let name, let containers): return "Том «\(name)» используется контейнерами: \(containers.joined(separator: ", "))."
-        case .alreadyExists(let name): return "Том «\(name)» уже существует — перезаписывать не буду."
-        case .diskGuard(let reason): return "Остановлено, чтобы не забить диск Mac: \(reason)"
+        case .notInstalled: return tr("Docker не установлен.")
+        case .notRunning: return tr("Docker не запущен. Откройте Docker Desktop и повторите.")
+        case .invalidName(let name): return tr("Недопустимое имя тома: «\(name)».")
+        case .inUse(let name, let containers): return tr("Том «\(name)» используется контейнерами: \(containers.joined(separator: ", ")).")
+        case .alreadyExists(let name): return tr("Том «\(name)» уже существует — перезаписывать не буду.")
+        case .diskGuard(let reason): return tr("Остановлено, чтобы не забить диск Mac: \(reason)")
         case .failed(let message): return message
-        case .verificationFailed(let name): return "Архив тома «\(name)» не совпал с томом — том не тронут."
+        case .verificationFailed(let name): return tr("Архив тома «\(name)» не совпал с томом — том не тронут.")
         case .pruneIncomplete(let done, let reclaimed, let message):
-            let freed = reclaimed.map { ", освобождено \(Format.bytes($0))" } ?? ""
-            return "Docker очистил только часть выбранного (\(done) из выбранных пунктов\(freed)), а дальше остановился: \(message)"
-        case .remoteDaemon(let host): return "Docker сейчас смотрит не на этот Mac, а на «\(host)» (контекст Docker или DOCKER_HOST). Очищать и архивировать чужой Docker OffLoadAI не будет: переключитесь на локальный контекст (docker context use desktop-linux или default) и повторите."
+            let freed = reclaimed.map { tr(", освобождено \(Format.bytes($0))") } ?? ""
+            return tr("Docker очистил только часть выбранного (\(done) из выбранных пунктов\(freed)), а дальше остановился: \(message)")
+        case .remoteDaemon(let host): return tr("Docker сейчас смотрит не на этот Mac, а на «\(host)» (контекст Docker или DOCKER_HOST). Очищать и архивировать чужой Docker OffLoadAI не будет: переключитесь на локальный контекст (docker context use desktop-linux или default) и повторите.")
         }
     }
 }
@@ -206,7 +206,7 @@ public struct DockerService: Sendable {
         // Контекст Docker (docker context use …) или DOCKER_HOST могут вести на сервер. Тогда
         // «Очистить Docker» удалил бы кеш и образы там, а архивация — перекачала бы и удалила его тома.
         let host = endpoint()
-        guard let host, host.hasPrefix("unix://") else { throw DockerError.remoteDaemon(host ?? "неизвестно") }
+        guard let host, host.hasPrefix("unix://") else { throw DockerError.remoteDaemon(host ?? tr("неизвестно")) }
     }
 
     /// Куда смотрит клиент docker: DOCKER_HOST или адрес текущего контекста.
@@ -393,7 +393,7 @@ public struct DockerService: Sendable {
         try ensureRunning()
         let users = try containers(using: name)
         guard users.isEmpty else { throw DockerError.inUse(name, users) }
-        status("Подготовка образа с GNU tar")
+        status(tr("Подготовка образа с GNU tar"))
         try ensureHelperImage()
 
         let fm = FileManager.default
@@ -402,25 +402,25 @@ public struct DockerService: Sendable {
         if rawDiskBytes() == nil {
             // Не Docker Desktop (OrbStack, Colima) или Docker.raw лежит в другом месте: за ростом его
             // диска следить нечем. Остаётся защита по свободному месту на Mac — и об этом надо сказать.
-            status("Диск Docker не найден: за его ростом не слежу, только за свободным местом на Mac")
+            status(tr("Диск Docker не найден: за его ростом не слежу, только за свободным местом на Mac"))
         }
         let final = SafeMover.unique(directory.appendingPathComponent(compressed ? "\(name).tar.zst" : "\(name).tar"))
         let partial = directory.appendingPathComponent(".\(name).partial-\(UUID().uuidString)")
         do {
-            status("Упаковка тома")
+            status(tr("Упаковка тома"))
             // --hard-dereference: жёсткая ссылка иначе ляжет в архив ссылкой без содержимого,
             // и сверка содержимого её не увидит.
             _ = try stream(["-v", "\(name):/v:ro", Self.helperImage, "tar", "--hard-dereference", "-cf", "-", "-C", "/v", "."],
                            feed: nil, sink: compressed ? .compress(partial) : .file(partial),
                            guard: .archiving, isCancelled: isCancelled)
-            status("Сверка: список файлов тома")
+            status(tr("Сверка: список файлов тома"))
             let volumeDigest = try digest(ofVolume: name, isCancelled: isCancelled)
-            status("Сверка: список файлов архива")
+            status(tr("Сверка: список файлов архива"))
             let archiveDigest = try digest(ofArchive: partial, compressed: compressed, isCancelled: isCancelled)
             guard !volumeDigest.isEmpty, volumeDigest == archiveDigest else { throw DockerError.verificationFailed(name) }
             // Оба отпечатка считает один и тот же вспомогательный образ. Независимо от него архив
             // читает системный tar на Mac: число записей должно совпасть с числом путей в томе.
-            status("Сверка: архив читается на Mac")
+            status(tr("Сверка: архив читается на Mac"))
             guard let listed = Self.archiveEntryCount(partial, compressed: compressed, isCancelled: isCancelled),
                   listed == Int(volumeDigest.split(separator: " ").first ?? "") else {
                 throw DockerError.verificationFailed(name)
@@ -457,9 +457,9 @@ public struct DockerService: Sendable {
         let inspect = try Runner.run("docker", ["volume", "inspect", name], timeout: 30)
         if inspect.succeeded { throw DockerError.alreadyExists(name) }
         guard inspect.stderr.lowercased().contains("no such volume") else {
-            throw DockerError.failed("Не удалось проверить, есть ли уже том «\(name)»: \(inspect.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
+            throw DockerError.failed(tr("Не удалось проверить, есть ли уже том «\(name)»: \(inspect.stderr.trimmingCharacters(in: .whitespacesAndNewlines))"))
         }
-        status("Подготовка образа с GNU tar")
+        status(tr("Подготовка образа с GNU tar"))
         try ensureHelperImage()
         let compressed = archive.pathExtension.lowercased() == "zst"
         // Метка с одноразовым значением: по ней видно, что том создан этим вызовом. Если том
@@ -469,11 +469,11 @@ public struct DockerService: Sendable {
         try Runner.check("docker", ["volume", "create", "--label", "\(Self.restoreLabel)=\(mark)", name], timeout: 60)
         guard restoreMark(of: name) == mark else { throw DockerError.alreadyExists(name) }
         do {
-            status("Распаковка в том")
+            status(tr("Распаковка в том"))
             _ = try stream(["-i", "-v", "\(name):/v", Self.helperImage, "tar", "-xpf", "-", "-C", "/v"],
                            feed: compressed ? .decompress(archive) : .file(archive), sink: .capture,
                            guard: .restoring, isCancelled: isCancelled)
-            status("Сверка")
+            status(tr("Сверка"))
             let volumeDigest = try digest(ofVolume: name, isCancelled: isCancelled)
             let archiveDigest = try digest(ofArchive: archive, compressed: compressed, isCancelled: isCancelled)
             guard !volumeDigest.isEmpty, volumeDigest == archiveDigest else { throw DockerError.verificationFailed(name) }
@@ -692,10 +692,10 @@ public struct DockerService: Sendable {
         try? readHandle?.close()
         group.wait()
         guard docker.terminationStatus == 0 else {
-            throw DockerError.failed("docker завершился с кодом \(docker.terminationStatus)")
+            throw DockerError.failed(tr("docker завершился с кодом \(docker.terminationStatus)"))
         }
         if let helper = helpers.first(where: { $0.terminationStatus != 0 }) {
-            throw DockerError.failed("zstd завершился с кодом \(helper.terminationStatus)")
+            throw DockerError.failed(tr("zstd завершился с кодом \(helper.terminationStatus)"))
         }
         return String(decoding: collected.out, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -712,11 +712,11 @@ public struct DockerService: Sendable {
                 lastCheck = Date()
                 if let limit = diskGuard.maxRawGrowth, let startRaw, let now = rawDiskBytes(), now - startRaw > limit {
                     stop(processes, container: container)
-                    throw DockerError.diskGuard("Docker.raw вырос на \(Format.bytes(now - startRaw)).")
+                    throw DockerError.diskGuard(tr("Docker.raw вырос на \(Format.bytes(now - startRaw))."))
                 }
                 if let minimum = diskGuard.minFreeBytes, let free = Volumes.info(for: home)?.availableBytes, free < minimum {
                     stop(processes, container: container)
-                    throw DockerError.diskGuard("на Mac осталось \(Format.bytes(free)).")
+                    throw DockerError.diskGuard(tr("на Mac осталось \(Format.bytes(free))."))
                 }
             }
             Thread.sleep(forTimeInterval: 0.2)

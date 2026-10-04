@@ -53,7 +53,7 @@ public final class DecisionStore: @unchecked Sendable {
 
         public var errorDescription: String? {
             switch self {
-            case .sqlite(let message): return "База решений: \(message)"
+            case .sqlite(let message): return tr("База решений: \(message)")
             }
         }
     }
@@ -89,7 +89,7 @@ public final class DecisionStore: @unchecked Sendable {
         }
         var handle: OpaquePointer?
         guard sqlite3_open_v2(path, &handle, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK else {
-            let message = handle.map { String(cString: sqlite3_errmsg($0)) } ?? "не открывается"
+            let message = handle.map { String(cString: sqlite3_errmsg($0)) } ?? tr("не открывается")
             sqlite3_close(handle)
             throw StoreError.sqlite(message)
         }
@@ -357,7 +357,7 @@ public final class DecisionStore: @unchecked Sendable {
     }
 
     private func error() -> StoreError {
-        StoreError.sqlite(db.map { String(cString: sqlite3_errmsg($0)) } ?? "база закрыта")
+        StoreError.sqlite(db.map { String(cString: sqlite3_errmsg($0)) } ?? tr("база закрыта"))
     }
 
     private func execute(_ sql: String) throws {

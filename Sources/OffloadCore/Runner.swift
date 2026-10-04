@@ -17,9 +17,9 @@ public enum RunnerError: LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .toolNotFound(let tool): return "Не найдена программа «\(tool)»."
-        case .timedOut(let tool): return "Программа «\(tool)» не ответила вовремя."
-        case .failed(let tool, let status, let message): return "«\(tool)» завершилась с кодом \(status): \(message)"
+        case .toolNotFound(let tool): return tr("Не найдена программа «\(tool)».")
+        case .timedOut(let tool): return tr("Программа «\(tool)» не ответила вовремя.")
+        case .failed(let tool, let status, let message): return tr("«\(tool)» завершилась с кодом \(status): \(message)")
         }
     }
 }

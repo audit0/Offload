@@ -1,0 +1,6 @@
+/* Запросы доступа macOS — по-русски (основной Info.plist тоже на русском, но язык разработки — английский). */
+"NSDocumentsFolderUsageDescription" = "OffLoadAI показывает, что занимает место в папке «Документы», и переносит выбранное на внешний диск.";
+"NSDesktopFolderUsageDescription" = "OffLoadAI показывает, что занимает место на рабочем столе, и переносит выбранное на внешний диск.";
+"NSDownloadsFolderUsageDescription" = "OffLoadAI показывает, что занимает место в «Загрузках», и переносит выбранное на внешний диск.";
+"NSRemovableVolumesUsageDescription" = "OffLoadAI переносит данные и делает бэкап на внешний диск.";
+"NSNetworkVolumesUsageDescription" = "OffLoadAI может переносить данные на сетевой диск.";

@@ -273,7 +273,7 @@ final class CleanupModel {
         workToken = token
         // Выход во время работы спросит и доведёт остановку до конца, как при переносе.
         let operation = app.beginOperation { token.cancel() }
-        answers[kind] = .running(Progress(index: 0, count: max(question.items.count, 1), item: "", phase: "Подготовка", fraction: 0))
+        answers[kind] = .running(Progress(index: 0, count: max(question.items.count, 1), item: "", phase: tr("Подготовка"), fraction: 0))
         let home = app.rules.home
         Task {
             if freeBefore == nil { freeBefore = await Self.freeSpace(home: home) }
@@ -347,10 +347,10 @@ final class CleanupModel {
                 guard let reference = question.keepers.first(where: {
                     $0.duplicateGroup == item.duplicateGroup && FileManager.default.fileExists(atPath: $0.url.path)
                 }) else {
-                    outcome.problems.append("«\(name)» осталось на месте: копии, с которой его можно сверить, на месте уже нет.")
+                    outcome.problems.append(tr("«\(name)» осталось на месте: копии, с которой его можно сверить, на месте уже нет."))
                     continue items
                 }
-                answers[kind] = .running(Progress(index: index + 1, count: items.count, item: name, phase: "Сверка с копией", fraction: 0))
+                answers[kind] = .running(Progress(index: index + 1, count: items.count, item: name, phase: tr("Сверка с копией"), fraction: 0))
                 let url = item.url
                 let total = max(item.bytes, 1)
                 let compared = Counter()
@@ -371,7 +371,7 @@ final class CleanupModel {
                         return .some(try Self.trash(url))
                     }.value
                     guard let trashedAt else {
-                        outcome.problems.append("«\(name)» осталось на месте: после поиска оно изменилось и больше не совпадает с «\(reference.url.lastPathComponent)».")
+                        outcome.problems.append(tr("«\(name)» осталось на месте: после поиска оно изменилось и больше не совпадает с «\(reference.url.lastPathComponent)»."))
                         continue items
                     }
                     outcome.done += 1
@@ -384,7 +384,7 @@ final class CleanupModel {
                     outcome.cancelled = true
                     break items
                 } catch {
-                    outcome.problems.append("«\(name)» не удалось отправить в Корзину: \(error.localizedDescription)")
+                    outcome.problems.append(tr("«\(name)» не удалось отправить в Корзину: \(error.localizedDescription)"))
                 }
             case .trash:
                 if Demo.isOn {
@@ -395,14 +395,14 @@ final class CleanupModel {
                 let url = item.url
                 // Программу могли открыть уже после поиска: кеш занятой программы на ходу не удаляем.
                 if let busy = CleanupPlanner.busy(home: rules.home, running: Self.runningApplications())[url.path] {
-                    outcome.problems.append("«\(name)» осталось на месте. \(busy)")
+                    outcome.problems.append(tr("«\(name)» осталось на месте. \(busy)"))
                     continue items
                 }
                 // Кеши Homebrew, pip, npm, Gradle, Go держат не программы с окном, а консольные процессы
                 // (brew install, демон Gradle, xcodebuild) — их видно только по открытым файлам.
                 if let holders = await Task.detached(priority: .userInitiated, operation: { SafeMover.openFiles(in: url) }).value,
                    !holders.isEmpty {
-                    outcome.problems.append("«\(name)» осталось на месте: его сейчас использует \(holders.prefix(3).joined(separator: ", ")).")
+                    outcome.problems.append(tr("«\(name)» осталось на месте: его сейчас использует \(holders.prefix(3).joined(separator: ", "))."))
                     continue items
                 }
                 do {
@@ -413,11 +413,11 @@ final class CleanupModel {
                         outcome.trashedItems.append(TrashedItem(original: url, inTrash: trashedAt.url, bytes: item.bytes, identity: trashedAt.identity))
                     }
                 } catch {
-                    outcome.problems.append("«\(name)» не удалось отправить в Корзину: \(error.localizedDescription)")
+                    outcome.problems.append(tr("«\(name)» не удалось отправить в Корзину: \(error.localizedDescription)"))
                 }
             case .safe:
                 guard let volume = app.safeVolume ?? (Demo.isOn ? Demo.safeVolume : nil) else {
-                    outcome.problems.append("«\(name)»: сейф закрыт — осталось на месте.")
+                    outcome.problems.append(tr("«\(name)»: сейф закрыт — осталось на месте."))
                     continue items
                 }
                 if Demo.isOn {
@@ -435,14 +435,14 @@ final class CleanupModel {
                     break items
                 }
                 guard plan.canProceed else {
-                    let reason = (plan.verdict.isBlocked ? plan.verdict.notes : plan.check.blockers).first ?? "перенос невозможен"
-                    outcome.problems.append("«\(name)»: \(reason)")
+                    let reason = (plan.verdict.isBlocked ? plan.verdict.notes : plan.check.blockers).first ?? tr("перенос невозможен")
+                    outcome.problems.append(tr("«\(name)»: \(reason)"))
                     continue items
                 }
                 // Оговорки, которых человек не видел, когда разрешал (например, что папку меняли вчера), —
                 // повод спросить отдельно, а не перенести молча.
                 if case .caution(let notes) = plan.verdict, let unseen = notes.first(where: { !shown.contains($0) }) {
-                    outcome.problems.append("«\(name)» осталось на месте: \(unseen) Перенесите вручную в «Освободить место», если уверены.")
+                    outcome.problems.append(tr("«\(name)» осталось на месте: \(unseen) Перенесите вручную в «Освободить место», если уверены."))
                     continue items
                 }
                 do {
@@ -452,7 +452,7 @@ final class CleanupModel {
                             guard throttle.ready() else { return }
                             Task { @MainActor in
                                 if case .running(var current) = self.answers[kind], current.item == name {
-                                    current.phase = progress.phase.rawValue
+                                    current.phase = trDynamic(progress.phase.rawValue)
                                     current.fraction = progress.fraction
                                     self.answers[kind] = .running(current)
                                 }
@@ -465,7 +465,7 @@ final class CleanupModel {
                     outcome.cancelled = true
                     break items
                 } catch {
-                    outcome.problems.append("«\(name)»: \(error.localizedDescription)")
+                    outcome.problems.append(tr("«\(name)»: \(error.localizedDescription)"))
                 }
             }
         }
@@ -476,7 +476,7 @@ final class CleanupModel {
     private func performDocker(_ question: CleanupQuestion, app: AppModel) async -> Outcome {
         let kind = question.kind
         var outcome = Outcome()
-        answers[kind] = .running(Progress(index: 1, count: 1, item: "Docker", phase: "Очистка", fraction: 0))
+        answers[kind] = .running(Progress(index: 1, count: 1, item: "Docker", phase: tr("Очистка"), fraction: 0))
         if Demo.isOn {
             outcome.done = 1
             outcome.bytes = question.bytes
@@ -487,16 +487,16 @@ final class CleanupModel {
         let targets = Set(question.docker.keys)
         do {
             let reclaimed = try await Task.detached(priority: .userInitiated) { try service.prune(targets) }.value
-            answers[kind] = .running(Progress(index: 1, count: 1, item: "Docker", phase: "Жду, пока Docker вернёт место Mac", fraction: 1))
+            answers[kind] = .running(Progress(index: 1, count: 1, item: "Docker", phase: tr("Жду, пока Docker вернёт место Mac"), fraction: 1))
             _ = await DockerModel.settle(service, before: rawBefore)
             outcome.done = 1
             // Не сказал, сколько освободил, — так и пишем, а не подставляем оценку из вопроса.
             outcome.bytes = reclaimed ?? 0
-            if reclaimed == nil { outcome.problems.append("Docker не сообщил, сколько места освободил.") }
+            if reclaimed == nil { outcome.problems.append(tr("Docker не сообщил, сколько места освободил.")) }
         } catch DockerError.pruneIncomplete(let done, let reclaimed, let message) {
             outcome.done = done
             outcome.bytes = reclaimed ?? 0
-            outcome.problems.append("Docker очистил только часть, дальше остановился: \(message)")
+            outcome.problems.append(tr("Docker очистил только часть, дальше остановился: \(message)"))
         } catch {
             outcome.problems.append("Docker: \(error.localizedDescription)")
         }
@@ -633,7 +633,7 @@ final class CleanupModel {
                     let observation = CleanupObservation(
                         url: item.url, bytes: item.bytes, modified: item.modified, isDirectory: item.isDirectory,
                         verdict: gitRoots.contains(item.url.deletingLastPathComponent().standardizedFileURL.path)
-                            ? .blocked("Часть git-репозитория «\(item.url.deletingLastPathComponent().lastPathComponent)». Переносите и сохраняйте проект целиком.")
+                            ? .blocked(tr("Часть git-репозитория «\(item.url.deletingLastPathComponent().lastPathComponent)». Переносите и сохраняйте проект целиком."))
                             : item.verdict,
                         isProject: item.isDirectory
                             && FileManager.default.fileExists(atPath: item.url.appendingPathComponent(".git").path),
@@ -755,7 +755,7 @@ final class CleanupModel {
     /// Для вернутого запоминается «оставить»: о нём больше не спрошу.
     func restore(_ kind: CleanupQuestion.Kind, app: AppModel) {
         guard case .done(var outcome) = answer(for: kind), finishing == nil, !outcome.trashedItems.isEmpty else { return }
-        finishing = "Возвращаю из Корзины…"
+        finishing = tr("Возвращаю из Корзины…")
         let items = outcome.trashedItems
         let home = app.rules.home
         Task {
@@ -778,7 +778,7 @@ final class CleanupModel {
     func eraseTrashed(app: AppModel) {
         let items = trashedItems
         guard finishing == nil, !items.isEmpty else { return }
-        finishing = "Удаляю из Корзины…"
+        finishing = tr("Удаляю из Корзины…")
         let home = app.rules.home
         Task {
             let (gone, missing, problems) = await Self.erase(items)
@@ -807,15 +807,15 @@ final class CleanupModel {
             for item in items {
                 let name = item.original.lastPathComponent
                 guard fm.fileExists(atPath: item.inTrash.path) else {
-                    problems.append("«\(name)»: в Корзине его уже нет.")
+                    problems.append(tr("«\(name)»: в Корзине его уже нет."))
                     continue
                 }
                 guard item.isStillInTrash else {
-                    problems.append("«\(name)»: в Корзине под этим именем теперь другой файл — его не трогаю.")
+                    problems.append(tr("«\(name)»: в Корзине под этим именем теперь другой файл — его не трогаю."))
                     continue
                 }
                 guard !fm.fileExists(atPath: item.original.path) else {
-                    problems.append("«\(name)»: на прежнем месте уже есть файл с таким именем — оставил в Корзине.")
+                    problems.append(tr("«\(name)»: на прежнем месте уже есть файл с таким именем — оставил в Корзине."))
                     continue
                 }
                 do {
@@ -823,7 +823,7 @@ final class CleanupModel {
                     try fm.moveItem(at: item.inTrash, to: item.original)
                     back.append(item)
                 } catch {
-                    problems.append("«\(name)»: \(error.localizedDescription)")
+                    problems.append(tr("«\(name)»: \(error.localizedDescription)"))
                 }
             }
             return (back, problems)
@@ -841,17 +841,17 @@ final class CleanupModel {
                     // выброшенный потом с тем же именем, мог лечь на тот же путь.
                     guard FileManager.default.fileExists(atPath: item.inTrash.path) else {
                         missing.append(item)
-                        problems.append("«\(item.original.lastPathComponent)»: в Корзине его уже нет — вернули или Корзину очистили.")
+                        problems.append(tr("«\(item.original.lastPathComponent)»: в Корзине его уже нет — вернули или Корзину очистили."))
                         continue
                     }
                     guard item.isStillInTrash else {
-                        problems.append("«\(item.original.lastPathComponent)»: в Корзине под этим именем теперь другой файл — его не трогаю.")
+                        problems.append(tr("«\(item.original.lastPathComponent)»: в Корзине под этим именем теперь другой файл — его не трогаю."))
                         continue
                     }
                     try FileManager.default.removeItem(at: item.inTrash)
                     gone.append(item)
                 } catch {
-                    problems.append("«\(item.original.lastPathComponent)»: \(error.localizedDescription)")
+                    problems.append(tr("«\(item.original.lastPathComponent)»: \(error.localizedDescription)"))
                 }
             }
             return (gone, missing, problems)
@@ -871,9 +871,9 @@ final class CleanupModel {
 
     private static func phase(_ action: CleanupAction) -> String {
         switch action {
-        case .trash: return "В Корзину"
-        case .safe: return "Подготовка"
-        case .backup: return "В бэкап"
+        case .trash: return tr("В Корзину")
+        case .safe: return tr("Подготовка")
+        case .backup: return tr("В бэкап")
         case .keep: return ""
         }
     }

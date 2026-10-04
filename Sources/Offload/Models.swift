@@ -32,7 +32,7 @@ final class OverviewModel {
     static func diskAdvice(_ disk: VolumeInfo?) -> [String] {
         guard let disk, disk.totalBytes > 0,
               Double(disk.availableBytes) / Double(disk.totalBytes) < 0.15 else { return [] }
-        return ["На диске Mac свободно всего \(Format.bytes(disk.availableBytes)). Когда места мало, macOS тормозит: ей негде держать swap. Откройте «Освободить место»."]
+        return [tr("На диске Mac свободно всего \(Format.bytes(disk.availableBytes)). Когда места мало, macOS тормозит: ей негде держать swap. Откройте «Освободить место».")]
     }
 }
 
@@ -61,7 +61,7 @@ final class SpaceModel {
     var largest: Int64 { max(items.map(\.bytes).max() ?? 0, 1) }
 
     func title(home: URL) -> String {
-        guard let location else { return "Домашняя папка и общие файлы" }
+        guard let location else { return tr("Домашняя папка и общие файлы") }
         return relativeToHome(location.path, home: home)
     }
 
@@ -208,7 +208,7 @@ final class MoveModel {
             // Без этой ветки отмена оставляла окно навсегда в состоянии «Проверяю…»:
             // спиннер крутится, кнопка «Отменить» уже ничего не делает, закрыть нечем.
             guard !token.isCancelled else {
-                stage = .failed("Проверка отменена. Ничего не скопировано и не удалено.")
+                stage = .failed(tr("Проверка отменена. Ничего не скопировано и не удалено."))
                 return
             }
             stage = .ready(plan)
@@ -239,7 +239,7 @@ final class MoveModel {
                 stage = .done(record)
                 didMove = true
             } catch is CancellationError {
-                stage = .failed("Перенос отменён. Оригинал не тронут, незаконченная копия удалена.")
+                stage = .failed(tr("Перенос отменён. Оригинал не тронут, незаконченная копия удалена."))
             } catch {
                 stage = .failed(error.localizedDescription)
             }
@@ -320,19 +320,19 @@ final class HistoryModel {
                 // приходит всегда, и чистый возврат выглядел бы бедой.
                 var notes = outcome.notes
                 if record.isEncrypted, deleteArchive {
-                    notes.append("Место внутри сейфа освободилось и пойдёт под новые данные, но сам образ на диске от этого не уменьшится.")
+                    notes.append(tr("Место внутри сейфа освободилось и пойдёт под новые данные, но сам образ на диске от этого не уменьшится."))
                 }
                 message = outcome.needsAttention
-                    ? Notice.Message(.warning, "«\(name)» возвращён на место, но с оговорками:", details: notes)
-                    : Notice.Message(.success, "«\(name)» возвращён на место, каждый файл перечитан и сверен по SHA-256.",
+                    ? Notice.Message(.warning, tr("«\(name)» возвращён на место, но с оговорками:"), details: notes)
+                    : Notice.Message(.success, tr("«\(name)» возвращён на место, каждый файл перечитан и сверен по SHA-256."),
                                      details: notes)
             } catch is CancellationError {
-                message = Notice.Message(.info, "Возврат отменён, незаконченная копия удалена. Архив на диске не тронут.")
+                message = Notice.Message(.info, tr("Возврат отменён, незаконченная копия удалена. Архив на диске не тронут."))
             } catch {
                 // Без приписок про архив: удаление архива идёт последним шагом, и сорваться
                 // могло именно оно — данные уже вернулись бы, а «архив не тронут» оказалось
                 // бы ложью. Что на самом деле случилось, знает только ядро.
-                message = Notice.Message(.error, "Вернуть не удалось: \(error.localizedDescription)")
+                message = Notice.Message(.error, tr("Вернуть не удалось: \(error.localizedDescription)"))
             }
             busyID = nil
             progress = nil
@@ -403,11 +403,11 @@ final class BackupModel {
         panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
         panel.directoryURL = volume.mountPoint
-        panel.prompt = "Выбрать"
-        panel.message = "Папка для бэкапа на диске «\(volume.name)» — можно указать уже существующую"
+        panel.prompt = tr("Выбрать")
+        panel.message = tr("Папка для бэкапа на диске «\(volume.name)» — можно указать уже существующую")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         guard url.path.hasPrefix(volume.mountPoint.path + "/") else {
-            error = "Папка должна лежать на диске «\(volume.name)»."
+            error = tr("Папка должна лежать на диске «\(volume.name)».")
             return
         }
         destinationPath = url.path
@@ -426,8 +426,8 @@ final class BackupModel {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = true
-        panel.prompt = "Добавить"
-        panel.message = "Выберите папки с проектами и документами для бэкапа"
+        panel.prompt = tr("Добавить")
+        panel.message = tr("Выберите папки с проектами и документами для бэкапа")
         guard panel.runModal() == .OK else { return }
         for url in panel.urls where !sources.contains(url) { sources.append(url) }
     }
@@ -462,7 +462,7 @@ final class BackupModel {
                     }
                 }.value
             } catch is CancellationError {
-                self.error = "Бэкап остановлен. Уже скопированные файлы остались на диске."
+                self.error = tr("Бэкап остановлен. Уже скопированные файлы остались на диске.")
             } catch {
                 self.error = error.localizedDescription
             }
@@ -494,7 +494,7 @@ final class BackupModel {
                 SecretsVault.fill(mount, home: home, projectRoots: roots, isCancelled: { token.isCancelled })
             }.value
             keysReport = report
-            let text = "В сейф сложено файлов: \(report.copied), без изменений: \(report.unchanged)" + (report.problems.isEmpty ? "." : ", проблем: \(report.problems.count).")
+            let text = tr("В сейф сложено файлов: \(report.copied), без изменений: \(report.unchanged)") + (report.problems.isEmpty ? "." : tr(", проблем: \(report.problems.count)."))
             keysMessage = Notice.Message(report.problems.isEmpty ? .success : .warning, text, details: Array(report.problems.prefix(5)))
             keysBusy = false
             app.endOperation(operationID)
@@ -609,12 +609,12 @@ final class DockerModel {
         guard !targets.isEmpty, busy == nil else { return }
         // В демонстрации кнопки ничего не удаляют: демо запускают, чтобы посмотреть, а Docker настоящий.
         guard !Demo.isOn else {
-            messages = ["Демонстрация: Docker не тронут."]
+            messages = [tr("Демонстрация: Docker не тронут.")]
             return
         }
         let service = service
         let rawBefore = service.rawDiskBytes()
-        busy = "Очистка: подготовка"
+        busy = tr("Очистка: подготовка")
         pruning = true
         messages = []
         Task {
@@ -622,11 +622,11 @@ final class DockerModel {
                 let reclaimed = try await Task.detached(priority: .userInitiated) {
                     try service.prune(targets) { target in
                         Task { @MainActor in
-                            if self.busy != nil { self.busy = "Очистка: \(target.title.lowercased())" }
+                            if self.busy != nil { self.busy = tr("Очистка: \(target.title.lowercased())") }
                         }
                     }
                 }.value
-                busy = "Жду, пока Docker вернёт место Mac"
+                busy = tr("Жду, пока Docker вернёт место Mac")
                 let rawAfter = await Self.settle(service, before: rawBefore)
                 messages.append(Self.pruneReport(reclaimed: reclaimed, rawBefore: rawBefore, rawAfter: rawAfter))
             } catch {
@@ -654,12 +654,12 @@ final class DockerModel {
     }
 
     static func pruneReport(reclaimed: Int64?, rawBefore: Int64?, rawAfter: Int64?) -> String {
-        if reclaimed == 0 { return "Удалять было нечего: всё выбранное сейчас используется." }
-        let inside = reclaimed.map { "Docker удалил \(Format.bytes($0))." } ?? "Docker удалил выбранное."
+        if reclaimed == 0 { return tr("Удалять было нечего: всё выбранное сейчас используется.") }
+        let inside = reclaimed.map { tr("Docker удалил \(Format.bytes($0)).") } ?? tr("Docker удалил выбранное.")
         if let rawBefore, let rawAfter, rawBefore - rawAfter >= 64 << 20 {
-            return "✓ \(inside) Диск Docker на Mac уменьшился на \(Format.bytes(rawBefore - rawAfter))."
+            return tr("✓ \(inside) Диск Docker на Mac уменьшился на \(Format.bytes(rawBefore - rawAfter)).")
         }
-        return "✓ \(inside) Место на Mac Docker вернёт чуть позже — иногда только после перезапуска Docker Desktop."
+        return tr("✓ \(inside) Место на Mac Docker вернёт чуть позже — иногда только после перезапуска Docker Desktop.")
     }
 
     func checkActivity(_ names: [String]) {
@@ -681,7 +681,7 @@ final class DockerModel {
         // Упаковать — в Pro; вернуть том из архива можно всегда.
         guard app.pro.allows(.dockerVolumes) else { return app.pro.offer(.dockerVolumes) }
         guard !Demo.isOn else {
-            messages = ["Демонстрация: тома не упакованы, Docker не тронут."]
+            messages = [tr("Демонстрация: тома не упакованы, Docker не тронут.")]
             return
         }
         let token = CancelToken()
@@ -695,23 +695,23 @@ final class DockerModel {
         Task {
             for name in names {
                 if token.isCancelled { break }
-                busy = "«\(name)»: подготовка"
+                busy = tr("«\(name)»: подготовка")
                 do {
                     let archive = try await Task.detached(priority: .userInitiated) {
                         let url = try service.archive(name, into: folder, isCancelled: { token.isCancelled }) { status in
                             Task { @MainActor in
-                                if self.busy != nil { self.busy = "«\(name)»: \(status.lowercased())" }
+                                if self.busy != nil { self.busy = tr("«\(name)»: \(status.lowercased())") }
                             }
                         }
                         try service.removeVolume(name)
                         return url
                     }.value
                     let size = (try? archive.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map { Format.bytes(Int64($0)) } ?? ""
-                    messages.append("✓ «\(name)» упакован в \(archive.lastPathComponent) (\(size)), сверен и убран из Docker.")
+                    messages.append(tr("✓ «\(name)» упакован в \(archive.lastPathComponent) (\(size)), сверен и убран из Docker."))
                 } catch is CancellationError {
-                    messages.append("«\(name)»: отменено, том не тронут.")
+                    messages.append(tr("«\(name)»: отменено, том не тронут."))
                 } catch {
-                    messages.append("✗ «\(name)»: \(error.localizedDescription)")
+                    messages.append(tr("✗ «\(name)»: \(error.localizedDescription)"))
                 }
             }
             busy = nil
@@ -725,7 +725,7 @@ final class DockerModel {
 
     func restore(_ archive: URL, name: String, app: AppModel) {
         guard !Demo.isOn else {
-            messages = ["Демонстрация: Docker не тронут."]
+            messages = [tr("Демонстрация: Docker не тронут.")]
             return
         }
         let token = CancelToken()
@@ -734,22 +734,22 @@ final class DockerModel {
         let id = app.beginOperation { token.cancel() }
         tokens[id] = token
         let service = service
-        busy = "«\(name)»: подготовка"
+        busy = tr("«\(name)»: подготовка")
         messages = []
         Task {
             do {
                 try await Task.detached(priority: .userInitiated) {
                     try service.restore(archive: archive, as: name, isCancelled: { token.isCancelled }) { status in
                         Task { @MainActor in
-                            if self.busy != nil { self.busy = "«\(name)»: \(status.lowercased())" }
+                            if self.busy != nil { self.busy = tr("«\(name)»: \(status.lowercased())") }
                         }
                     }
                 }.value
-                messages.append("✓ Том «\(name)» восстановлен из \(archive.lastPathComponent) и сверен. Архив остался на диске.")
+                messages.append(tr("✓ Том «\(name)» восстановлен из \(archive.lastPathComponent) и сверен. Архив остался на диске."))
             } catch is CancellationError {
-                messages.append("«\(name)»: отменено, созданный том удалён.")
+                messages.append(tr("«\(name)»: отменено, созданный том удалён."))
             } catch {
-                messages.append("✗ «\(name)»: \(error.localizedDescription)")
+                messages.append(tr("✗ «\(name)»: \(error.localizedDescription)"))
             }
             busy = nil
             tokens.removeValue(forKey: id)

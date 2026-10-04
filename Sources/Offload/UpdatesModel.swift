@@ -68,18 +68,18 @@ final class UpdatesModel {
         do {
             let release = try await UpdateCheck.fetch()
             guard let current = Self.currentVersion else {
-                if manual { checkResult = "У сборки для разработки нет номера версии. Последний выпуск — \(release.version)." }
+                if manual { checkResult = tr("У сборки для разработки нет номера версии. Последний выпуск — \(release.version).") }
                 return
             }
             guard UpdateCheck.isNewer(release.version, than: current) else {
                 available = nil
-                if manual { checkResult = "Установлена последняя версия — \(current)." }
+                if manual { checkResult = tr("Установлена последняя версия — \(current).") }
                 return
             }
             if manual || UserDefaults.standard.string(forKey: Self.postponedKey) != release.version { available = release }
             if manual { isPresented = true }
         } catch {
-            if manual { checkResult = "Не удалось проверить: \(error.localizedDescription)" }
+            if manual { checkResult = tr("Не удалось проверить: \(error.localizedDescription)") }
         }
     }
 
