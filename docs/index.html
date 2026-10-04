@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OffLoadAI — место на Mac без риска потерять данные</title>
+<meta name="description" content="OffLoadAI освобождает место на Mac и Windows: переносит большое в зашифрованный сейф на внешнем диске со сверкой каждого файла, чистит кеши и Docker, делает бэкап проектов и ключей. Бесплатно, офлайн, открытый код.">
+<meta property="og:title" content="OffLoadAI — место на Mac без риска потерять данные">
+<meta property="og:description" content="Оригинал удаляется только после того, как копия перечитана с диска и совпала байт в байт. Зашифрованный сейф, разбор мусора и Docker, бэкап проектов.">
+<meta property="og:image" content="https://audit0.github.io/Offload/screenshots/overview.png">
+<meta property="og:url" content="https://audit0.github.io/Offload/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" href="icon.png">
+<style>
+:root {
+  --bg: #fbfbfd;
+  --surface: #ffffff;
+  --surface-2: #f2f2f7;
+  --text: #1d1d1f;
+  --muted: #6e6e73;
+  --border: #e3e3e8;
+  --accent: #0a6cff;
+  --accent-text: #ffffff;
+  --good: #1f9d55;
+  --code-bg: #1d1d1f;
+  --code-text: #f5f5f7;
+  --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 30px rgba(0,0,0,.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b0b0d;
+    --surface: #161618;
+    --surface-2: #1f1f22;
+    --text: #f5f5f7;
+    --muted: #a1a1a6;
+    --border: #2c2c30;
+    --accent: #3d8bff;
+    --good: #34c759;
+    --code-bg: #000000;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 30px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0b0b0d; --surface: #161618; --surface-2: #1f1f22; --text: #f5f5f7; --muted: #a1a1a6;
+  --border: #2c2c30; --accent: #3d8bff; --good: #34c759; --code-bg: #000000;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 30px rgba(0,0,0,.35);
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 17px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+img { max-width: 100%; display: block; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+section { padding: 72px 0; }
+h1, h2, h3 { letter-spacing: -0.02em; line-height: 1.15; margin: 0; }
+h1 { font-size: clamp(34px, 6vw, 60px); font-weight: 700; }
+h2 { font-size: clamp(28px, 4vw, 40px); font-weight: 700; margin-bottom: 12px; }
+h3 { font-size: 19px; font-weight: 600; margin-bottom: 6px; }
+.lead { font-size: clamp(18px, 2.2vw, 22px); color: var(--muted); max-width: 720px; }
+.muted { color: var(--muted); }
+.center { text-align: center; }
+.center .lead { margin-left: auto; margin-right: auto; }
+
+/* шапка */
+header { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: saturate(180%) blur(16px); -webkit-backdrop-filter: saturate(180%) blur(16px); border-bottom: 1px solid var(--border); }
+header .wrap { display: flex; align-items: center; justify-content: space-between; height: 56px; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--text); }
+.brand img { width: 28px; height: 28px; }
+nav { display: flex; gap: 22px; font-size: 15px; }
+nav a { color: var(--muted); }
+nav a:hover { color: var(--text); text-decoration: none; }
+@media (max-width: 720px) { nav .opt { display: none; } }
+
+/* кнопки */
+.btns { display: flex; flex-wrap: wrap; gap: 12px; }
+.center .btns { justify-content: center; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 22px; border-radius: 999px; font-weight: 600; font-size: 16px; border: 1px solid transparent; cursor: pointer; }
+.btn:hover { text-decoration: none; }
+.btn-primary { background: var(--accent); color: var(--accent-text); }
+.btn-primary:hover { filter: brightness(1.08); }
+.btn-ghost { background: transparent; color: var(--text); border-color: var(--border); }
+.btn-ghost:hover { background: var(--surface-2); }
+
+/* герой */
+.hero { padding: 80px 0 40px; }
+.hero .icon { width: 96px; height: 96px; margin: 0 auto 24px; }
+.hero h1 { margin-bottom: 18px; }
+.hero .lead { margin-bottom: 30px; }
+.install { max-width: 720px; margin: 0 auto 18px; text-align: left; }
+.install-label { font-size: 14px; color: var(--muted); margin: 0 0 6px 4px; }
+.cmd { display: flex; align-items: center; gap: 10px; background: var(--code-bg); color: var(--code-text); border-radius: 14px; padding: 14px 14px 14px 18px; font: 14px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+.cmd code { flex: 1; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+.cmd code::-webkit-scrollbar { display: none; }
+.copy { flex: none; background: rgba(255,255,255,.12); color: var(--code-text); border: 0; border-radius: 8px; padding: 7px 12px; font: 600 13px/1 -apple-system, BlinkMacSystemFont, sans-serif; cursor: pointer; }
+.copy:hover { background: rgba(255,255,255,.2); }
+.small { font-size: 14px; color: var(--muted); }
+.hero-shot { margin-top: 48px; border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); border: 1px solid var(--border); }
+
+/* главное правило */
+.rule { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 36px; box-shadow: var(--shadow); display: grid; grid-template-columns: 1fr 1.2fr; gap: 36px; align-items: center; }
+.rule blockquote { margin: 0; font-size: clamp(22px, 3vw, 30px); font-weight: 650; line-height: 1.25; letter-spacing: -0.015em; }
+.steps { list-style: none; padding: 0; margin: 0; counter-reset: s; }
+.steps li { counter-increment: s; position: relative; padding: 10px 0 10px 44px; border-bottom: 1px solid var(--border); }
+.steps li:last-child { border-bottom: 0; }
+.steps li::before { content: counter(s); position: absolute; left: 0; top: 9px; width: 28px; height: 28px; border-radius: 50%; background: var(--surface-2); color: var(--text); font-weight: 700; font-size: 14px; display: grid; place-items: center; }
+@media (max-width: 760px) { .rule { grid-template-columns: 1fr; padding: 24px; gap: 20px; } }
+
+/* сетка возможностей */
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 36px; }
+@media (max-width: 900px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 22px; }
+.card p { margin: 0; color: var(--muted); font-size: 15.5px; }
+.emoji { font-size: 26px; line-height: 1; margin-bottom: 12px; }
+
+/* скриншоты */
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 28px 0 20px; }
+.tab { border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 999px; padding: 8px 16px; font: 600 14px/1 -apple-system, BlinkMacSystemFont, sans-serif; cursor: pointer; }
+.tab[aria-selected="true"] { background: var(--text); color: var(--bg); border-color: var(--text); }
+.shot { border-radius: 14px; overflow: hidden; border: 1px solid var(--border); box-shadow: var(--shadow); }
+.shot img { width: 100%; height: auto; }
+.shot-cap { text-align: center; margin-top: 14px; }
+
+/* не даст сломать */
+.safe-list { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 32px; margin-top: 28px; padding: 0; list-style: none; }
+.safe-list li { padding-left: 28px; position: relative; }
+.safe-list li::before { content: "✓"; position: absolute; left: 0; color: var(--good); font-weight: 700; }
+@media (max-width: 700px) { .safe-list { grid-template-columns: 1fr; } }
+
+/* цены */
+.pricing { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 36px; }
+@media (max-width: 760px) { .pricing { grid-template-columns: 1fr; } }
+.plan { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 28px; display: flex; flex-direction: column; }
+.plan.pro { border: 2px solid var(--accent); }
+.plan .price { font-size: 40px; font-weight: 700; letter-spacing: -0.02em; margin: 8px 0 2px; }
+.plan .price span { font-size: 17px; font-weight: 500; color: var(--muted); }
+.plan ul { padding: 0; margin: 18px 0 24px; list-style: none; flex: 1; }
+.plan li { padding: 7px 0 7px 26px; position: relative; border-top: 1px solid var(--border); font-size: 15.5px; }
+.plan li::before { content: "✓"; position: absolute; left: 0; color: var(--good); font-weight: 700; }
+.badge { display: inline-block; background: var(--accent); color: var(--accent-text); font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; text-transform: uppercase; letter-spacing: .04em; }
+.note { margin-top: 18px; }
+
+/* вопросы */
+.faq { max-width: 780px; margin: 28px auto 0; }
+details { border-bottom: 1px solid var(--border); padding: 16px 0; }
+summary { cursor: pointer; font-weight: 600; font-size: 17px; list-style: none; position: relative; padding-right: 28px; }
+summary::-webkit-details-marker { display: none; }
+summary::after { content: "+"; position: absolute; right: 4px; top: -2px; font-size: 22px; color: var(--muted); }
+details[open] summary::after { content: "−"; }
+details p { margin: 10px 0 0; color: var(--muted); }
+details code, .card code, .plan code { font: 14px ui-monospace, "SF Mono", Menlo, Consolas, monospace; background: var(--surface-2); padding: 1px 6px; border-radius: 5px; }
+
+.alt { background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+footer { padding: 40px 0 56px; color: var(--muted); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 28px; justify-content: space-between; }
+footer nav { gap: 18px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a class="brand" href="#"><img src="icon.png" alt="">OffLoadAI</a>
+    <nav>
+      <a class="opt" href="#how">Как работает</a>
+      <a class="opt" href="#features">Возможности</a>
+      <a href="#pricing">Цена</a>
+      <a href="https://github.com/audit0/Offload">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="hero center">
+  <div class="wrap">
+    <img class="icon" src="icon.png" alt="Иконка OffLoadAI" width="96" height="96">
+    <h1>Освободите место на Mac.<br>Ничего не потеряв.</h1>
+    <p class="lead">OffLoadAI переносит большое в зашифрованный сейф на внешнем диске, чистит кеши и Docker и делает бэкап проектов и ключей. Каждую копию он проверяет, прежде чем удалить оригинал.</p>
+
+    <div class="install">
+      <p class="install-label">Установка на Mac — одна команда в Терминале:</p>
+      <div class="cmd">
+        <code id="cmd-mac">curl -fsSL https://raw.githubusercontent.com/audit0/Offload/main/scripts/install.sh | zsh</code>
+        <button class="copy" data-copy="cmd-mac" type="button">Скопировать</button>
+      </div>
+    </div>
+    <div class="btns">
+      <a class="btn btn-primary" href="https://github.com/audit0/Offload/releases/latest/download/OffLoadAI.dmg">Скачать DMG</a>
+      <a class="btn btn-ghost" href="#windows">Версия для Windows</a>
+    </div>
+    <p class="small" style="margin-top:14px">Бесплатно · macOS 14+ · без регистрации · открытый код (MIT)</p>
+
+    <div class="hero-shot">
+      <img src="screenshots/overview.png" alt="Обзор OffLoadAI: порядок работы, диск Mac и память" width="1600" height="1030">
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <div class="rule">
+      <blockquote>Оригинал удаляется только после того, как копия перечитана с диска и совпала с ним байт в байт.</blockquote>
+      <ol class="steps">
+        <li><b>Копирование</b> в сейф или на внешний диск.</li>
+        <li><b>Сверка</b>: копия перечитывается с диска, и её SHA-256 сравнивается с оригиналом.</li>
+        <li><b>Проверка</b>, что оригинал не менялся, пока шло копирование.</li>
+        <li><b>Удаление оригинала</b>. Вернуть всё можно в любой момент, на любом Mac.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section id="features" class="alt">
+  <div class="wrap center">
+    <h2>Нажать «Начать» и ответить «да» или «не сейчас»</h2>
+    <p class="lead">Ходить по папкам и выбирать файлы не нужно: OffLoadAI сам раскладывает найденное по понятным вопросам и показывает, сколько места освободится.</p>
+  </div>
+  <div class="wrap">
+    <div class="grid">
+      <div class="card"><div class="emoji">🔐</div><h3>Зашифрованный сейф</h3><p>Образ AES-256 на внешнем диске. Пароль знаете только вы. Сейф сам закрывается при сне, блокировке экрана и простое.</p></div>
+      <div class="card"><div class="emoji">🧹</div><h3>Разбор мусора</h3><p>Кеши Xcode, Homebrew, npm, pip, Cargo, Gradle, браузеров и IDE, а также старые установщики. Всё уходит в Корзину, и любой пункт можно вернуть.</p></div>
+      <div class="card"><div class="emoji">🐳</div><h3>Docker</h3><p>Кеш сборки и образы без имени. Тома с данными не трогаются: их можно упаковать в сейф со сверкой.</p></div>
+      <div class="card"><div class="emoji">💾</div><h3>Бэкап проектов и ключей</h3><p>Обновляемая копия проектов без <code>node_modules</code>. <code>~/.ssh</code>, <code>.env</code>, токены и ключи кладутся только в сейф.</p></div>
+      <div class="card"><div class="emoji">🧠</div><h3>Привычки</h3><p>OffLoadAI учится на ваших ответах, только на этом Mac и без сети, и сам раскладывает похожее по нужным вопросам.</p></div>
+      <div class="card"><div class="emoji">✨</div><h3>AI-помощник</h3><p>Подскажет, что в папке важно, а что мусор. Работает через Claude Code, ваш ключ API или локальную модель Ollama. Удаляет только то, что разрешают правила.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="screens">
+  <div class="wrap center">
+    <h2>Как это выглядит</h2>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-shot="cleanup">Разобрать</button>
+      <button class="tab" role="tab" aria-selected="false" data-shot="safe">Сейф</button>
+      <button class="tab" role="tab" aria-selected="false" data-shot="space">Освободить место</button>
+      <button class="tab" role="tab" aria-selected="false" data-shot="history">Перенесённое</button>
+      <button class="tab" role="tab" aria-selected="false" data-shot="backup">Бэкап</button>
+    </div>
+    <div class="shot"><img id="shot-img" src="screenshots/cleanup.png" alt="Разобрать: вопросы о найденном с ответами «да» и «не сейчас»" width="1600" height="1030" loading="lazy"></div>
+    <p class="shot-cap small" id="shot-cap">Вопросы о найденном: удалить мусор, очистить Docker, удалить лишние копии.</p>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <h2>Что OffLoadAI не даст сломать</h2>
+    <p class="lead">Эти правила выросли из реальных случаев, когда простой перенос папки ломал систему.</p>
+    <ul class="safe-list">
+      <li><b>Виртуальные машины и медиатеки</b> (UTM, «Фото») не переносятся, иначе приложение их потеряет.</li>
+      <li><b>Данные приложений</b> в <code>~/Library</code>, <code>~/.ssh</code> и <code>~/.config</code> не трогаются.</li>
+      <li><b>Открытые файлы</b> не переносятся, пока приложение их держит.</li>
+      <li><b>Права доступа на exFAT</b> сохраняются рядом с архивом и возвращаются при восстановлении.</li>
+      <li><b>Выход посреди копирования</b> не оставляет на диске недокопированных скрытых папок.</li>
+      <li><b>Docker</b>: OffLoadAI следит за <code>Docker.raw</code> и прерывает операцию, если тот начинает расти.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="pricing">
+  <div class="wrap center">
+    <h2>Бесплатно всё, что нужно для ваших данных</h2>
+    <p class="lead">Pro никогда не встаёт между вами и вашими файлами: всё, что нужно, чтобы убрать данные в безопасное место и вернуть их обратно, бесплатно навсегда.</p>
+  </div>
+  <div class="wrap">
+    <div class="pricing">
+      <div class="plan">
+        <h3>OffLoadAI</h3>
+        <div class="price">0 ₽ <span>навсегда</span></div>
+        <ul>
+          <li>Сейф: создание, смена пароля, копия заголовка</li>
+          <li>Перенос в сейф со сверкой и возврат</li>
+          <li>Разбор: мусор, Docker, установщики, крупное</li>
+          <li>Ключи и токены в сейф</li>
+          <li>Восстановление из бэкапа restic в iCloud</li>
+        </ul>
+        <a class="btn btn-ghost" href="https://github.com/audit0/Offload/releases/latest">Скачать</a>
+      </div>
+      <div class="plan pro">
+        <div><span class="badge">Для тех, у кого Mac — рабочий инструмент</span></div>
+        <h3 style="margin-top:12px">OffLoadAI Pro</h3>
+        <div class="price">1 490 ₽ <span>или $19 один раз</span></div>
+        <ul>
+          <li>Всё из бесплатной версии</li>
+          <li><b>Лишние копии</b>: одинаковые файлы по SHA-256</li>
+          <li><b>Привычки</b>: похожее само попадает в нужный вопрос</li>
+          <li><b>Бэкап проектов</b>: обновляемая копия в сейф</li>
+          <li><b>Тома Docker в сейф</b>: упаковка со сверкой</li>
+        </ul>
+        <a class="btn btn-primary" href="https://t.me/OffLoadAIbot?start=pro">Купить в Telegram</a>
+        <p class="small note">14 дней Pro бесплатно с первого запуска, без ключа и регистрации. Год обновлений, продление за полцены. Один ключ на все ваши Mac и ПК. Возврат в течение 14 дней.</p>
+      </div>
+    </div>
+    <p class="small center" style="margin-top:18px">Оплата: Telegram Stars, СБП, криптовалюта (USDT, TON). Ключ приходит в боте сразу после оплаты.</p>
+  </div>
+</section>
+
+<section id="windows" class="alt">
+  <div class="wrap">
+    <h2>Есть версия для Windows</h2>
+    <p class="lead">Те же разделы, тексты и правила. Сейф — образ VHDX с BitLocker (нужна Windows Pro). Ключ Pro один на обе системы. Установка одной командой в PowerShell:</p>
+    <div class="cmd" style="margin-top:20px">
+      <code id="cmd-win">irm https://raw.githubusercontent.com/audit0/Offload/main/windows/scripts/install.ps1 | iex</code>
+      <button class="copy" data-copy="cmd-win" type="button">Скопировать</button>
+    </div>
+    <p class="small" style="margin-top:12px">Windows 10 или 11, x64 или ARM. Права администратора не нужны. Ставить .NET отдельно не надо.</p>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap center">
+    <h2>Вопросы</h2>
+  </div>
+  <div class="wrap faq">
+    <details>
+      <summary>Куда уходят мои файлы и данные?</summary>
+      <p>Никуда. OffLoadAI работает без сети и без серверов, телеметрии нет. Ключ Pro проверяется подписью прямо на компьютере. В сеть выходят только AI-помощник, когда вы сами его спрашиваете и согласились, и проверка новых версий, если вы её включили.</p>
+    </details>
+    <details>
+      <summary>macOS пишет, что не может проверить разработчика</summary>
+      <p>Приложение пока не прошло нотаризацию Apple. Поставьте его командой из Терминала: тогда предупреждения не будет. Если скачали DMG, откройте «Системные настройки → Конфиденциальность и безопасность» и нажмите «Всё равно открыть».</p>
+    </details>
+    <details>
+      <summary>Что будет, если я забуду пароль от сейфа?</summary>
+      <p>Данные в сейфе не восстановить: пароль знаете только вы, OffLoadAI его не хранит. Храните пароль в менеджере паролей. Резервную копию заголовка сейфа OffLoadAI делает сам.</p>
+    </details>
+    <details>
+      <summary>Чем это отличается от CleanMyMac?</summary>
+      <p>OffLoadAI не просто удаляет, а переносит на внешний диск: в зашифрованный сейф и со сверкой каждого файла. Перенесённое возвращается одной кнопкой. Он знает подводные камни разработчика (Docker, Xcode, виртуальные машины, ключи) и работает полностью офлайн.</p>
+    </details>
+    <details>
+      <summary>Нужен ли внешний диск?</summary>
+      <p>Для сейфа и переноса — да, подойдёт любой: SSD, флешка или диск exFAT. Разбор мусора, кешей и Docker работает и без него.</p>
+    </details>
+    <details>
+      <summary>Можно ли посмотреть код?</summary>
+      <p>Да, весь код открыт на <a href="https://github.com/audit0/Offload">GitHub</a> под лицензией MIT. Модель угроз и известные ограничения описаны в <a href="https://github.com/audit0/Offload/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+    </details>
+  </div>
+</section>
+
+<section class="center alt">
+  <div class="wrap">
+    <h2>Попробуйте на своём Mac</h2>
+    <p class="lead" style="margin-bottom:24px">Пара минут на установку, и вы увидите, сколько места можно вернуть.</p>
+    <div class="btns">
+      <a class="btn btn-primary" href="https://github.com/audit0/Offload/releases/latest/download/OffLoadAI.dmg">Скачать DMG</a>
+      <a class="btn btn-ghost" href="https://t.me/OffLoadAI">Канал в Telegram</a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>OffLoadAI · открытый код под лицензией MIT</span>
+    <nav>
+      <a href="https://github.com/audit0/Offload">GitHub</a>
+      <a href="https://t.me/OffLoadAI">Канал</a>
+      <a href="https://t.me/OffLoadAIbot?start=pro">Купить Pro</a>
+      <a href="https://github.com/audit0/Offload/blob/main/SECURITY.md">Безопасность</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+document.querySelectorAll('.copy').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var text = document.getElementById(b.dataset.copy).textContent;
+    var done = function () { var t = b.textContent; b.textContent = 'Скопировано'; setTimeout(function () { b.textContent = t; }, 1500); };
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () {});
+  });
+});
+var caps = {
+  cleanup: ['Разобрать: вопросы о найденном с ответами «да» и «не сейчас»', 'Вопросы о найденном: удалить мусор, очистить Docker, удалить лишние копии.'],
+  safe: ['Сейф: состояние, шифрование, автоматическое закрытие', 'Состояние сейфа, проверка шифрования, автоматическое закрытие.'],
+  space: ['Освободить место: папки с пометками', 'Папки с пометками «можно перенести», «с оговорками» и «не трогать», и почему.'],
+  history: ['Перенесённое: что лежит в сейфе', 'Что лежит в сейфе, что открыто, что возвращено.'],
+  backup: ['Бэкап проектов и ключей в сейф', 'Обновляемый бэкап проектов и ключей в сейф.']
+};
+document.querySelectorAll('.tab').forEach(function (t) {
+  t.addEventListener('click', function () {
+    document.querySelectorAll('.tab').forEach(function (x) { x.setAttribute('aria-selected', x === t ? 'true' : 'false'); });
+    var k = t.dataset.shot, img = document.getElementById('shot-img');
+    img.src = 'screenshots/' + k + '.png'; img.alt = caps[k][0];
+    document.getElementById('shot-cap').textContent = caps[k][1];
+  });
+});
+</script>
+</body>
+</html>
