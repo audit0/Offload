@@ -157,6 +157,11 @@ section("Проверка диска назначения") {
     let exfat = SafetyRules.checkDestination(volume("exfat"), sourceVolume: nil, content: content)
     check(exfat.isOK, "exFAT с символическими ссылками допустим: \(exfat.blockers)")
     check(exfat.notes.contains { $0.contains("Символических ссылок") }, "есть пояснение про ссылки на exFAT")
+    let unknownFree = VolumeInfo(mountPoint: URL(fileURLWithPath: "/Volumes/X"), name: "X", fsType: "exfat", totalBytes: 500 << 30,
+                                 availableBytes: 0, blockSize: 131_072, isReadOnly: false, isInternal: false, freeSpaceUnknown: true)
+    let unknownCheck = SafetyRules.checkDestination(unknownFree, sourceVolume: nil, content: content)
+    check(!unknownCheck.isOK && unknownCheck.blockers.contains { $0.contains("не сообщает") },
+          "диск с неизвестным свободным местом не принимает перенос: \(unknownCheck.blockers)")
     var big = content
     big.largestFile = 5 << 30
     check(!SafetyRules.checkDestination(volume("msdos"), sourceVolume: nil, content: big).isOK, "FAT32 не принимает файл больше 4 ГБ")

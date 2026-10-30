@@ -450,6 +450,7 @@
 "Мусор" = "Junk";
 "На %@ macOS хранит служебные данные файла X в файле «._X» и перезаписывает его сама, а у вас такие файлы есть (%@). Целыми они туда не лягут — переносите в сейф или на диск APFS." = "On %@, macOS keeps a file X’s metadata in a file named “._X” and overwrites it on its own, and you have such files (%@). They won’t arrive there intact — move them to the vault or to an APFS drive.";
 "На «%@» свободно %@, а нужно около %@." = "“%@” has %@ free, but about %@ is needed.";
+"macOS не сообщает, сколько свободно на «%@»: так бывает, когда диск exFAT почти заполнен. Освободите на нём место и подключите диск заново." = "macOS isn’t reporting how much space is free on “%@”: this happens when an exFAT drive is almost full. Free up space on it and reconnect the drive.";
 "На время увеличения сейф ненадолго подключится без открытия: файлы не видны ни Finder, ни программам." = "While the size is increased, the vault is briefly attached without being opened: files aren’t visible to Finder or apps.";
 "На диск «%@» открыто" = "Unencrypted on “%@”";
 "На диске" = "On Disk";

@@ -261,7 +261,9 @@ extension SafetyRules {
         let overhead = volume.createsAppleDouble ? Int64(content.files + content.directories) * volume.blockSize * 2 : 0
         let margin: Int64 = 512 * 1024 * 1024
         check.requiredBytes = max(content.logicalBytes, content.allocatedBytes) + overhead + margin
-        if volume.availableBytes < check.requiredBytes {
+        if volume.freeSpaceUnknown {
+            check.blockers.append(tr("macOS не сообщает, сколько свободно на «\(volume.name)»: так бывает, когда диск exFAT почти заполнен. Освободите на нём место и подключите диск заново."))
+        } else if volume.availableBytes < check.requiredBytes {
             check.blockers.append(tr("На «\(volume.name)» свободно \(Format.bytes(volume.availableBytes)), а нужно около \(Format.bytes(check.requiredBytes))."))
         }
         if content.sparseFiles > 0 {
