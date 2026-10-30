@@ -16,9 +16,14 @@ public struct VolumeInfo: Hashable, Sendable, Identifiable {
     /// Том внутри зашифрованного образа — сейф. Всё, что пишется сюда, на внешнем диске
     /// лежит зашифрованным.
     public let isEncryptedImage: Bool
+    /// Система назвала свободного больше, чем весь том: так драйвер exFAT в macOS 27 (FSKit)
+    /// отвечает на почти полном диске. Сколько места на самом деле, неизвестно, и availableBytes
+    /// тогда ноль — проверки места не пропустят перенос, который упадёт посередине.
+    public let freeSpaceUnknown: Bool
 
     public init(mountPoint: URL, name: String, fsType: String, totalBytes: Int64, availableBytes: Int64,
-                blockSize: Int64, isReadOnly: Bool, isInternal: Bool, isEncryptedImage: Bool = false) {
+                blockSize: Int64, isReadOnly: Bool, isInternal: Bool, isEncryptedImage: Bool = false,
+                freeSpaceUnknown: Bool = false) {
         self.mountPoint = mountPoint
         self.name = name
         self.fsType = fsType
@@ -28,6 +33,7 @@ public struct VolumeInfo: Hashable, Sendable, Identifiable {
         self.isReadOnly = isReadOnly
         self.isInternal = isInternal
         self.isEncryptedImage = isEncryptedImage
+        self.freeSpaceUnknown = freeSpaceUnknown
     }
 
     /// macOS хранит символические ссылки и на exFAT/FAT — в собственном формате (проверено на реальном томе).
@@ -62,16 +68,25 @@ public enum Volumes {
         let mountURL = URL(fileURLWithPath: mount, isDirectory: true)
         let values = try? mountURL.resourceValues(forKeys: [.volumeNameKey, .volumeIsInternalKey])
         let blockSize = Int64(stats.f_bsize)
+        let available = availableBlocks(total: stats.f_blocks, available: stats.f_bavail)
         return VolumeInfo(
             mountPoint: mountURL,
             name: values?.volumeName ?? mountURL.lastPathComponent,
             fsType: string(fromCTuple: stats.f_fstypename),
             totalBytes: Int64(stats.f_blocks) * blockSize,
-            availableBytes: Int64(stats.f_bavail) * blockSize,
+            availableBytes: Int64(available ?? 0) * blockSize,
             blockSize: blockSize,
             isReadOnly: (stats.f_flags & UInt32(MNT_RDONLY)) != 0,
-            isInternal: values?.volumeIsInternal ?? false
+            isInternal: values?.volumeIsInternal ?? false,
+            freeSpaceUnknown: available == nil
         )
+    }
+
+    /// Свободные блоки, если им можно верить. Свободного больше, чем всего, не бывает: на полном
+    /// exFAT драйвер FSKit уходит в минус и отдаёт его как огромное беззнаковое число (562 ТБ на
+    /// диске в 512 ГБ). Сравниваем в блоках — в байтах такое число переполнило бы Int64.
+    public static func availableBlocks(total: UInt64, available: UInt64) -> UInt64? {
+        available <= total ? available : nil
     }
 
     /// Внешние диски, на которые можно писать.
@@ -93,7 +108,7 @@ public enum Volumes {
         return VolumeInfo(mountPoint: inside.mountPoint, name: inside.name, fsType: inside.fsType,
                           totalBytes: inside.totalBytes, availableBytes: min(inside.availableBytes, hostRoom),
                           blockSize: inside.blockSize, isReadOnly: inside.isReadOnly, isInternal: false,
-                          isEncryptedImage: true)
+                          isEncryptedImage: true, freeSpaceUnknown: inside.freeSpaceUnknown || host.freeSpaceUnknown)
     }
 
     /// Полосы образа по 8 МБ и его служебные файлы: оставляем на диске немного воздуха.

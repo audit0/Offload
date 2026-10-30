@@ -314,6 +314,9 @@ public struct SafeMover: Sendable {
             : all
         try Self.assertMatches(entries, Inspector.inspect(archived, isCancelled: isCancelled), skippedFiles: all.count - entries.count)
         let total = entries.reduce(Int64(0)) { $0 + $1.size }
+        guard !safe.freeSpaceUnknown else {
+            throw MoveError.destination([tr("macOS не сообщает, сколько свободно на «\(host.name)»: так бывает, когда диск exFAT почти заполнен. Освободите на нём место и подключите диск заново.")])
+        }
         guard total + (64 << 20) <= safe.availableBytes else {
             throw MoveError.destination([tr("В сейфе не хватает места: нужно \(Format.bytes(total)), свободно \(Format.bytes(safe.availableBytes)). Освободите место на диске «\(host.name)».")])
         }

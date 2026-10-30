@@ -118,6 +118,16 @@ func checksSafe() {
         check(clamped?.isEncryptedImage == true, "том сейфа помечен как зашифрованный")
         check((clamped?.availableBytes ?? .max) <= 5 << 20,
               "свободное в сейфе ограничено местом на самом диске: \(clamped?.availableBytes ?? -1)")
+        // Полный exFAT под FSKit: свободного «больше», чем весь диск.
+        check(Volumes.availableBlocks(total: 3_906_960, available: 4_294_967_294) == nil,
+              "свободного больше, чем весь том, — значит, неизвестно")
+        check(Volumes.availableBlocks(total: 3_906_960, available: 1_000) == 1_000, "обычное свободное место принимается")
+        let brokenHost = VolumeInfo(mountPoint: folder, name: "SSD", fsType: "exfat", totalBytes: 10 << 30,
+                                    availableBytes: 0, blockSize: 131_072, isReadOnly: false, isInternal: false,
+                                    freeSpaceUnknown: true)
+        let unknown = Volumes.safe(mountedAt: mount, host: brokenHost)
+        check(unknown?.freeSpaceUnknown == true && unknown?.availableBytes == 0,
+              "сейф на диске с неизвестным свободным местом сам считается без места")
 
         // Занятость: пока в сейфе открыт файл, обычное закрытие отказывает, а не обрывает чужую работу.
         let busyFile = mount.appendingPathComponent("открыт.txt")
